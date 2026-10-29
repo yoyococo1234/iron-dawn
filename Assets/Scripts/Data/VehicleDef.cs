@@ -1,0 +1,64 @@
+using UnityEngine;
+
+/// <summary>
+/// 载具定义 = 一台"车"。决定血量、速度、装甲、能去哪、挂什么武器、卖多少钱。
+/// 注意：装甲字段是"受击倍率"，数字越小越硬（0.6 = 只受 60% 伤害）。
+/// </summary>
+[CreateAssetMenu(fileName = "Vehicle_", menuName = "铁皮黎明/载具定义", order = 3)]
+public class VehicleDef : ScriptableObject
+{
+    [Header("标识")]
+    public string id = "land_main";
+    public string displayName = "主战坦克";
+    public Domain domain = Domain.Land;
+
+    [Header("经济")]
+    [Tooltip("购买价（换车时按 1.15^换车次数 涨价）")]
+    public int price = 200;
+    [Tooltip("复活基础费（实际费用 = 该值 × 1.22^已复活次数）")]
+    public int respawnBaseCost = 80;
+
+    [Header("生存")]
+    public float maxHp = 1200f;
+    public ArmorMode armorMode = ArmorMode.Directional;
+
+    [Tooltip("正面受击倍率（Directional 模式用）")]
+    public float armorFront = 0.70f;
+    [Tooltip("侧面受击倍率")]
+    public float armorSide = 0.90f;
+    [Tooltip("背面受击倍率")]
+    public float armorRear = 1.10f;
+
+    [Tooltip("统一受击倍率（Uniform 模式用，飞机用这个）")]
+    public float uniformMultiplier = 1.0f;
+
+    [Header("机动")]
+    public float speed = 12f;
+    public float turnSpeed = 60f;
+    [Tooltip("炮塔转速（度/秒），0 = 无炮塔")]
+    public float turretTurnSpeed = 80f;
+
+    [Header("通行")]
+    public TerrainType terrainAllowed = TerrainType.Land | TerrainType.ShallowWater;
+
+    [Header("武器挂点")]
+    public WeaponDef[] weapons;
+
+    [Header("说明")]
+    [TextArea(2, 4)]
+    public string description = "";
+
+    /// <summary>按受击方向取装甲倍率。angleDeg = 0 表示正对，180 表示背对。</summary>
+    public float GetArmorMultiplier(float angleDeg)
+    {
+        if (armorMode == ArmorMode.Uniform) return uniformMultiplier;
+
+        float a = Mathf.Abs(Mathf.Repeat(angleDeg + 180f, 360f) - 180f);
+        if (a <= 45f) return armorFront;
+        if (a <= 135f) return armorSide;
+        return armorRear;
+    }
+
+    public string Describe()
+        => $"{displayName}（{domain}）血量{maxHp} 价{price} 复活{respawnBaseCost} 武器{weapons?.Length ?? 0}把";
+}

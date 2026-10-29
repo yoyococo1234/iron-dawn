@@ -1,0 +1,34 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 82e1035f6be7f524f9cd0bee97eeedab, type: 3}
+  m_Name: Battlefield_Default
+  m_EditorClassIdentifier: Assembly-CSharp::BattlefieldDef
+  arenaSize: 120
+  allySpawnLineX: -56
+  enemySpawnLineX: 56
+  spawnLineZMin: -58
+  spawnLineZMax: 58
+  zones:
+  - {fileID: 11400000, guid: 885d5b3dcf4919a4b8445a03227fcfcd, type: 2}
+  - {fileID: 11400000, guid: cab65ac989a311a4dbb7134e2e6a8c82, type: 2}
+  - {fileID: 11400000, guid: bc52ededd23dbe845ba798edbe15573f, type: 2}
+  - {fileID: 11400000, guid: 85a73b8c955bb2144a5b221d8f6673a4, type: 2}
+  coinBoxPoints:
+  - {x: -40, y: 30}
+  - {x: 40, y: 30}
+  - {x: -14, y: -5}
+  - {x: 14, y: -5}
+  - {x: -45, y: -45}
+  - {x: -30, y: -45}
+  - {x: 45, y: -45}
+  - {x: 30, y: -45}
+  waterLevel: 0.05

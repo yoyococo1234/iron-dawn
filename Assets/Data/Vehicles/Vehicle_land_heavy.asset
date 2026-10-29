@@ -1,0 +1,33 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 912a454a9cce89e4ca485a9f740ede3b, type: 3}
+  m_Name: Vehicle_land_heavy
+  m_EditorClassIdentifier: Assembly-CSharp::VehicleDef
+  id: land_heavy
+  displayName: "\u91CD\u88C5\u5766\u514B"
+  domain: 0
+  price: 220
+  respawnBaseCost: 90
+  maxHp: 1600
+  armorMode: 0
+  armorFront: 0.6
+  armorSide: 0.8
+  armorRear: 1.05
+  uniformMultiplier: 0
+  speed: 8
+  turnSpeed: 40
+  turretTurnSpeed: 50
+  terrainAllowed: 3
+  weapons:
+  - {fileID: 11400000, guid: 16306ff787aa5894e8567f9f8eb1ef73, type: 2}
+  - {fileID: 11400000, guid: cad31bc958dc4ab4b8a311c929be40c4, type: 2}
+  description: "\u6B63\u9762\u6781\u786C\uFF0C\u6015\u7ED5\u540E\u548C\u7A7A\u88AD"

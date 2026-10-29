@@ -1,0 +1,32 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 912a454a9cce89e4ca485a9f740ede3b, type: 3}
+  m_Name: Vehicle_air_fighter
+  m_EditorClassIdentifier: Assembly-CSharp::VehicleDef
+  id: air_fighter
+  displayName: "\u6218\u6597\u673A"
+  domain: 2
+  price: 160
+  respawnBaseCost: 80
+  maxHp: 300
+  armorMode: 1
+  armorFront: 1
+  armorSide: 1
+  armorRear: 1
+  uniformMultiplier: 1
+  speed: 45
+  turnSpeed: 120
+  turretTurnSpeed: 0
+  terrainAllowed: 8
+  weapons:
+  - {fileID: 11400000, guid: cdbdcba4a80e9d342ac2582baa4a06ec, type: 2}
+  description: "\u6700\u5FEB\uFF0C\u5236\u7A7A\uFF1B\u4E00\u51FB\u5373\u843D"

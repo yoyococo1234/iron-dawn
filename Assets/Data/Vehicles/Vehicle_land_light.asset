@@ -1,0 +1,33 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 912a454a9cce89e4ca485a9f740ede3b, type: 3}
+  m_Name: Vehicle_land_light
+  m_EditorClassIdentifier: Assembly-CSharp::VehicleDef
+  id: land_light
+  displayName: "\u8F7B\u5766"
+  domain: 0
+  price: 160
+  respawnBaseCost: 80
+  maxHp: 800
+  armorMode: 0
+  armorFront: 0.95
+  armorSide: 1.1
+  armorRear: 1.3
+  uniformMultiplier: 0
+  speed: 18
+  turnSpeed: 90
+  turretTurnSpeed: 120
+  terrainAllowed: 3
+  weapons:
+  - {fileID: 11400000, guid: 2de6f803e0113a94fa38c3227f12aad7, type: 2}
+  - {fileID: 11400000, guid: cad31bc958dc4ab4b8a311c929be40c4, type: 2}
+  description: "\u5FEB\u3001\u76AE\u8584\uFF0C\u7ED5\u540E\u5077\u88AD"

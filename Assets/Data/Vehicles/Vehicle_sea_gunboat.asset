@@ -1,0 +1,33 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 912a454a9cce89e4ca485a9f740ede3b, type: 3}
+  m_Name: Vehicle_sea_gunboat
+  m_EditorClassIdentifier: Assembly-CSharp::VehicleDef
+  id: sea_gunboat
+  displayName: "\u70AE\u8247"
+  domain: 1
+  price: 180
+  respawnBaseCost: 80
+  maxHp: 1000
+  armorMode: 0
+  armorFront: 0.85
+  armorSide: 1
+  armorRear: 1.15
+  uniformMultiplier: 0
+  speed: 22
+  turnSpeed: 70
+  turretTurnSpeed: 100
+  terrainAllowed: 6
+  weapons:
+  - {fileID: 11400000, guid: 0cbc85164d7b1524ba9e7ebb0cfa353d, type: 2}
+  - {fileID: 11400000, guid: 793e01789c0530e4f979a8952346282b, type: 2}
+  description: "\u6D77\u4E0A\u9738\u4E3B\uFF0C\u5C04\u7A0B\u6781\u8FDC"
