@@ -30,6 +30,13 @@ public class TerrainField : MonoBehaviour
     public float pondRadius = 7f;
     public float pondDepth = 2.5f;
 
+    [Header("海湾（给船用的大片水）")]
+    [Tooltip("x = 左边界，y = z 下边界，width/height = 尺寸；宽度 0 表示不要海湾")]
+    public Rect bayRect = new Rect(-20f, 14f, 40f, 6f);
+    public float bayDepth = 3.5f;
+    [Tooltip("岸边过渡带宽度（米）")]
+    public float bayEdgeFade = 3f;
+
     [Header("水面")]
     public float waterLevel = 0f;
 
@@ -75,6 +82,19 @@ public class TerrainField : MonoBehaviour
         {
             float t = 1f - (d / pondRadius);
             h -= pondDepth * Mathf.SmoothStep(0f, 1f, t);
+        }
+
+        // 海湾：矩形水域，边缘有过渡带
+        if (bayRect.width > 0f)
+        {
+            float dx = Mathf.Max(bayRect.xMin - x, x - bayRect.xMax, 0f);
+            float dz = Mathf.Max(bayRect.yMin - z, z - bayRect.yMax, 0f);
+            float dist = Mathf.Sqrt(dx * dx + dz * dz);
+            if (dist < bayEdgeFade)
+            {
+                float t = 1f - dist / bayEdgeFade;
+                h = Mathf.Lerp(h, -bayDepth, Mathf.SmoothStep(0f, 1f, t));
+            }
         }
 
         return h;
