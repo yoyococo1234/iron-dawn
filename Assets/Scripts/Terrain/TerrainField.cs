@@ -11,10 +11,21 @@ public class TerrainField : MonoBehaviour
     public float size = 40f;         // 边长（米）
     public int resolution = 41;      // 顶点数（41×41 → 每格 1 米）
 
-    [Header("形状")]
-    public float slopeHeight = 5f;   // 坡顶高度
-    public float slopeZStart = -14f; // 坡脚 z
-    public float slopeZEnd = -6f;    // 坡顶 z（8 米水平距离爬 5 米 → 约 32°）
+    [Header("形状（两段坡 + 一个水塘）")]
+    [Tooltip("缓坡：坡脚 z，高度 0")]
+    public float gentleZFoot = -4f;
+    [Tooltip("缓坡：坡顶 z")]
+    public float gentleZTop = -9.6f;
+    [Tooltip("缓坡顶高度（2.5m/5.6m ≈ 24°）")]
+    public float gentleHeight = 2.5f;
+
+    [Tooltip("陡坡：坡脚 z（接缓坡顶）")]
+    public float steepZFoot = -9.6f;
+    [Tooltip("陡坡：坡顶 z")]
+    public float steepZTop = -17.6f;
+    [Tooltip("陡坡顶高度（5m/8m ≈ 32°）")]
+    public float steepHeight = 7.5f;
+
     public Vector2 pondCenter = new Vector2(-9f, 10f);
     public float pondRadius = 7f;
     public float pondDepth = 2.5f;
@@ -47,14 +58,16 @@ public class TerrainField : MonoBehaviour
         BuildTexture();
     }
 
-    /// <summary>地形形状：平地 + 一段斜坡 + 一个水塘。</summary>
+    /// <summary>地形形状：平地 → 24° 缓坡 → 32° 陡坡 → 平台，外加一个水塘。</summary>
     float ShapeHeight(float x, float z)
     {
         float h = 0f;
 
-        // 斜坡：z 从 slopeZEnd(-6，坡脚，高度 0) 爬到 slopeZStart(-14，坡顶，高度 slopeHeight)
-        if (z <= slopeZStart) h = slopeHeight;
-        else if (z < slopeZEnd) h = Mathf.Lerp(slopeHeight, 0f, (z - slopeZStart) / (slopeZEnd - slopeZStart));
+        if (z <= steepZTop) h = steepHeight;                       // 平台
+        else if (z < steepZFoot)                                   // 32° 陡坡
+            h = Mathf.Lerp(steepHeight, gentleHeight, (z - steepZTop) / (steepZFoot - steepZTop));
+        else if (z < gentleZFoot)                                  // 24° 缓坡
+            h = Mathf.Lerp(gentleHeight, 0f, (z - gentleZTop) / (gentleZFoot - gentleZTop));
 
         // 水塘：圆形凹陷，边缘平滑过渡
         float d = Vector2.Distance(new Vector2(x, z), pondCenter);
@@ -135,9 +148,9 @@ public class TerrainField : MonoBehaviour
                 Color c;
                 if (h < -0.3f) c = Color.Lerp(mud, sand, Mathf.InverseLerp(-pondDepth, -0.3f, h));
                 else if (h < 0.6f) c = sand;
-                else if (h < 3f) c = Color.Lerp(sand, grass, Mathf.InverseLerp(0.6f, 1.4f, h));
-                else if (h < 4.2f) c = Color.Lerp(grass, dirt, Mathf.InverseLerp(3f, 4.2f, h));
-                else c = Color.Lerp(dirt, rock, Mathf.InverseLerp(4.2f, 5f, h));
+                else if (h < 2.5f) c = Color.Lerp(sand, grass, Mathf.InverseLerp(0.6f, 1.6f, h));
+                else if (h < 6f) c = Color.Lerp(grass, dirt, Mathf.InverseLerp(2.5f, 6f, h));
+                else c = Color.Lerp(dirt, rock, Mathf.InverseLerp(6f, steepHeight, h));
 
                 // 一点噪声，避免纯色块
                 float n = (Mathf.PerlinNoise(wx * 0.7f + 13f, wz * 0.7f + 7f) - 0.5f) * 0.06f;

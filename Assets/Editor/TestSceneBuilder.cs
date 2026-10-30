@@ -18,9 +18,9 @@ public static class TestSceneBuilder
         var field = terrainGo.AddComponent<TerrainField>();
         field.size = 40f;
         field.resolution = 81;          // 0.5 米一格，坡面更顺
-        field.slopeHeight = 5f;
-        field.slopeZStart = -14f;
-        field.slopeZEnd = -6f;
+        // 两段坡：24° 缓坡 + 32° 陡坡
+        field.gentleZFoot = -4f;  field.gentleZTop = -9.6f;  field.gentleHeight = 2.5f;
+        field.steepZFoot = -9.6f; field.steepZTop = -17.6f;  field.steepHeight = 7.5f;
         field.pondCenter = new Vector2(-9f, 10f);
         field.pondRadius = 7f;
         field.pondDepth = 2.5f;
@@ -59,8 +59,8 @@ public static class TestSceneBuilder
         var cam = camGo.AddComponent<Camera>();
         cam.fieldOfView = 45f;
         camGo.AddComponent<AudioListener>();
-        camGo.transform.position = new Vector3(26f, 20f, -28f);
-        camGo.transform.LookAt(new Vector3(0f, 2f, -9f));
+        camGo.transform.position = new Vector3(24f, 22f, -34f);
+        camGo.transform.LookAt(new Vector3(0f, 3f, -10f));
 
         // ---------- 灯光 ----------
         var lightGo = new GameObject("Directional Light");

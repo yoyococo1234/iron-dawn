@@ -27,6 +27,11 @@ public class VehiclePhysics : MonoBehaviour
     public bool autoDrive = false;
     public float autoThrottle = 1f;
 
+    [Tooltip("从开始下沉到彻底消失要几秒（方便观察，默认 3 秒）")]
+    public float sinkDuration = 3f;
+    [Tooltip("下沉速度 m/s")]
+    public float sinkSpeed = 1.2f;
+
     // ---- 运行时状态（给 HUD 看）----
     [System.NonSerialized] public float speed;
     [System.NonSerialized] public float slopeDeg;
@@ -73,9 +78,9 @@ public class VehiclePhysics : MonoBehaviour
             stateText = "沉没中";
             speed = Mathf.MoveTowards(speed, 0f, brakeDecel * Time.deltaTime);
             _sinkTimer += Time.deltaTime;
-            pos.y -= 1.2f * Time.deltaTime;           // 往下沉
+            pos.y -= sinkSpeed * Time.deltaTime;      // 往下沉
             transform.position = pos;
-            if (_sinkTimer >= 3f) { alive = false; stateText = "已沉没"; gameObject.SetActive(false); }
+            if (_sinkTimer >= sinkDuration) { alive = false; stateText = "已沉没"; gameObject.SetActive(false); }
             return;
         }
 
