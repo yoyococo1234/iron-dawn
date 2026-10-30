@@ -56,6 +56,18 @@ public class VehicleDef : ScriptableObject
     [Header("武器挂点")]
     public WeaponDef[] weapons;
 
+    [Header("外观模型（留空就用方块占位）")]
+    [Tooltip("精细模型 Prefab。留空时：会先按 Assets/Models/Vehicles/{id}.prefab / .glb 自动找，再退化成方块")]
+    public GameObject modelPrefab;
+    [Tooltip("炮塔节点名（模型里的子物体名），炮塔要能转就靠它")]
+    public string turretBoneName = "Turret";
+    [Tooltip("炮口节点名（开火时子弹从这里出）")]
+    public string muzzleBoneName = "Muzzle";
+    [Tooltip("模型朝向修正：模型车头不是 -Z 时，用这个角度转正")]
+    public float modelYawOffset = 0f;
+    [Tooltip("模型缩放修正（1 = 原尺寸）")]
+    public float modelScale = 1f;
+
     [Header("说明")]
     [TextArea(2, 4)]
     public string description = "";

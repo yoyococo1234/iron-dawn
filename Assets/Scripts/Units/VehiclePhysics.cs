@@ -41,6 +41,14 @@ public class VehiclePhysics : MonoBehaviour
     [Tooltip("下沉速度 m/s")]
     public float sinkSpeed = 1.2f;
 
+    [Header("模型挂点（由 VehicleModelBinder 填入）")]
+    [Tooltip("炮塔节点，炮塔转动靠它")]
+    public Transform turretBone;
+    [Tooltip("炮口节点，开火时子弹从这里出")]
+    public Transform muzzleBone;
+
+    [System.NonSerialized] public float turretYaw;
+
     // ---- 运行时状态（给 HUD 看）----
     [System.NonSerialized] public float speed;
     [System.NonSerialized] public float slopeDeg;
@@ -216,6 +224,27 @@ public class VehiclePhysics : MonoBehaviour
 
         stateText = "飞行";
     }
+
+    // ==================== 挂点接口（武器阶段用）====================
+
+    /// <summary>转炮塔（度）。没有炮塔节点的载具（飞机）会自动忽略。</summary>
+    public void RotateTurret(float deltaDeg)
+    {
+        turretYaw += deltaDeg;
+        if (turretBone != null)
+            turretBone.localRotation = Quaternion.Euler(0f, turretYaw, 0f);
+    }
+
+    /// <summary>炮口世界坐标（开火起点）。没有炮口节点时退化到车头前方。</summary>
+    public Vector3 GetMuzzlePosition()
+    {
+        if (muzzleBone != null) return muzzleBone.position;
+        return transform.position + transform.forward * 3f + Vector3.up * 1.2f;
+    }
+
+    /// <summary>炮口朝向（子弹方向）。</summary>
+    public Vector3 GetMuzzleForward()
+        => turretBone != null ? turretBone.forward : transform.forward;
 
     // ==================== 公共 ====================
 
