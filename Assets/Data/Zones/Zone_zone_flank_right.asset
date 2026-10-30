@@ -1,0 +1,28 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 611f80feac05fed4f9afcbfdf34c3ab5, type: 3}
+  m_Name: Zone_zone_flank_right
+  m_EditorClassIdentifier: Assembly-CSharp::ZoneDef
+  id: zone_flank_right
+  displayName: "\u53F3\u7FFC\u5E73\u539F"
+  domain: 0
+  terrain: 1
+  bounds:
+    serializedVersion: 2
+    x: 550
+    y: -333
+    width: 400
+    height: 400
+  captureable: 1
+  incomePerTick: 5
+  coinBoxPoints:
+  - {x: 233, y: -133}

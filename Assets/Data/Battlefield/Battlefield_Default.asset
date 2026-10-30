@@ -12,23 +12,24 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 82e1035f6be7f524f9cd0bee97eeedab, type: 3}
   m_Name: Battlefield_Default
   m_EditorClassIdentifier: Assembly-CSharp::BattlefieldDef
-  arenaSize: 120
-  allySpawnLineX: -56
-  enemySpawnLineX: 56
-  spawnLineZMin: -58
-  spawnLineZMax: 58
+  arenaSize: 2000
+  allySpawnLineX: -933
+  enemySpawnLineX: 933
+  spawnLineZMin: -967
+  spawnLineZMax: 967
   zones:
   - {fileID: 11400000, guid: 885d5b3dcf4919a4b8445a03227fcfcd, type: 2}
   - {fileID: 11400000, guid: cab65ac989a311a4dbb7134e2e6a8c82, type: 2}
   - {fileID: 11400000, guid: bc52ededd23dbe845ba798edbe15573f, type: 2}
-  - {fileID: 11400000, guid: 85a73b8c955bb2144a5b221d8f6673a4, type: 2}
+  - {fileID: 11400000, guid: a1869d4a90b44ae4680142d7858a48e7, type: 2}
+  - {fileID: 11400000, guid: 3a6c87812b511d64ba947586aa5a9b93, type: 2}
   coinBoxPoints:
-  - {x: -40, y: 30}
-  - {x: 40, y: 30}
-  - {x: -14, y: -5}
-  - {x: 14, y: -5}
-  - {x: -45, y: -45}
-  - {x: -30, y: -45}
-  - {x: 45, y: -45}
-  - {x: 30, y: -45}
-  waterLevel: 0.05
+  - {x: -667, y: 500}
+  - {x: 667, y: 500}
+  - {x: -333, y: 117}
+  - {x: 333, y: 117}
+  - {x: -233, y: -133}
+  - {x: 233, y: -133}
+  - {x: -500, y: -750}
+  - {x: 500, y: -750}
+  waterLevel: -6.667

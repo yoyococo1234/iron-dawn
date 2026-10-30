@@ -18,12 +18,12 @@ MonoBehaviour:
   terrain: 1
   bounds:
     serializedVersion: 2
-    x: -26
-    y: -26
-    width: 52
-    height: 40
+    x: -417
+    y: -300
+    width: 834
+    height: 834
   captureable: 1
   incomePerTick: 15
   coinBoxPoints:
-  - {x: -14, y: -5}
-  - {x: 14, y: -5}
+  - {x: -333, y: 117}
+  - {x: 333, y: 117}

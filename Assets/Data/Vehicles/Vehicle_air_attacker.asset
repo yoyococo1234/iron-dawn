@@ -35,4 +35,9 @@ MonoBehaviour:
   weapons:
   - {fileID: 11400000, guid: cdbdcba4a80e9d342ac2582baa4a06ec, type: 2}
   - {fileID: 11400000, guid: 1656174497aa82a4e98451414936c081, type: 2}
+  modelPrefab: {fileID: 0}
+  turretBoneName: Turret
+  muzzleBoneName: Muzzle
+  modelYawOffset: 0
+  modelScale: 1
   description: "\u80FD\u6253\u5730\u9762\uFF0C\u8D8A\u5899\uFF1B\u6162\u3001\u6015\u9632\u7A7A"

@@ -94,15 +94,23 @@ public static class DataSeeder
         match.matchTimeLimitMinutes = 15f;
         EditorUtility.SetDirty(match);
 
-        // ---------- 区域 ----------
+        // ---------- 区域（v2：2000×2000 世界坐标，设计坐标 ×16.667）----------
+        // 中央 3 个点 15 金/10 秒；家门口 2 个点 5 金/10 秒（躺着收，但不够赢）
         var zPort = Zone("zone_port", "港口海战", Domain.Sea, TerrainType.DeepWater,
-            new Rect(-20f, 14f, 40f, 42f), 15, new[] { new Vector2(-14f, 30f), new Vector2(14f, 30f) });
+            new Rect(-350f, 217f, 700f, 700f), 15,
+            new[] { new Vector2(-667f, 500f), new Vector2(667f, 500f) });          // 设计 (0,34) r21
         var zUrban = Zone("zone_urban", "城区巷战", Domain.Land, TerrainType.Land,
-            new Rect(-26f, -26f, 52f, 40f), 15, new[] { new Vector2(-14f, -5f), new Vector2(14f, -5f) });
+            new Rect(-417f, -300f, 834f, 834f), 15,
+            new[] { new Vector2(-333f, 117f), new Vector2(333f, 117f) });          // 设计 (0,7) r25
         var zHill = Zone("zone_hill", "山地伏击", Domain.Land, TerrainType.Land,
-            new Rect(-60f, -60f, 34f, 34f), 15, new[] { new Vector2(-45f, -45f), new Vector2(-30f, -45f) });
-        var zOpen = Zone("zone_open", "开阔地装甲战", Domain.Land, TerrainType.Land,
-            new Rect(26f, -60f, 34f, 34f), 15, new[] { new Vector2(45f, -45f), new Vector2(30f, -45f) });
+            new Rect(-200f, -950f, 400f, 400f), 15,
+            new[] { new Vector2(-500f, -750f), new Vector2(500f, -750f) });        // 设计 (0,-45) r12
+        var zFlankL = Zone("zone_flank_left", "左翼平原", Domain.Land, TerrainType.Land,
+            new Rect(-950f, -333f, 400f, 400f), 5,
+            new[] { new Vector2(-233f, -133f) });                                  // 设计 (-45,-8) r12
+        var zFlankR = Zone("zone_flank_right", "右翼平原", Domain.Land, TerrainType.Land,
+            new Rect(550f, -333f, 400f, 400f), 5,
+            new[] { new Vector2(233f, -133f) });                                   // 设计 (45,-8) r12
 
         // ---------- AI ----------
         var ai = GetOrCreate<AIDef>($"{Root}/AI/AI_Default.asset");
@@ -119,21 +127,21 @@ public static class DataSeeder
         ai.repairHpPercent = 0.40f;
         EditorUtility.SetDirty(ai);
 
-        // ---------- 战场 ----------
+        // ---------- 战场（v2：2000×2000）----------
         var bf = GetOrCreate<BattlefieldDef>($"{Root}/Battlefield/Battlefield_Default.asset");
-        bf.arenaSize = 120f;
-        bf.allySpawnLineX = -56f;
-        bf.enemySpawnLineX = 56f;
-        bf.spawnLineZMin = -58f;
-        bf.spawnLineZMax = 58f;
-        bf.waterLevel = 0.05f;
-        bf.zones = new[] { zPort, zUrban, zHill, zOpen };
+        bf.arenaSize = 2000f;
+        bf.allySpawnLineX = -933f;
+        bf.enemySpawnLineX = 933f;
+        bf.spawnLineZMin = -967f;
+        bf.spawnLineZMax = 967f;
+        bf.waterLevel = -6.667f;
+        bf.zones = new[] { zPort, zUrban, zHill, zFlankL, zFlankR };
         bf.coinBoxPoints = new[]
         {
-            new Vector2(-40f, 30f), new Vector2(40f, 30f),
-            new Vector2(-14f, -5f), new Vector2(14f, -5f),
-            new Vector2(-45f, -45f), new Vector2(-30f, -45f),
-            new Vector2(45f, -45f), new Vector2(30f, -45f),
+            new Vector2(-667f, 500f), new Vector2(667f, 500f),      // 海域
+            new Vector2(-333f, 117f), new Vector2(333f, 117f),      // 城区
+            new Vector2(-233f, -133f), new Vector2(233f, -133f),    // 中央平原
+            new Vector2(-500f, -750f), new Vector2(500f, -750f),    // 山地
         };
         EditorUtility.SetDirty(bf);
 
@@ -143,7 +151,7 @@ public static class DataSeeder
         // CreateAsset / SaveAssets 已经足够让资产落盘。
         AssetDatabase.SaveAssets();
 
-        Debug.Log("[DataSeeder] 默认数据已生成：6 载具 / 8 武器 / 6 弹药 / 4 区域 / 1 对局 / 1 AI / 1 战场");
+        Debug.Log("[DataSeeder] 默认数据已生成：6 载具 / 8 武器 / 6 弹药 / 5 区域 / 1 对局 / 1 AI / 1 战场（2000×2000）");
     }
 
     // ---------------- 辅助 ----------------

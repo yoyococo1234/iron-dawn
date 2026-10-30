@@ -11,6 +11,7 @@ public class VehiclePhysics : MonoBehaviour
 {
     [Header("数据")]
     public VehicleDef def;
+    [Tooltip("旧测试场的地形源。留空 = 用正式地图的 Unity Terrain（BattlefieldTerrain 分块采样）")]
     public TerrainField terrain;
 
     [Header("物理（会被 def 覆盖）")]
@@ -27,8 +28,8 @@ public class VehiclePhysics : MonoBehaviour
     public float tiltSpeed = 6f;
 
     [Header("空中")]
-    [Tooltip("固定飞行高度（离地面/水面）")]
-    public float flightAltitude = 25f;
+    [Tooltip("固定飞行高度（离地面/水面）。设计 25 m × 16.667 ≈ 417 m，要能飞过 300 m 的山")]
+    public float flightAltitude = 420f;
     [Tooltip("转向时的侧倾角度")]
     public float bankAngle = 30f;
 
@@ -78,7 +79,7 @@ public class VehiclePhysics : MonoBehaviour
 
     void Update()
     {
-        if (!alive || terrain == null || def == null) return;
+        if (!alive || def == null) return;
 
         switch (def.domain)
         {
@@ -93,8 +94,8 @@ public class VehiclePhysics : MonoBehaviour
     void UpdateLand()
     {
         var pos = transform.position;
-        slopeDeg = terrain.GetSlopeDeg(pos.x, pos.z);
-        waterDepth = terrain.GetWaterDepth(pos.x, pos.z);
+        slopeDeg = GroundSlope(pos.x, pos.z);
+        waterDepth = WaterDepthAt(pos.x, pos.z);
         maxClimbDeg = MaxClimbDeg;
 
         // 沉没
@@ -133,12 +134,12 @@ public class VehiclePhysics : MonoBehaviour
 
         // 贴地 + 倾斜
         pos = transform.position;
-        float groundY = terrain.GetHeight(pos.x, pos.z);
+        float groundY = GroundY(pos.x, pos.z);
         pos.y = Mathf.Lerp(pos.y, groundY + groundClearance, 12f * Time.deltaTime);
         transform.position = pos;
 
         float yaw = transform.eulerAngles.y;
-        var normal = terrain.GetNormal(pos.x, pos.z);
+        var normal = GroundNormal(pos.x, pos.z);
         var targetRot = Quaternion.FromToRotation(Vector3.up, normal) * Quaternion.Euler(0f, yaw, 0f);
         transform.rotation = Quaternion.Slerp(transform.rotation, targetRot, tiltSpeed * Time.deltaTime);
 
@@ -150,7 +151,7 @@ public class VehiclePhysics : MonoBehaviour
     void UpdateSea()
     {
         var pos = transform.position;
-        waterDepth = terrain.GetWaterDepth(pos.x, pos.z);
+        waterDepth = WaterDepthAt(pos.x, pos.z);
         slopeDeg = 0f;
         maxClimbDeg = 0f;
 
@@ -182,7 +183,7 @@ public class VehiclePhysics : MonoBehaviour
         // 浮在水面 + 轻微摇晃
         pos = transform.position;
         float bob = Mathf.Sin(Time.time * 1.6f + transform.position.x * 0.3f) * 0.12f;
-        pos.y = Mathf.Lerp(pos.y, terrain.waterLevel + 0.25f + bob, 6f * Time.deltaTime);
+        pos.y = Mathf.Lerp(pos.y, WaterLevel + 0.25f + bob, 6f * Time.deltaTime);
         transform.position = pos;
 
         float yaw = transform.eulerAngles.y;
@@ -197,8 +198,8 @@ public class VehiclePhysics : MonoBehaviour
     void UpdateAir()
     {
         var pos = transform.position;
-        float groundY = Mathf.Max(terrain.GetHeight(pos.x, pos.z), terrain.waterLevel);
-        waterDepth = Mathf.Max(0f, terrain.waterLevel - terrain.GetHeight(pos.x, pos.z));
+        float groundY = Mathf.Max(GroundY(pos.x, pos.z), WaterLevel);
+        waterDepth = Mathf.Max(0f, WaterLevel - GroundY(pos.x, pos.z));
         slopeDeg = 0f;
         maxClimbDeg = 0f;
 
@@ -250,7 +251,7 @@ public class VehiclePhysics : MonoBehaviour
 
     void ClampToBounds()
     {
-        float half = terrain.size * 0.5f - 1.5f;
+        float half = MapHalfSize - 1.5f;
         var p = transform.position;
         float cx = Mathf.Clamp(p.x, -half, half);
         float cz = Mathf.Clamp(p.z, -half, half);
@@ -266,8 +267,34 @@ public class VehiclePhysics : MonoBehaviour
     {
         float d = 1f;
         return new Vector2(
-            terrain.GetHeight(x + d, z) - terrain.GetHeight(x - d, z),
-            terrain.GetHeight(x, z + d) - terrain.GetHeight(x, z - d));
+            GroundY(x + d, z) - GroundY(x - d, z),
+            GroundY(x, z + d) - GroundY(x, z - d));
+    }
+
+    // ---------------- 地形源抽象 ----------------
+    // terrain 有值 → 旧测试场（TerrainField）；留空 → 正式地图（Unity Terrain 分块）
+    // 这样同一套载具代码既能在 Test_Stage1 回归测试，也能跑 2 km 正式图。
+
+    public float WaterLevel => terrain != null ? terrain.waterLevel : BattlefieldTerrain.WaterLevel;
+    public float MapHalfSize => terrain != null ? terrain.size * 0.5f : BattlefieldTerrain.MapSize * 0.5f;
+
+    public float GroundY(float x, float z)
+        => terrain != null ? terrain.GetHeight(x, z) : BattlefieldTerrain.SampleHeight(x, z);
+
+    public float GroundSlope(float x, float z)
+        => terrain != null ? terrain.GetSlopeDeg(x, z) : BattlefieldTerrain.SampleSteepness(x, z);
+
+    public float WaterDepthAt(float x, float z)
+        => terrain != null ? terrain.GetWaterDepth(x, z) : BattlefieldTerrain.WaterDepth(x, z);
+
+    public Vector3 GroundNormal(float x, float z)
+    {
+        if (terrain != null) return terrain.GetNormal(x, z);
+        float d = 1.5f;
+        return new Vector3(
+            GroundY(x - d, z) - GroundY(x + d, z),
+            2f * d,
+            GroundY(x, z - d) - GroundY(x, z + d)).normalized;
     }
 
     // ---------------- 调试 HUD ----------------

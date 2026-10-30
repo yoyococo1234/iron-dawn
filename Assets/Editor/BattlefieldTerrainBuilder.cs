@@ -262,7 +262,9 @@ public static class BattlefieldTerrainBuilder
     // ---- 山地中心（5~18 m）：主脊 + 次脊 + 碎岩 ----
     static float MountainField(float x, float z)
     {
-        float ramp = SStep(-18f, -40f, z);          // 从平原进山，22 m（世界 367 m）缓过渡
+        // 山脚线加扰动，别做成一条笔直的等高线
+        float zWobble = z + (Fbm(x * 0.03f + 13f, 7.7f, 2) - 0.5f) * 10f;
+        float ramp = SStep(-18f, -40f, zWobble);    // 从平原进山，22 m（世界 367 m）缓过渡
         if (ramp <= 0.001f) return 0f;
 
         // 域扭曲：把噪声坐标揉一下，山脊就不会是同心圆/穹顶
@@ -318,7 +320,8 @@ public static class BattlefieldTerrainBuilder
         return Mathf.Clamp(h, 0.5f, 2f);
     }
 
-    // ---- 街道网格（设计坐标 12 m 一条 → 世界 200 m 一条，路面宽 53 m）----
+    // ---- 街道网格（设计坐标 12 m 一条 → 世界 200 m 一条）----
+    // 压平用宽掩码（路基平），上色用窄掩码（不然路面像 50 m 宽的沙带）
     public static float RoadMask(float x, float z)
     {
         return Mathf.Max(RoadLine(x), RoadLine(z));
@@ -329,6 +332,19 @@ public static class BattlefieldTerrainBuilder
         float t = Mathf.Repeat(v + 6f, 12f);
         float d = Mathf.Min(t, 12f - t);
         return 1f - SStep(1.6f, 2.6f, d);
+    }
+
+    /// <summary>城区路面上色宽度：约 23~43 m 世界宽度。</summary>
+    public static float CityRoadPaintMask(float x, float z)
+    {
+        return Mathf.Max(RoadPaintLine(x), RoadPaintLine(z));
+    }
+
+    static float RoadPaintLine(float v)
+    {
+        float t = Mathf.Repeat(v + 6f, 12f);
+        float d = Mathf.Min(t, 12f - t);
+        return 1f - SStep(0.7f, 1.3f, d);
     }
 
     // ---- 山口公路（两条）：从平原爬上山地，在山脊资源点 (0,−45) 汇合 ----
@@ -380,13 +396,13 @@ public static class BattlefieldTerrainBuilder
         return Mathf.Lerp(h, target, fall);                    // 削高填低，路基是平的
     }
 
-    /// <summary>山脊鞍部：资源点③ 站人的那块平地（设计 (0,−45)，半径 22 m）。</summary>
+    /// <summary>山脊鞍部：资源点③ 站人的那块高地（设计 (0,−45)），边缘过渡放宽，别做成坑。</summary>
     static float FlattenSaddle(float h, float x, float z)
     {
         float d = Vector2.Distance(new Vector2(x, z), new Vector2(0f, -45f));
-        if (d > 22f) return h;
-        float fall = 1f - SStep(7f, 22f, d);
-        return Mathf.Lerp(h, 10.0f, fall * 0.92f);
+        if (d > 28f) return h;
+        float fall = 1f - SStep(6f, 28f, d);       // 6~28 设计 m 渐入（世界 100~467 m）
+        return Mathf.Lerp(h, 10.0f, fall * 0.9f);
     }
 
     /// <summary>山口公路的路面掩码（给地表贴图用，0~1）。</summary>
@@ -396,6 +412,15 @@ public static class BattlefieldTerrainBuilder
         var p = new Vector2(x, z);
         foreach (var path in PassPaths) d = Mathf.Min(d, DistToPath(p, path));
         return 1f - SStep(3f, 6f, d);
+    }
+
+    /// <summary>山口公路"上色"宽度（约 33~73 m 世界宽度），比削填范围窄得多。</summary>
+    public static float PassRoadPaintMask(float x, float z)
+    {
+        float d = float.MaxValue;
+        var p = new Vector2(x, z);
+        foreach (var path in PassPaths) d = Mathf.Min(d, DistToPath(p, path));
+        return 1f - SStep(1.0f, 2.2f, d);
     }
 
     static float DistToPath(Vector2 p, Vector2[] path)
@@ -507,9 +532,9 @@ public static class BattlefieldTerrainBuilder
                 float cityW = CityMask(dx, dz);
                 float patch = SStep(0.55f, 0.78f, Fbm(dx * 0.045f + 71f, dz * 0.045f + 29f, 3));
                 float dirt = SStep(1.8f, 5.5f, yd) * (1f - SStep(28f, 40f, slope)) * 0.8f
-                           + RoadMask(dx, dz) * cityW * 1.6f
+                           + CityRoadPaintMask(dx, dz) * cityW * 1.4f
                            + patch * 0.75f * (1f - cityW) * (1f - SStep(20f, 32f, slope))
-                           + PassRoadMask(dx, dz) * 1.5f;          // 山口公路是土路
+                           + PassRoadPaintMask(dx, dz) * 1.5f;     // 山口公路是土路
 
                 // 噪声打散边界，别让贴图分界线像等高线
                 float n = Fbm(dx * 0.18f + 13f, dz * 0.18f + 7f, 3) - 0.5f;
@@ -609,15 +634,24 @@ public static class BattlefieldTerrainBuilder
         var light = lightGo.AddComponent<Light>();
         light.type = LightType.Directional;
         light.color = new Color(1f, 0.96f, 0.88f);
-        light.intensity = 1.25f;
+        light.intensity = 1.15f;
         light.shadows = LightShadows.Soft;
-        light.shadowStrength = 0.75f;
+        light.shadowStrength = 0.72f;
         lightGo.transform.rotation = Quaternion.Euler(48f, -35f, 0f);
 
+        // 补光：从反方向打一盏弱的，避免背光坡（尤其山地北面）黑成一块
+        var fillGo = new GameObject("Sun_Fill");
+        var fill = fillGo.AddComponent<Light>();
+        fill.type = LightType.Directional;
+        fill.color = new Color(0.62f, 0.72f, 0.85f);
+        fill.intensity = 0.45f;
+        fill.shadows = LightShadows.None;
+        fillGo.transform.rotation = Quaternion.Euler(28f, 150f, 0f);
+
         RenderSettings.ambientMode = AmbientMode.Trilight;
-        RenderSettings.ambientSkyColor = new Color(0.42f, 0.50f, 0.60f);
-        RenderSettings.ambientEquatorColor = new Color(0.32f, 0.34f, 0.34f);
-        RenderSettings.ambientGroundColor = new Color(0.18f, 0.17f, 0.15f);
+        RenderSettings.ambientSkyColor = new Color(0.52f, 0.60f, 0.70f);
+        RenderSettings.ambientEquatorColor = new Color(0.40f, 0.42f, 0.42f);
+        RenderSettings.ambientGroundColor = new Color(0.24f, 0.23f, 0.20f);
         RenderSettings.fog = true;
         RenderSettings.fogMode = FogMode.Linear;
         RenderSettings.fogColor = new Color(0.62f, 0.70f, 0.78f);
