@@ -9,6 +9,7 @@ using UnityEngine;
 public class Projectile : MonoBehaviour
 {
     public const float Gravity = 9.8f;
+    public static bool DebugHits = false;      // 排查用：打印这一发命中了什么
 
     Vector3 _vel;
     float _damage;
@@ -53,6 +54,8 @@ public class Projectile : MonoBehaviour
             {
                 var target = h.collider.GetComponentInParent<VehicleCombat>();
                 if (target == _owner) continue;                 // 不打自己
+                if (DebugHits)
+                    Debug.Log($"[Shell] {name} 命中 {h.collider.name} 距离 {h.distance:F1} m，目标={(target != null ? target.name : "无")}");
                 if (target != null && target.Alive)
                     target.TakeDamage(_damage, _ammo, transform.position);
                 Destroy(gameObject);
@@ -62,5 +65,8 @@ public class Projectile : MonoBehaviour
 
         transform.position += stepVec;
         transform.rotation = Quaternion.LookRotation(_vel);
+
+        if (DebugHits && Time.frameCount % 12 == 0)
+            Debug.Log($"[Shell] {name} pos={transform.position:F1} 距地={transform.position.y - BattlefieldTerrain.SampleHeight(transform.position.x, transform.position.z):F1}");
     }
 }

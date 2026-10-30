@@ -147,9 +147,29 @@ public class VehicleAI : MonoBehaviour
         }
 
         // 推进 / 接近：沿路径走
-        Vector3 goal = Target != null
-            ? Target.transform.position
-            : (objective != null ? objective.position : new Vector3(0f, 0f, 0f));
+        Vector3 objPoint = objective != null ? objective.position : Vector3.zero;
+        Vector3 goal;
+        if (Target == null)
+        {
+            goal = objPoint;
+        }
+        else if (NavMode == NavGrid.NavMode.Sea && !IsOnWater(Target.transform.position))
+        {
+            // 炮艇追不上岸上的坦克 —— 去海上的目标点巡逻/守点
+            goal = objPoint;
+        }
+        else
+        {
+            goal = Target.transform.position;
+        }
+
+        // 飞机不用寻路，直接朝目标飞
+        if (NavMode == NavGrid.NavMode.Air)
+        {
+            SteerToward(goal);
+            _phys.aiThrottle = 1f;
+            return;
+        }
 
         // 目标移动较多或到时间就重规划
         if (Time.time >= _nextRepath || Vector3.Distance(goal, _lastTargetPos) > 60f)
@@ -163,18 +183,44 @@ public class VehicleAI : MonoBehaviour
         SteerToward(wp);
     }
 
+    /// <summary>这个点是不是够深的可航行水面。</summary>
+    bool IsOnWater(Vector3 p)
+    {
+        float draft = _phys != null ? _phys.wadeDepth : 0.8f;
+        return BattlefieldTerrain.WaterDepth(p.x, p.z) >= draft;
+    }
+
     void Repath(Vector3 goal)
     {
         if (_grid == null) { _grid = NavGrid.Instance; if (_grid == null) return; }
 
+        // 按域找路：陆看坡度+涉水，海看吃水（水深必须够），空不用找
+        var mode = NavMode;
+        if (mode == NavGrid.NavMode.Air) { _path.Clear(); return; }
+
         float maxSlope = _phys.MaxClimbDeg;
-        float wade = _phys.wadeDepth;
-        if (_grid.FindPath(transform.position, goal, maxSlope, wade, _path))
+        float water = _phys.wadeDepth;          // 陆 = 涉水上限；海 = 吃水深度
+        if (_grid.FindPath(transform.position, goal, mode, maxSlope, water, _path))
         {
             // 第 0 个路点是"自己所在格子的中心"，通常在车后方 —— 跳过，否则会掉头绕圈
             _pathIndex = _path.Count > 1 ? 1 : 0;
         }
         else _path.Clear();
+    }
+
+    /// <summary>当前载具属于哪个通行域。</summary>
+    public NavGrid.NavMode NavMode
+    {
+        get
+        {
+            if (_self == null || _self.Def == null) return NavGrid.NavMode.Land;
+            switch (_self.Def.domain)
+            {
+                case Domain.Sea: return NavGrid.NavMode.Sea;
+                case Domain.Air: return NavGrid.NavMode.Air;
+                default: return NavGrid.NavMode.Land;
+            }
+        }
     }
 
     Vector3 CurrentWaypoint()

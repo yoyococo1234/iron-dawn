@@ -76,6 +76,9 @@ public class NavGrid : MonoBehaviour
 
     int Idx(int x, int z) => x + z * size;
 
+    /// <summary>按域判定可行走：陆看坡度+涉水，海看吃水（水深必须够），空全图可飞。</summary>
+    public enum NavMode { Land, Sea, Air }
+
     /// <summary>这一格这台车能不能走。</summary>
     public bool Walkable(int x, int z, float maxSlope, float maxWaterDepth)
     {
@@ -86,6 +89,19 @@ public class NavGrid : MonoBehaviour
         return true;
     }
 
+    /// <summary>按域判定（海：水深 ≥ 吃水；空：全图；陆：坡度+涉水）。</summary>
+    public bool Walkable(int x, int z, NavMode mode, float maxSlope, float waterParam)
+    {
+        if (x < 0 || x >= size || z < 0 || z >= size) return false;
+        int i = Idx(x, z);
+        switch (mode)
+        {
+            case NavMode.Sea:  return depths[i] >= waterParam;      // waterParam = 吃水深度
+            case NavMode.Air:  return true;
+            default:           return slopes[i] <= maxSlope && depths[i] <= waterParam;
+        }
+    }
+
     /// <summary>坡度越陡走越慢，给 A* 加代价。</summary>
     float ExtraCost(int x, int z)
     {
@@ -93,8 +109,8 @@ public class NavGrid : MonoBehaviour
         return 1f + slopes[i] / 45f;
     }
 
-    /// <summary>A* 找路。返回世界坐标点列表（含终点），找不到返回 false。</summary>
-    public bool FindPath(Vector3 from, Vector3 to, float maxSlope, float maxWaterDepth,
+    /// <summary>A* 找路（按域判定可通行）。返回世界坐标点列表（含终点），找不到返回 false。</summary>
+    public bool FindPath(Vector3 from, Vector3 to, NavMode mode, float maxSlope, float waterParam,
                          List<Vector3> outPath, int maxIterations = 20000)
     {
         outPath.Clear();
@@ -102,10 +118,10 @@ public class NavGrid : MonoBehaviour
         if (!WorldToCell(to, out int tx, out int tz)) return false;
 
         // 目标格不可走 → 找附近最近的可走格
-        if (!Walkable(tx, tz, maxSlope, maxWaterDepth))
-            if (!NearestWalkable(tx, tz, maxSlope, maxWaterDepth, out tx, out tz)) return false;
-        if (!Walkable(sx, sz, maxSlope, maxWaterDepth))
-            if (!NearestWalkable(sx, sz, maxSlope, maxWaterDepth, out sx, out sz)) return false;
+        if (!Walkable(tx, tz, mode, maxSlope, waterParam))
+            if (!NearestWalkable(tx, tz, mode, maxSlope, waterParam, out tx, out tz)) return false;
+        if (!Walkable(sx, sz, mode, maxSlope, waterParam))
+            if (!NearestWalkable(sx, sz, mode, maxSlope, waterParam, out sx, out sz)) return false;
 
         _open.Clear();
         _cameFrom.Clear();
@@ -139,13 +155,13 @@ public class NavGrid : MonoBehaviour
                 {
                     if (dx == 0 && dz == 0) continue;
                     int nx = cx + dx, nz = cz + dz;
-                    if (!Walkable(nx, nz, maxSlope, maxWaterDepth)) continue;
+                    if (!Walkable(nx, nz, mode, maxSlope, waterParam)) continue;
 
                     // 斜走时不允许"切角"（两侧都得能走）
                     if (dx != 0 && dz != 0)
                     {
-                        if (!Walkable(cx + dx, cz, maxSlope, maxWaterDepth)) continue;
-                        if (!Walkable(cx, cz + dz, maxSlope, maxWaterDepth)) continue;
+                        if (!Walkable(cx + dx, cz, mode, maxSlope, waterParam)) continue;
+                        if (!Walkable(cx, cz + dz, mode, maxSlope, waterParam)) continue;
                     }
 
                     int ni = Idx(nx, nz);
@@ -180,7 +196,7 @@ public class NavGrid : MonoBehaviour
         foreach (var i in rev) outPath.Add(CellCenter(i % size, i / size));
     }
 
-    bool NearestWalkable(int x, int z, float maxSlope, float maxWater, out int rx, out int rz)
+    bool NearestWalkable(int x, int z, NavMode mode, float maxSlope, float water, out int rx, out int rz)
     {
         for (int r = 1; r <= 8; r++)
         {
@@ -189,7 +205,7 @@ public class NavGrid : MonoBehaviour
                 {
                     if (Mathf.Abs(dx) != r && Mathf.Abs(dz) != r) continue;
                     int nx = x + dx, nz = z + dz;
-                    if (Walkable(nx, nz, maxSlope, maxWater)) { rx = nx; rz = nz; return true; }
+                    if (Walkable(nx, nz, mode, maxSlope, water)) { rx = nx; rz = nz; return true; }
                 }
         }
         rx = x; rz = z;

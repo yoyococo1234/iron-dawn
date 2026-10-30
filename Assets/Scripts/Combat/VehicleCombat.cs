@@ -109,7 +109,8 @@ public class VehicleCombat : MonoBehaviour
             ? BallisticDir(origin, aimPoint.Value, w.projectileSpeed)
             : _phys.GetMuzzleForward();
 
-        // 起点往前挪 1 m，避免射线立刻打到自己车体
+        // 起点推到车体碰撞盒外面，否则射线从自己盒子里出发，命中判定会出怪事
+        origin = PushOutsideOwnCollider(origin, dir);
         origin += dir * 1f;
 
         var go = new GameObject($"Shell_{def.id}");
@@ -128,6 +129,21 @@ public class VehicleCombat : MonoBehaviour
         Object.Destroy(light, 0.08f);
 
         return true;
+    }
+
+    /// <summary>把出膛点推到自身碰撞盒外面（沿发射方向），最多推 20 m。</summary>
+    Vector3 PushOutsideOwnCollider(Vector3 origin, Vector3 dir)
+    {
+        var col = GetComponent<Collider>();
+        if (col == null) return origin;
+
+        var b = col.bounds;
+        for (int i = 0; i < 40; i++)
+        {
+            if (!b.Contains(origin)) return origin;
+            origin += dir * 0.5f;
+        }
+        return origin;
     }
 
     /// <summary>

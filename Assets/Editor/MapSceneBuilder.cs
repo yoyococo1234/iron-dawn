@@ -34,9 +34,24 @@ public static class MapSceneBuilder
         Spawn(holder, "Vehicle_sea_gunboat", new Vector2(-10f, 40f), 90f, S, 0);      // 海里
         Spawn(holder, "Vehicle_air_fighter", new Vector2(-20f, -20f), 90f, S, 0);     // 空中
 
-        // 敌方（team 1）：摆在中央平原当靶子
+        // 敌方（team 1）：陆海空各一台，用来验证三域 AI
         Spawn(holder, "Vehicle_land_main", new Vector2(-8f, -10f), -90f, S, 1);
         Spawn(holder, "Vehicle_land_heavy", new Vector2(4f, -14f), -90f, S, 1);
+        Spawn(holder, "Vehicle_sea_gunboat", new Vector2(12f, 42f), -90f, S, 1);      // 敌方炮艇
+        Spawn(holder, "Vehicle_air_fighter", new Vector2(16f, -22f), -90f, S, 1);     // 敌方飞机
+
+        // AI 的目标点
+        var objSea = new GameObject("Objective_Sea");
+        objSea.transform.position = new Vector3(0f, 0f, 40f * S);          // 设计 (0,40) 海面
+        var objCenter = new GameObject("Objective_Center");
+        objCenter.transform.position = new Vector3(0f, 0f, 0f);
+
+        // 给 AI 指定巡逻目标：炮艇去海面，其余去地图中心
+        foreach (var ai in holder.GetComponentsInChildren<VehicleAI>())
+        {
+            var def = ai.GetComponent<VehicleCombat>().Def;
+            ai.objective = (def != null && def.domain == Domain.Sea) ? objSea.transform : objCenter.transform;
+        }
 
         // 相机：跟玩家车（CameraFollow）
         var camGo = GameObject.Find("Main Camera");
@@ -93,9 +108,9 @@ public static class MapSceneBuilder
             var pc = go.AddComponent<PlayerTankController>();
             pc.enabled = true;
         }
-        else if (team == 1)
+        else if (team == 1 || !isPlayer)
         {
-            go.AddComponent<VehicleAI>();      // 敌方由 AI 控制
+            go.AddComponent<VehicleAI>();      // 除玩家外全部由 AI 控制（敌我都是）
         }
 
         // 飞机给个初始高度
