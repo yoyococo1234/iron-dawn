@@ -39,3 +39,9 @@ desktop.ini
 # 崩溃报告
 sysinfo.txt
 crashlytics-build.properties
+
+# ---------------------------------------------------------------
+# 2026-10-30: 正式地形数据是程序生成的（Tools/铁皮黎明/①），体积 300MB+，不入库
+/Assets/Terrain/
+# 中间产物 / 抓取的素材包
+/work/
