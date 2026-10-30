@@ -72,6 +72,10 @@ public static class TestSceneBuilder
         RenderSettings.ambientMode = UnityEngine.Rendering.AmbientMode.Flat;
         RenderSettings.ambientLight = new Color(0.38f, 0.42f, 0.46f);
 
+        // 确保目录存在，否则 SaveScene 会静默失败（踩过这个坑）
+        if (!AssetDatabase.IsValidFolder("Assets/Scenes"))
+            AssetDatabase.CreateFolder("Assets", "Scenes");
+
         EditorSceneManager.SaveScene(scene, "Assets/Scenes/Test_Stage1.unity");
         AssetDatabase.SaveAssets();
         Debug.Log("[TestSceneBuilder] 场景已生成：Assets/Scenes/Test_Stage1.unity");
