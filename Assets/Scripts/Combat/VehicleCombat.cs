@@ -104,9 +104,9 @@ public class VehicleCombat : MonoBehaviour
         _nextFireTime = Time.time + w.reloadTime;
 
         Vector3 origin = _phys.GetMuzzlePosition();
-        // 炮塔只能水平转，没有俯仰机构 —— 所以方向要按"炮口 → 瞄准点"算，否则永远打平
+        // 炮塔只能水平转，没有俯仰机构 —— 方向按"炮口 → 瞄准点"算，并且走抛物线
         Vector3 dir = aimPoint.HasValue
-            ? (aimPoint.Value - origin).normalized
+            ? BallisticDir(origin, aimPoint.Value, w.projectileSpeed)
             : _phys.GetMuzzleForward();
 
         // 起点往前挪 1 m，避免射线立刻打到自己车体
@@ -128,6 +128,30 @@ public class VehicleCombat : MonoBehaviour
         Object.Destroy(light, 0.08f);
 
         return true;
+    }
+
+    /// <summary>
+    /// 抛物线发射方向（低伸弹道）：给定初速和重力，解出让弹丸正好落到目标的仰角。
+    /// 超出射程（无解）时退回直线，保证不会因为算不出来就哑火。
+    /// </summary>
+    public static Vector3 BallisticDir(Vector3 origin, Vector3 target, float speed)
+    {
+        Vector3 to = target - origin;
+        Vector3 flat = new Vector3(to.x, 0f, to.z);
+        float x = flat.magnitude;
+        if (x < 0.5f) return (to).normalized;
+
+        float y = to.y;
+        float g = Projectile.Gravity;
+        float v2 = speed * speed;
+
+        float disc = v2 * v2 - g * (g * x * x + 2f * y * v2);
+        if (disc < 0f) return to.normalized;            // 打不到，直线凑合
+
+        float tanTheta = (v2 - Mathf.Sqrt(disc)) / (g * x);
+        float angle = Mathf.Atan(tanTheta);
+
+        return (flat.normalized * Mathf.Cos(angle) + Vector3.up * Mathf.Sin(angle)).normalized;
     }
 
     // ==================== 受击 ====================

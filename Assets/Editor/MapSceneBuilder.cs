@@ -93,6 +93,10 @@ public static class MapSceneBuilder
             var pc = go.AddComponent<PlayerTankController>();
             pc.enabled = true;
         }
+        else if (team == 1)
+        {
+            go.AddComponent<VehicleAI>();      // 敌方由 AI 控制
+        }
 
         // 飞机给个初始高度
         if (def.domain == Domain.Air)

@@ -37,6 +37,17 @@ public class VehiclePhysics : MonoBehaviour
     public bool autoDrive = false;
     public float autoThrottle = 1f;
 
+    [Header("AI 驾驶（由 VehicleAI 每帧写入）")]
+    [Tooltip("开了就用 aiThrottle/aiSteer，不再读键盘")]
+    public bool aiControlled;
+    [Range(-1f, 1f)] public float aiThrottle;
+    [Range(-1f, 1f)] public float aiSteer;
+
+    /// <summary>油门输入：AI 优先，其次自动驾驶，最后键盘。</summary>
+    float ThrottleInput => aiControlled ? aiThrottle : (autoDrive ? autoThrottle : Input.GetAxis("Vertical"));
+    /// <summary>转向输入：AI 优先，其次键盘。</summary>
+    float SteerInput => aiControlled ? aiSteer : Input.GetAxis("Horizontal");
+
     [Tooltip("从开始下沉到彻底消失要几秒（方便观察，默认 3 秒）")]
     public float sinkDuration = 3f;
     [Tooltip("下沉速度 m/s")]
@@ -120,8 +131,8 @@ public class VehiclePhysics : MonoBehaviour
             transform.position -= new Vector3(grad.x, 0f, grad.y).normalized * 1.5f * Time.deltaTime;
         }
 
-        float throttle = autoDrive ? autoThrottle : Input.GetAxis("Vertical");
-        float steer = Input.GetAxis("Horizontal");
+        float throttle = ThrottleInput;
+        float steer = SteerInput;
 
         transform.Rotate(0f, steer * def.turnSpeed * Time.deltaTime, 0f, Space.World);
 
@@ -155,8 +166,8 @@ public class VehiclePhysics : MonoBehaviour
         slopeDeg = 0f;
         maxClimbDeg = 0f;
 
-        float throttle = autoDrive ? autoThrottle : Input.GetAxis("Vertical");
-        float steer = Input.GetAxis("Horizontal");
+        float throttle = ThrottleInput;
+        float steer = SteerInput;
 
         // 吃水不足 → 搁浅
         if (waterDepth < wadeDepth)
@@ -203,8 +214,8 @@ public class VehiclePhysics : MonoBehaviour
         slopeDeg = 0f;
         maxClimbDeg = 0f;
 
-        float throttle = autoDrive ? autoThrottle : Input.GetAxis("Vertical");
-        float steer = Input.GetAxis("Horizontal");
+        float throttle = ThrottleInput;
+        float steer = SteerInput;
 
         speed = Mathf.MoveTowards(speed, throttle * def.speed, acceleration * 2f * Time.deltaTime);
 
