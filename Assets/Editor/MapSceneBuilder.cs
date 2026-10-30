@@ -85,32 +85,38 @@ public static class MapSceneBuilder
     {
         if (def.domain == Domain.Sea)
         {
-            Prim(root, "Hull", new Vector3(2.6f, 0.9f, 7.5f), new Vector3(0f, 0.45f, 0f), new Color(0.30f, 0.34f, 0.40f));
+            // 炮艇按真实尺寸：约 18 m 长、4.6 m 宽
+            Prim(root, "Hull", new Vector3(4.6f, 1.6f, 18f), new Vector3(0f, 0.8f, 0f), new Color(0.30f, 0.34f, 0.40f));
+            Prim(root, "Cabin", new Vector3(2.8f, 1.8f, 4.5f), new Vector3(0f, 2.4f, -3f), new Color(0.45f, 0.48f, 0.52f));
             var tp = new GameObject("Turret");
             tp.transform.SetParent(root.transform, false);
-            tp.transform.localPosition = new Vector3(0f, 1.1f, 0.6f);
-            Prim(tp, "NavalGun", new Vector3(0.3f, 0.3f, 3.4f), new Vector3(0f, 0f, 1.6f), new Color(0.20f, 0.22f, 0.24f));
+            tp.transform.localPosition = new Vector3(0f, 2.2f, 1.5f);
+            Prim(tp, "NavalGun", new Vector3(0.4f, 0.4f, 5.5f), new Vector3(0f, 0f, 2.6f), new Color(0.20f, 0.22f, 0.24f));
             turret = tp.transform;
-            muzzle = Muzzle(tp.transform, new Vector3(0f, 0f, 3.4f));
+            muzzle = Muzzle(tp.transform, new Vector3(0f, 0f, 5.5f));
         }
         else if (def.domain == Domain.Air)
         {
-            Prim(root, "Fuselage", new Vector3(0.9f, 0.9f, 6.5f), Vector3.zero, new Color(0.55f, 0.58f, 0.62f));
-            Prim(root, "Wing", new Vector3(8.5f, 0.18f, 1.8f), new Vector3(0f, 0f, 0.4f), new Color(0.48f, 0.52f, 0.56f));
-            Prim(root, "Tail", new Vector3(3.0f, 0.15f, 1.0f), new Vector3(0f, 0f, -2.7f), new Color(0.48f, 0.52f, 0.56f));
+            // 战斗机按真实尺寸：约 11 m 长、10.5 m 翼展
+            Prim(root, "Fuselage", new Vector3(1.2f, 1.2f, 11f), Vector3.zero, new Color(0.55f, 0.58f, 0.62f));
+            Prim(root, "Wing", new Vector3(10.5f, 0.25f, 2.4f), new Vector3(0f, 0f, 0.6f), new Color(0.48f, 0.52f, 0.56f));
+            Prim(root, "Tail", new Vector3(4.0f, 0.2f, 1.4f), new Vector3(0f, 0f, -4.6f), new Color(0.48f, 0.52f, 0.56f));
+            Prim(root, "Fin", new Vector3(0.2f, 2.0f, 1.6f), new Vector3(0f, 1.0f, -4.6f), new Color(0.48f, 0.52f, 0.56f));
             turret = null;
-            muzzle = Muzzle(root.transform, new Vector3(0f, 0f, 3.4f));
+            muzzle = Muzzle(root.transform, new Vector3(0f, 0f, 5.5f));
         }
         else
         {
-            float len = def.mass > 55f ? 5.2f : def.mass > 30f ? 4.4f : 3.6f;
-            float wid = len * 0.55f, hei = len * 0.28f;
-            Prim(root, "Body", new Vector3(wid, hei, len), new Vector3(0f, hei * 0.5f + 0.15f, 0f), new Color(0.42f, 0.48f, 0.34f));
+            // 坦克按真实尺寸：轻坦 5.8 m、主战 7.0 m、重装 8.3 m（车体长）
+            float len = def.mass > 55f ? 8.3f : def.mass > 30f ? 7.0f : 5.8f;
+            float wid = len * 0.45f;
+            float hei = len * 0.26f;
+            Prim(root, "Body", new Vector3(wid, hei, len), new Vector3(0f, hei * 0.5f + 0.35f, 0f), new Color(0.42f, 0.48f, 0.34f));
             var tp = new GameObject("Turret");
             tp.transform.SetParent(root.transform, false);
-            tp.transform.localPosition = new Vector3(0f, hei + 0.3f, -len * 0.1f);
+            tp.transform.localPosition = new Vector3(0f, hei + 0.55f, -len * 0.1f);
             Prim(tp, "TurretBody", new Vector3(wid * 0.7f, hei * 0.6f, len * 0.45f), Vector3.zero, new Color(0.46f, 0.52f, 0.36f));
-            Prim(tp, "Barrel", new Vector3(0.22f, 0.22f, len * 0.6f), new Vector3(0f, 0.05f, len * 0.52f), new Color(0.22f, 0.24f, 0.22f));
+            Prim(tp, "Barrel", new Vector3(0.24f, 0.24f, len * 0.62f), new Vector3(0f, 0.05f, len * 0.52f), new Color(0.22f, 0.24f, 0.22f));
             turret = tp.transform;
             muzzle = Muzzle(tp.transform, new Vector3(0f, 0.05f, len * 0.82f));
         }

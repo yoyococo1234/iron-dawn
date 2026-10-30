@@ -26,9 +26,12 @@ public static class PropScatter
     // ---- 模型清单 ----
     static readonly string[] TreeModels =
     {
-        "Nature/tree_default", "Nature/tree_pineTallA", "Nature/tree_pineRoundA",
-        "Nature/tree_oak", "Nature/tree_simple", "Nature/tree_thin",
-        "Nature/tree_tall", "Nature/tree_fat", "Nature/tree_cone", "Nature/tree_small",
+        "Nature/tree_detailed", "Nature/tree_detailed_dark",
+        "Nature/tree_oak", "Nature/tree_plateau", "Nature/tree_blocks",
+        "Nature/tree_pineTallA_detailed", "Nature/tree_pineTallB_detailed",
+        "Nature/tree_pineTallC_detailed", "Nature/tree_pineTallD_detailed",
+        "Nature/tree_pineRoundA", "Nature/tree_pineRoundC", "Nature/tree_pineRoundE",
+        "Nature/tree_pineGroundA", "Nature/tree_fat", "Nature/tree_small",
     };
     static readonly string[] RockModels =
     {
@@ -245,13 +248,13 @@ public static class PropScatter
         return h;
     }
 
-    /// <summary>按"想要多少米高"反算缩放，避免摩天楼被放大成 200 m 巨塔。</summary>
+    /// <summary>按"想要多少米高"反算缩放。高度对齐真实城市：小楼 8~16 m、普通楼 20~40 m、地标 60~90 m。</summary>
     static float BuildingScale(GameObject model)
     {
         string n = model.name.ToLowerInvariant();
-        float target = n.Contains("skyscraper") ? 45f + (float)rng.NextDouble() * 20f
-                     : n.Contains("low-detail") ? 13f + (float)rng.NextDouble() * 9f
-                     : 22f + (float)rng.NextDouble() * 14f;
+        float target = n.Contains("skyscraper") ? 60f + (float)rng.NextDouble() * 30f
+                     : n.Contains("low-detail") ? 8f + (float)rng.NextDouble() * 8f
+                     : 20f + (float)rng.NextDouble() * 20f;
         return target / ModelHeight(model);
     }
 
@@ -277,6 +280,28 @@ public static class PropScatter
         go.transform.localScale = Vector3.one * scale;
         go.isStatic = true;
         ApplyPalette(go);
+        ApplyVariation(go);
+    }
+
+    // ---- 每棵/每栋轻微色差，避免整片一个颜色 ----
+    static MaterialPropertyBlock _mpb;
+
+    static void ApplyVariation(GameObject go)
+    {
+        if (_mpb == null) _mpb = new MaterialPropertyBlock();
+        float r = 0.88f + (float)rng.NextDouble() * 0.24f;
+        float g = 0.88f + (float)rng.NextDouble() * 0.24f;
+        float b = 0.88f + (float)rng.NextDouble() * 0.24f;
+
+        foreach (var mr in go.GetComponentsInChildren<MeshRenderer>(true))
+        {
+            var mat = mr.sharedMaterial;
+            if (mat == null || !mat.HasProperty("_Color")) continue;
+            Color baseC = mat.GetColor("_Color");
+            mr.GetPropertyBlock(_mpb);
+            _mpb.SetColor("_Color", new Color(baseC.r * r, baseC.g * g, baseC.b * b, baseC.a));
+            mr.SetPropertyBlock(_mpb);
+        }
     }
 
     // ================= 材质调色 =================
