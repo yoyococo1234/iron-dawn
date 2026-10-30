@@ -236,6 +236,31 @@ public class VehiclePhysics : MonoBehaviour
             turretBone.localRotation = Quaternion.Euler(0f, turretYaw, 0f);
     }
 
+    /// <summary>炮塔当前朝向与"指向目标"的夹角（度）。没有炮塔返回 0。</summary>
+    public float TurretAngleError(Vector3 worldPoint)
+    {
+        if (turretBone == null) return 0f;
+        Vector3 to = worldPoint - transform.position;
+        to.y = 0f;
+        if (to.sqrMagnitude < 0.01f) return 0f;
+        float want = Mathf.Atan2(to.x, to.z) * Mathf.Rad2Deg - transform.eulerAngles.y;
+        return Mathf.Abs(Mathf.DeltaAngle(turretYaw, want));
+    }
+
+    /// <summary>把炮塔转向世界坐标点，受炮塔转速限制。</summary>
+    public void AimTurretAt(Vector3 worldPoint, float maxDegPerSec)
+    {
+        if (turretBone == null) return;
+        Vector3 to = worldPoint - transform.position;
+        to.y = 0f;
+        if (to.sqrMagnitude < 0.01f) return;
+
+        float want = Mathf.Atan2(to.x, to.z) * Mathf.Rad2Deg - transform.eulerAngles.y;
+        float delta = Mathf.DeltaAngle(turretYaw, want);
+        float limit = Mathf.Min(Mathf.Abs(delta), maxDegPerSec * Time.deltaTime);
+        RotateTurret(Mathf.Sign(delta) * limit);
+    }
+
     /// <summary>炮口世界坐标（开火起点）。没有炮口节点时退化到车头前方。</summary>
     public Vector3 GetMuzzlePosition()
     {

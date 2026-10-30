@@ -27,13 +27,18 @@ public static class MapSceneBuilder
 
         // 我方出兵线 x = −933，z 从 −967 到 967；按设计坐标摆几台（设计坐标 ×16.667）
         float S = BattlefieldTerrain.Scale;
-        Spawn(holder, "Vehicle_land_light", new Vector2(-40f, -6f), 90f, S);
-        Spawn(holder, "Vehicle_land_main", new Vector2(-44f, -12f), 90f, S);
-        Spawn(holder, "Vehicle_land_heavy", new Vector2(-44f, 0f), 90f, S);
-        Spawn(holder, "Vehicle_sea_gunboat", new Vector2(-10f, 40f), 90f, S);      // 海里
-        Spawn(holder, "Vehicle_air_fighter", new Vector2(-20f, -20f), 90f, S);     // 空中
+        // 我方（team 0）
+        var player = Spawn(holder, "Vehicle_land_light", new Vector2(-40f, -6f), 90f, S, 0, true);
+        Spawn(holder, "Vehicle_land_main", new Vector2(-44f, -12f), 90f, S, 0);
+        Spawn(holder, "Vehicle_land_heavy", new Vector2(-44f, 0f), 90f, S, 0);
+        Spawn(holder, "Vehicle_sea_gunboat", new Vector2(-10f, 40f), 90f, S, 0);      // 海里
+        Spawn(holder, "Vehicle_air_fighter", new Vector2(-20f, -20f), 90f, S, 0);     // 空中
 
-        // 相机：跟第一台车（CameraFollow）
+        // 敌方（team 1）：摆在中央平原当靶子
+        Spawn(holder, "Vehicle_land_main", new Vector2(-8f, -10f), -90f, S, 1);
+        Spawn(holder, "Vehicle_land_heavy", new Vector2(4f, -14f), -90f, S, 1);
+
+        // 相机：跟玩家车（CameraFollow）
         var camGo = GameObject.Find("Main Camera");
         if (camGo == null) camGo = new GameObject("Main Camera");
         var cam = camGo.GetComponent<Camera>();
@@ -41,22 +46,24 @@ public static class MapSceneBuilder
         camGo.tag = "MainCamera";
         cam.fieldOfView = 50f;
         cam.farClipPlane = 8000f;
+        cam.depthTextureMode = DepthTextureMode.Depth;
         var follow = camGo.GetComponent<CameraFollow>();
         if (follow == null) follow = camGo.AddComponent<CameraFollow>();
-        var first = holder.transform.GetChild(0);
-        follow.target = first;
-        camGo.transform.position = first.position + new Vector3(0f, 12f, -22f);
+        var target = player != null ? player.transform : holder.transform.GetChild(0);
+        follow.target = target;
+        camGo.transform.position = target.position + new Vector3(0f, 12f, -22f);
 
         EditorSceneManager.MarkSceneDirty(scene);
         EditorSceneManager.SaveScene(scene, ScenePath);
         AssetDatabase.SaveAssets();
-        Debug.Log($"[MapSceneBuilder] 5 台车已放到正式地图：{ScenePath}");
+        Debug.Log($"[MapSceneBuilder] 载具已放到正式地图：{ScenePath}");
     }
 
-    static void Spawn(GameObject holder, string defAsset, Vector2 designPos, float yaw, float S)
+    static GameObject Spawn(GameObject holder, string defAsset, Vector2 designPos, float yaw, float S,
+                            int team = 0, bool isPlayer = false)
     {
         var def = AssetDatabase.LoadAssetAtPath<VehicleDef>($"Assets/Data/Vehicles/{defAsset}.asset");
-        if (def == null) { Debug.LogWarning($"[MapSceneBuilder] 找不到 {defAsset}"); return; }
+        if (def == null) { Debug.LogWarning($"[MapSceneBuilder] 找不到 {defAsset}"); return null; }
 
         float x = designPos.x * S, z = designPos.y * S;
         float y = BattlefieldTerrain.SampleHeight(x, z);
@@ -76,9 +83,22 @@ public static class MapSceneBuilder
         vp.turretBone = turret;
         vp.muzzleBone = muzzle;
 
+        // 战斗组件
+        var combat = go.AddComponent<VehicleCombat>();
+        combat.def = def;
+        combat.SetTeam(team);
+
+        if (isPlayer)
+        {
+            var pc = go.AddComponent<PlayerTankController>();
+            pc.enabled = true;
+        }
+
         // 飞机给个初始高度
         if (def.domain == Domain.Air)
             go.transform.position = new Vector3(x, Mathf.Max(y, BattlefieldTerrain.WaterLevel) + vp.flightAltitude, z);
+
+        return go;
     }
 
     static void BuildPrimitive(GameObject root, VehicleDef def, out Transform turret, out Transform muzzle)

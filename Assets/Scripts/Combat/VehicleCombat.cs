@@ -1,0 +1,235 @@
+using UnityEngine;
+
+/// <summary>
+/// 载具战斗：血量、弹药、开火、受击、死亡。
+///
+/// 伤害公式（三层）：
+///   实际伤害 = 武器基础伤害 × 弹药对目标类型的倍率 × 目标装甲受击倍率
+///   装甲受击倍率按命中方向取（正面 0.70 / 侧面 0.90 / 背面 1.10）
+///
+/// 挂在载具根节点上，和 VehiclePhysics 同一个物体。
+/// </summary>
+[RequireComponent(typeof(VehiclePhysics))]
+public class VehicleCombat : MonoBehaviour
+{
+    [Header("数据")]
+    public VehicleDef def;
+
+    [Header("运行时")]
+    public float hp = 1f;
+    public float maxHp = 1f;
+    public int ammoIndex;
+    public bool dead;
+
+    [Header("表现")]
+    public float deathExplosionRadius = 8f;
+
+    [Header("阵营")]
+    [Tooltip("0 = 我方，1 = 敌方（必须序列化，否则场景里丢失）")]
+    public int team;
+
+    VehiclePhysics _phys;
+    float _nextFireTime;
+
+    public bool Alive => !dead && hp > 0f;
+    public int Team => team;
+    public VehicleDef Def => def;
+    public VehiclePhysics Physics => _phys;
+
+    /// <summary>当前武器（取第一把；多武器以后再说）。</summary>
+    public WeaponDef Weapon => def != null && def.weapons != null && def.weapons.Length > 0 ? def.weapons[0] : null;
+
+    /// <summary>当前弹药。</summary>
+    public AmmoDef Ammo
+    {
+        get
+        {
+            var w = Weapon;
+            if (w == null || w.ammoTypes == null || w.ammoTypes.Length == 0) return null;
+            return w.ammoTypes[Mathf.Clamp(ammoIndex, 0, w.ammoTypes.Length - 1)];
+        }
+    }
+
+    public float ReloadProgress => Weapon == null ? 1f : Mathf.Clamp01(1f - (_nextFireTime - Time.time) / Mathf.Max(0.01f, Weapon.reloadTime));
+
+    void Awake()
+    {
+        _phys = GetComponent<VehiclePhysics>();
+        if (def == null) def = _phys != null ? _phys.def : null;
+        if (def != null) { maxHp = def.maxHp; hp = maxHp; }
+        EnsureHitCollider();
+    }
+
+    public void SetTeam(int t) => team = t;
+
+    /// <summary>给载具加一个可被击中的碰撞体（方块占位模型没有碰撞体）。</summary>
+    void EnsureHitCollider()
+    {
+        if (GetComponent<Collider>() != null) return;
+        var rs = GetComponentsInChildren<MeshRenderer>();
+        if (rs.Length == 0) return;
+
+        var b = rs[0].bounds;
+        foreach (var r in rs) b.Encapsulate(r.bounds);
+
+        var box = gameObject.AddComponent<BoxCollider>();
+        // 把世界包围盒换算成局部空间
+        box.center = transform.InverseTransformPoint(b.center);
+        Vector3 s = transform.lossyScale;
+        box.size = new Vector3(b.size.x / Mathf.Max(0.01f, s.x),
+                               b.size.y / Mathf.Max(0.01f, s.y),
+                               b.size.z / Mathf.Max(0.01f, s.z));
+    }
+
+    // ==================== 开火 ====================
+
+    public bool CanFire => Alive && Weapon != null && Time.time >= _nextFireTime;
+
+    /// <summary>朝世界坐标点开火（先转炮塔，对准了才打）。返回是否真的打出去了。</summary>
+    public bool FireAt(Vector3 worldPoint, float maxTurnDegPerSec = 999f)
+    {
+        if (!CanFire) return false;
+        _phys.AimTurretAt(worldPoint, maxTurnDegPerSec);
+        if (_phys.TurretAngleError(worldPoint) > 4f) return false;   // 还没对准
+        return Fire(worldPoint);
+    }
+
+    /// <summary>开火。给了瞄准点就打向那个点（带仰角），否则朝炮口水平朝向。</summary>
+    public bool Fire(Vector3? aimPoint = null)
+    {
+        var w = Weapon;
+        var ammo = Ammo;
+        if (w == null || ammo == null || !CanFire) return false;
+
+        _nextFireTime = Time.time + w.reloadTime;
+
+        Vector3 origin = _phys.GetMuzzlePosition();
+        // 炮塔只能水平转，没有俯仰机构 —— 所以方向要按"炮口 → 瞄准点"算，否则永远打平
+        Vector3 dir = aimPoint.HasValue
+            ? (aimPoint.Value - origin).normalized
+            : _phys.GetMuzzleForward();
+
+        // 起点往前挪 1 m，避免射线立刻打到自己车体
+        origin += dir * 1f;
+
+        var go = new GameObject($"Shell_{def.id}");
+        go.transform.position = origin;
+        go.transform.rotation = Quaternion.LookRotation(dir);
+
+        var shell = go.AddComponent<Projectile>();
+        shell.Launch(dir, w.projectileSpeed, w.baseDamage, ammo, this);
+
+        // 简易炮口闪光
+        var light = go.AddComponent<Light>();
+        light.type = LightType.Point;
+        light.range = 25f;
+        light.intensity = 6f;
+        light.color = new Color(1f, 0.75f, 0.35f);
+        Object.Destroy(light, 0.08f);
+
+        return true;
+    }
+
+    // ==================== 受击 ====================
+
+    /// <summary>按方向计算装甲倍率并扣血。</summary>
+    public void TakeDamage(float rawDamage, AmmoDef ammo, Vector3 hitFrom)
+    {
+        if (!Alive) return;
+
+        // 命中方向：从命中者指向自己 = 自己"被从哪个方向打"
+        Vector3 toAttacker = hitFrom - transform.position;
+        toAttacker.y = 0f;
+        float hitAngle = Vector3.Angle(transform.forward, toAttacker.normalized);   // 0 = 正对
+
+        float armorMul = def != null ? def.GetArmorMultiplier(hitAngle) : 1f;
+        float ammoMul = AmmoMultiplier(ammo);
+        float dmg = rawDamage * ammoMul * armorMul;
+
+        hp = Mathf.Max(0f, hp - dmg);
+
+        if (hp <= 0f) Die();
+    }
+
+    /// <summary>弹药对"这台载具"的倍率：按目标所在域取。</summary>
+    float AmmoMultiplier(AmmoDef ammo)
+    {
+        if (ammo == null) return 1f;
+        switch (def.domain)
+        {
+            case Domain.Sea: return ammo.vsSea;
+            case Domain.Air: return ammo.vsAir;
+            default: return def.armorMode == ArmorMode.Uniform ? ammo.vsSoft : ammo.vsArmor;
+        }
+    }
+
+    void Die()
+    {
+        dead = true;
+        hp = 0f;
+
+        // 爆炸表现：一圈快速膨胀的球 + 火花
+        var boom = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+        boom.name = "Explosion";
+        boom.transform.position = transform.position + Vector3.up * 1.5f;
+        boom.transform.localScale = Vector3.one * 0.5f;
+        var mat = new Material(Shader.Find("Standard"));
+        mat.color = new Color(1f, 0.55f, 0.15f);
+        mat.SetColor("_EmissionColor", new Color(1f, 0.45f, 0.1f));
+        mat.EnableKeyword("_EMISSION");
+        boom.GetComponent<Renderer>().sharedMaterial = mat;
+        Object.Destroy(boom.GetComponent<Collider>());
+
+        var l = boom.AddComponent<Light>();
+        l.type = LightType.Point;
+        l.range = deathExplosionRadius * 4f;
+        l.intensity = 12f;
+        l.color = new Color(1f, 0.6f, 0.25f);
+
+        var fx = boom.AddComponent<ExplosionFx>();
+        fx.duration = 0.9f;
+        fx.maxScale = deathExplosionRadius;
+
+        // 车体消失
+        gameObject.SetActive(false);
+        BattleEvents.RaiseVehicleDestroyed(this);
+    }
+
+    public void RespawnAt(Vector3 pos, float yaw)
+    {
+        dead = false;
+        hp = maxHp;
+        _nextFireTime = 0f;
+        transform.position = pos;
+        transform.rotation = Quaternion.Euler(0f, yaw, 0f);
+        gameObject.SetActive(true);
+    }
+}
+
+/// <summary>爆炸膨胀动画，播完自销毁。</summary>
+public class ExplosionFx : MonoBehaviour
+{
+    public float duration = 0.9f;
+    public float maxScale = 8f;
+    float _t;
+    Light _light;
+
+    void Start() => _light = GetComponent<Light>();
+
+    void Update()
+    {
+        _t += Time.deltaTime;
+        float k = Mathf.Clamp01(_t / duration);
+        transform.localScale = Vector3.one * Mathf.Lerp(0.5f, maxScale, k);
+        if (_light != null) _light.intensity = Mathf.Lerp(12f, 0f, k);
+        var r = GetComponent<Renderer>();
+        if (r != null)
+        {
+            var m = r.material;
+            var c = m.color;
+            c.a = 1f - k;
+            m.color = c;
+        }
+        if (k >= 1f) Destroy(gameObject);
+    }
+}
