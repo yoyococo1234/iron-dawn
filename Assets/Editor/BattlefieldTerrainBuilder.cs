@@ -587,10 +587,11 @@ public static class BattlefieldTerrainBuilder
         go.transform.localScale = Vector3.one;
 
         var terrain = go.GetComponent<Terrain>();
-        terrain.heightmapPixelError = 1.5f;
-        terrain.basemapDistance = 900f;
+        terrain.heightmapPixelError = 5f;                 // 1.5 太细，顶点爆炸；5 在 2 km 图上几乎看不出差别
+        terrain.basemapDistance = 600f;                   // 更早切 basemap，省大量三角形
         terrain.drawInstanced = true;
-        terrain.shadowCastingMode = ShadowCastingMode.On;
+        terrain.shadowCastingMode = ShadowCastingMode.Off; // 2 km 地形投阴影极贵，且几乎看不出来
+        terrain.heightmapMaximumLOD = 0;
     }
 
     static void CreateWater()
@@ -666,7 +667,9 @@ public static class BattlefieldTerrainBuilder
         RenderSettings.fogStartDistance = 1400f;
         RenderSettings.fogEndDistance = 4000f;
 
-        QualitySettings.shadowDistance = 700f;
+        QualitySettings.shadowDistance = 250f;                 // 700 太远，2 km 图上没有意义还吃性能
+        QualitySettings.shadowCascades = 2;
+        QualitySettings.shadows = ShadowQuality.HardOnly;      // 软阴影在大图上性价比低
 
         // 斜视全景
         var camGo = new GameObject("Main Camera");
