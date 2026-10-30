@@ -26,8 +26,13 @@ MonoBehaviour:
   speed: 8
   turnSpeed: 40
   turretTurnSpeed: 50
+  enginePower: 800
+  mass: 65
+  resistanceHard: 1
+  resistanceSoft: 2
+  wadeDepth: 1.4
   terrainAllowed: 3
   weapons:
   - {fileID: 11400000, guid: 16306ff787aa5894e8567f9f8eb1ef73, type: 2}
   - {fileID: 11400000, guid: cad31bc958dc4ab4b8a311c929be40c4, type: 2}
-  description: "\u6B63\u9762\u6781\u786C\uFF0C\u6015\u7ED5\u540E\u548C\u7A7A\u88AD"
+  description: "\u6B63\u9762\u6781\u786C\uFF0C\u53EA\u80FD\u722C 22\xB0"

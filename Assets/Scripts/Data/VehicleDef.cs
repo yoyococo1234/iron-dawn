@@ -38,6 +38,18 @@ public class VehicleDef : ScriptableObject
     [Tooltip("炮塔转速（度/秒），0 = 无炮塔")]
     public float turretTurnSpeed = 80f;
 
+    [Header("物理（决定能不能爬坡、能不能涉水）")]
+    [Tooltip("引擎功率 kW。功率÷质量 决定爬坡能力")]
+    public float enginePower = 750f;
+    [Tooltip("质量（吨）")]
+    public float mass = 45f;
+    [Tooltip("硬地阻力系数")]
+    public float resistanceHard = 0.9f;
+    [Tooltip("软地（沙/泥）阻力系数")]
+    public float resistanceSoft = 1.8f;
+    [Tooltip("涉水深度（米）。超过就沉；船用吃水深度代替")]
+    public float wadeDepth = 1.2f;
+
     [Header("通行")]
     public TerrainType terrainAllowed = TerrainType.Land | TerrainType.ShallowWater;
 

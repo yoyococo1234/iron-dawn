@@ -40,28 +40,36 @@ public static class DataSeeder
         var bombR  = Weapon("bomb_rack","航空炸弹挂架", 750f, 8.0f,  60f,   0f, Domain.Air,  bomb);
 
         // ---------- 载具 ----------
+        // 参数顺序：id, 名, 域, 价, 血, 装甲模式, 正/侧/背, 统一, 速度, 转向, 炮塔转速,
+        //           功率kW, 质量t, 硬地阻力, 软地阻力, 涉水深度, 通行, 复活基础, 说明, 武器
         Vehicle("land_light", "轻坦", Domain.Land, 160, 800, ArmorMode.Directional,
             0.95f, 1.10f, 1.30f, 0f, 18f, 90f, 120f,
-            TerrainType.Land | TerrainType.ShallowWater, 80, "快、皮薄，绕后偷袭", gun75, mg12);
+            320f, 15f, 0.8f, 1.6f, 1.0f,
+            TerrainType.Land | TerrainType.ShallowWater, 80, "快、皮薄，能爬 35° 陡坡", gun75, mg12);
 
         Vehicle("land_main", "主战坦克", Domain.Land, 200, 1200, ArmorMode.Directional,
             0.70f, 0.90f, 1.10f, 0f, 12f, 60f, 80f,
-            TerrainType.Land | TerrainType.ShallowWater, 80, "均衡，陆战主力", gun120, mg12);
+            750f, 45f, 0.9f, 1.8f, 1.2f,
+            TerrainType.Land | TerrainType.ShallowWater, 80, "均衡，能爬 29°", gun120, mg12);
 
         Vehicle("land_heavy", "重装坦克", Domain.Land, 220, 1600, ArmorMode.Directional,
             0.60f, 0.80f, 1.05f, 0f, 8f, 40f, 50f,
-            TerrainType.Land | TerrainType.ShallowWater, 90, "正面极硬，怕绕后和空袭", gun130, mg12);
+            800f, 65f, 1.0f, 2.0f, 1.4f,
+            TerrainType.Land | TerrainType.ShallowWater, 90, "正面极硬，只能爬 22°", gun130, mg12);
 
         Vehicle("sea_gunboat", "炮艇", Domain.Sea, 180, 1000, ArmorMode.Directional,
             0.85f, 1.00f, 1.15f, 0f, 22f, 70f, 100f,
-            TerrainType.ShallowWater | TerrainType.DeepWater, 80, "海上霸主，射程极远", naval, torpL);
+            1200f, 40f, 1.2f, 1.2f, 0.8f,
+            TerrainType.ShallowWater | TerrainType.DeepWater, 80, "海上霸主，吃水 0.8m", naval, torpL);
 
         Vehicle("air_fighter", "战斗机", Domain.Air, 160, 300, ArmorMode.Uniform,
             1f, 1f, 1f, 1.00f, 45f, 120f, 0f,
+            900f, 8f, 0f, 0f, 0f,
             TerrainType.Air, 80, "最快，制空；一击即落", gun20);
 
         Vehicle("air_attacker", "攻击机", Domain.Air, 200, 450, ArmorMode.Uniform,
             1f, 1f, 1f, 1.10f, 32f, 80f, 0f,
+            1100f, 12f, 0f, 0f, 0f,
             TerrainType.Air, 85, "能打地面，越墙；慢、怕防空", gun20, bombR);
 
         // ---------- 对局与经济 ----------
@@ -163,6 +171,7 @@ public static class DataSeeder
 
     static VehicleDef Vehicle(string id, string name, Domain dom, int price, float hp, ArmorMode mode,
         float front, float side, float rear, float uniform, float speed, float turn, float turret,
+        float power, float mass, float resHard, float resSoft, float wade,
         TerrainType terrain, int respawnBase, string desc, params WeaponDef[] weapons)
     {
         var v = GetOrCreate<VehicleDef>($"{Root}/Vehicles/Vehicle_{id}.asset");
@@ -170,6 +179,8 @@ public static class DataSeeder
         v.price = price; v.maxHp = hp; v.armorMode = mode;
         v.armorFront = front; v.armorSide = side; v.armorRear = rear; v.uniformMultiplier = uniform;
         v.speed = speed; v.turnSpeed = turn; v.turretTurnSpeed = turret;
+        v.enginePower = power; v.mass = mass;
+        v.resistanceHard = resHard; v.resistanceSoft = resSoft; v.wadeDepth = wade;
         v.terrainAllowed = terrain; v.respawnBaseCost = respawnBase;
         v.description = desc; v.weapons = weapons;
         EditorUtility.SetDirty(v);
