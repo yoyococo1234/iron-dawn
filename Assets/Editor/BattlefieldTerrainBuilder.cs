@@ -595,35 +595,43 @@ public static class BattlefieldTerrainBuilder
 
     static void CreateWater()
     {
+        var shader = Shader.Find("铁皮黎明/Water");
+        if (shader == null)
+        {
+            Debug.LogWarning("[BattlefieldTerrain] 找不到 铁皮黎明/Water 着色器，退回 Standard");
+            shader = Shader.Find("Standard");
+        }
+
         var mat = AssetDatabase.LoadAssetAtPath<Material>(WaterMatPath);
         if (mat == null)
         {
-            mat = new Material(Shader.Find("Standard"));
+            mat = new Material(shader);
             AssetDatabase.CreateAsset(mat, WaterMatPath);
         }
+        mat.shader = shader;
 
-        // Standard 着色器切成半透明
-        mat.SetFloat("_Mode", 3f);
-        mat.SetOverrideTag("RenderType", "Transparent");
-        mat.SetInt("_SrcBlend", (int)BlendMode.SrcAlpha);
-        mat.SetInt("_DstBlend", (int)BlendMode.OneMinusSrcAlpha);
-        mat.SetInt("_ZWrite", 0);
-        mat.DisableKeyword("_ALPHATEST_ON");
-        mat.EnableKeyword("_ALPHABLEND_ON");
-        mat.DisableKeyword("_ALPHAPREMULTIPLY_ON");
+        // 自定义水面：波浪法线 + 菲涅尔 + 按水深变色 + 近岸泡沫
+        mat.SetColor("_ShallowColor", new Color(0.30f, 0.55f, 0.52f, 0.75f));
+        mat.SetColor("_DeepColor", new Color(0.03f, 0.12f, 0.24f, 0.95f));
+        mat.SetColor("_SkyColor", new Color(0.58f, 0.72f, 0.86f, 1f));
+        mat.SetFloat("_WaveStrength", 0.22f);
+        mat.SetFloat("_WaveScale", 0.18f);
+        mat.SetFloat("_WaveSpeed", 0.7f);
+        mat.SetFloat("_SpecPower", 90f);
+        mat.SetFloat("_SpecIntensity", 1.3f);
+        mat.SetFloat("_DepthFade", 30f);
+        mat.SetFloat("_FoamWidth", 6f);
         mat.renderQueue = 3000;
-        mat.SetColor("_Color", new Color(0.09f, 0.31f, 0.42f, 0.62f));
-        mat.SetFloat("_Glossiness", 0.92f);
-        mat.SetFloat("_Metallic", 0.15f);
         mat.enableInstancing = true;
         EditorUtility.SetDirty(mat);
 
-        // 水面只盖海域（设计 z 14~60 → 世界 z 233~1000），不要盖到陆地
-        float zMin = 14f * Scale, zMax = MapSize * 0.5f;
+        // 水面铺满整张地图：陆地比海面高 5~30 m，整块水会被地形自然遮住，
+        // 真正露出来的只有地形低于海平面的地方 —— 岸线由地形决定，是弯的，
+        // 不会出现"水面 Plane 边缘一条直线切在沙滩上"的假边。
         var water = GameObject.CreatePrimitive(PrimitiveType.Plane);
         water.name = "Water_Sea";
-        water.transform.position = new Vector3(0f, WaterLevel, (zMin + zMax) * 0.5f);
-        water.transform.localScale = new Vector3(MapSize / 10f, 1f, (zMax - zMin) / 10f);  // Plane 原始 10×10 m
+        water.transform.position = new Vector3(0f, WaterLevel, 0f);
+        water.transform.localScale = new Vector3(MapSize / 10f, 1f, MapSize / 10f);  // Plane 原始 10×10 m
         water.GetComponent<Renderer>().sharedMaterial = mat;
         Object.DestroyImmediate(water.GetComponent<Collider>());
     }
@@ -666,6 +674,7 @@ public static class BattlefieldTerrainBuilder
         var cam = camGo.AddComponent<Camera>();
         cam.fieldOfView = 45f;
         cam.farClipPlane = 8000f;
+        cam.depthTextureMode = DepthTextureMode.Depth;    // 水面着色器要读 _CameraDepthTexture
         camGo.AddComponent<AudioListener>();
         camGo.transform.position = new Vector3(1500f, 900f, -1500f);
         camGo.transform.LookAt(new Vector3(0f, 40f, 150f));
@@ -676,6 +685,7 @@ public static class BattlefieldTerrainBuilder
         top.orthographic = true;
         top.orthographicSize = MapSize * 0.5f;
         top.farClipPlane = 4000f;
+        top.depthTextureMode = DepthTextureMode.Depth;
         topGo.transform.position = new Vector3(0f, 1200f, 0f);
         topGo.transform.rotation = Quaternion.Euler(90f, 0f, 0f);
     }

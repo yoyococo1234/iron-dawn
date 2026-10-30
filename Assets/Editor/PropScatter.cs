@@ -142,7 +142,7 @@ public static class PropScatter
             if (rng.NextDouble() > 0.32) continue;
 
             var model = models[rng.Next(models.Length)];
-            float scale = 5.5f + (float)rng.NextDouble() * 4.5f;
+            float scale = 9f + (float)rng.NextDouble() * 7f;      // 树高 13~27 m（原来 8~17 m 太矮）
             Place(holder, model, x, z, scale, (float)rng.NextDouble() * 360f);
             n++;
             if (n >= 650) break;
