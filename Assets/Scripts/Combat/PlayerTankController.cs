@@ -53,13 +53,36 @@ public class PlayerTankController : MonoBehaviour
     }
 
     /// <summary>
-    /// 屏幕正中央（准星）打到哪。
-    /// 注意：相机有俯角，中心射线往往 20~30 m 就打到脚下了 —— 那样炮口会朝下打地面。
-    /// 所以命中点太近时，改成"沿视线方向、在车体高度上取远处一点"，让炮口水平指出去。
+    /// 准星打到哪。
+    /// 陆战：屏幕正中央，命中点太近就沿视线取远处（避免朝脚下打）。
+    /// 空战（战雷式）：准星是可以用鼠标推着走的圈，不压平高度 —— 俯冲时子弹必须跟着往下走。
     /// </summary>
     Vector3 GetAimPoint()
     {
-        var ray = _cam.ScreenPointToRay(new Vector3(Screen.width * 0.5f, Screen.height * 0.5f, 0f));
+        bool air = _combat != null && _combat.Def != null && _combat.Def.domain == Domain.Air;
+
+        Vector2 screenPos;
+        if (air && _combat.Physics != null)
+        {
+            Vector2 aim = _combat.Physics.AirAim;
+            float r = Screen.height * 0.32f;
+            screenPos = new Vector2(Screen.width * 0.5f + aim.x * r, Screen.height * 0.5f - aim.y * r);
+        }
+        else
+        {
+            screenPos = new Vector2(Screen.width * 0.5f, Screen.height * 0.5f);
+        }
+
+        var ray = _cam.ScreenPointToRay(screenPos);
+
+        if (air)
+        {
+            // 不压平高度：直接沿视线打远，俯冲时炮口才会跟着往下
+            if (Physics.Raycast(ray, out var hitAir, aimRayLength, ~0, QueryTriggerInteraction.Ignore)
+                && Vector3.Distance(ray.origin, hitAir.point) >= 150f)
+                return hitAir.point;
+            return ray.origin + ray.direction * 2000f;
+        }
 
         if (Physics.Raycast(ray, out var hit, aimRayLength, ~0, QueryTriggerInteraction.Ignore))
         {

@@ -55,7 +55,7 @@ public class MatchHUD : MonoBehaviour
         DrawZones(mm);
         DrawPlayerPanel(mm);
         DrawFeed(mm);
-        DrawCrosshair();
+        DrawCrosshair(mm);
         if (mm.matchOver) DrawSettlement(mm);
 
         GUI.matrix = oldMatrix;
@@ -180,16 +180,38 @@ public class MatchHUD : MonoBehaviour
         }
     }
 
-    // ---------------- 准星（屏幕中心）----------------
+    // ---------------- 准星 ----------------
 
-    void DrawCrosshair()
+    void DrawCrosshair(MatchManager mm)
     {
         if (Cursor.lockState != CursorLockMode.Locked) return;   // 光标放开时不画准星
 
+        var p = mm.Player;
+        bool air = p != null && p.Def != null && p.Def.domain == Domain.Air;
+
         float x = _vw * 0.5f, y = VH * 0.5f;
-        var c = new Color(1f, 1f, 1f, 0.75f);
-        Fill(new Rect(x - 16f, y - 1.5f, 32f, 3f), c);
-        Fill(new Rect(x - 1.5f, y - 16f, 3f, 32f), c);
+
+        if (air && p.Physics != null)
+        {
+            // 战雷式：准星是可以被鼠标推着走的圈，飞机朝圈飞
+            Vector2 aim = p.Physics.AirAim;
+            x += aim.x * (VH * 0.32f);
+            y -= aim.y * (VH * 0.32f);
+
+            var c = new Color(1f, 0.88f, 0.35f, 0.95f);
+            float r = 16f, t = 2.5f;
+            Fill(new Rect(x - r, y - t * 0.5f, r * 0.55f, t), c);   // 左
+            Fill(new Rect(x + r * 0.45f, y - t * 0.5f, r * 0.55f, t), c);  // 右
+            Fill(new Rect(x - t * 0.5f, y - r, t, r * 0.55f), c);   // 上
+            Fill(new Rect(x - t * 0.5f, y + r * 0.45f, t, r * 0.55f), c);  // 下
+            Fill(new Rect(x - 2f, y - 2f, 4f, 4f), new Color(1f, 0.32f, 0.26f, 0.95f));
+            return;
+        }
+
+        // 坦克：屏幕中心十字
+        var w = new Color(1f, 1f, 1f, 0.75f);
+        Fill(new Rect(x - 16f, y - 1.5f, 32f, 3f), w);
+        Fill(new Rect(x - 1.5f, y - 16f, 3f, 32f), w);
         Fill(new Rect(x - 2f, y - 2f, 4f, 4f), new Color(1f, 0.32f, 0.26f, 0.95f));
     }
 

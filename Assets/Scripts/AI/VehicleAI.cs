@@ -389,6 +389,11 @@ public class VehicleAI : MonoBehaviour
         }
 
         if (dist > EffectiveFireRange) return;
+
+        // 机炮打装甲目标几乎没伤害 —— 没副武器可用时干脆别浪费炮弹
+        var primAmmo = _self.AmmoFor(_self.Weapon);
+        if (VehicleCombat.AmmoMultiplierVs(primAmmo, Target.Def) < 0.3f) return;
+
         _self.Fire(aim);
     }
 }
