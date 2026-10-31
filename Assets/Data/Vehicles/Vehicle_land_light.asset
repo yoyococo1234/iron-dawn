@@ -35,12 +35,15 @@ MonoBehaviour:
   weapons:
   - {fileID: 11400000, guid: 2de6f803e0113a94fa38c3227f12aad7, type: 2}
   - {fileID: 11400000, guid: cad31bc958dc4ab4b8a311c929be40c4, type: 2}
-  modelPrefab: {fileID: 919132149155446097, guid: 604dbb59a66505e4ba1532d9d3169f3b, type: 3}
-  modelMaterial: {fileID: 2100000, guid: 3ef683c9a868562449a40ef238d6148e, type: 2}
-  modelTurretPrefab: {fileID: 0}
-  modelTurretPivot: {x: 0.1865, y: 2.2393, z: -0.1436}
-  modelTurretMeshOrigin: {x: 0.0865, y: 2.2393, z: -0.0236}
+  modelPrefab: {fileID: 919132149155446097, guid: b7da2985d413859449a3914bc184fce5, type: 3}
+  modelMaterial: {fileID: 2100000, guid: 8c4c4a4c9a8710a43be2a39a27509b9b, type: 2}
+  modelTurretPrefab: {fileID: 919132149155446097, guid: 74641f97dddad0f4886b61775bd34bfe, type: 3}
+  modelTurretPivot: {x: 0.0088, y: 2.3006, z: -0.1105}
+  modelTurretMeshOrigin: {x: 0.0088, y: 2.3006, z: -0.1105}
   autoTurretWellPatch: 0
+  useSplitTurret: 1
+  modelTracksPrefab: {fileID: 919132149155446097, guid: 78d2a68c416fb344ebf72436ab1f9be7, type: 3}
+  modelTurretMaterial: {fileID: 2100000, guid: 6ce94d0b873109e4ea50c29cd215c3f1, type: 2}
   turretBoneName: Turret
   muzzleBoneName: Muzzle
   modelYawOffset: 0
