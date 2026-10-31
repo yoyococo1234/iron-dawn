@@ -37,6 +37,8 @@ public class VehicleAI : MonoBehaviour
     [Header("目标点")]
     [Tooltip("没有敌人时去哪（世界坐标）。留空则去地图中心")]
     public Transform objective;
+    [Tooltip("没有交战目标时，主动去抢最近的、不属于自己队的资源点")]
+    public bool captureZones = true;
 
     public string StateText { get; private set; } = "待机";
     public VehicleCombat Target { get; private set; }
@@ -50,6 +52,8 @@ public class VehicleAI : MonoBehaviour
     float _nextRepath;
     float _nextThink;
     Vector3 _lastTargetPos;
+    Vector3 _goal;                 // 当前要去的世界坐标
+    float _losOkTime;              // 最后一次"看得见目标"的时刻
 
     void Awake()
     {
@@ -87,17 +91,63 @@ public class VehicleAI : MonoBehaviour
         if (lowHp)
         {
             StateText = "后撤";
+            Vector3 away = Target != null ? transform.position - Target.transform.position : Vector3.back;
+            away.y = 0f;
+            _goal = transform.position + (away.sqrMagnitude > 1f ? away.normalized * 150f : Vector3.zero);
             return;
         }
 
-        if (Target == null)
+        if (Target != null)
         {
-            StateText = "推进";
+            float dist = Vector3.Distance(transform.position, Target.transform.position);
+
+            // 能打到 + 看得见才算交战。被地形挡住还傻站着会死锁（两辆车隔着山对望，谁也不动），
+            // 所以通视一断就改成"接近"，逼它挪位置找射界。留 1.5 秒缓冲避免来回抖。
+            bool los = HasLineOfSight(_phys != null ? _phys.GetMuzzlePosition() : transform.position,
+                                      LeadAimPoint(Target), Target);
+            if (los) _losOkTime = Time.time;
+
+            if (dist <= EffectiveFireRange && Time.time - _losOkTime < 1.5f)
+            {
+                StateText = "交战";
+                return;
+            }
+
+            StateText = "接近";
+            _goal = Target.transform.position;
             return;
         }
 
-        float dist = Vector3.Distance(transform.position, Target.transform.position);
-        StateText = dist <= fireRange ? "交战" : "接近";
+        // 没有敌人 → 去抢点（这是本作的核心玩法，不能只追着人打）
+        StateText = captureZones ? "抢点" : "推进";
+        _goal = ChooseGoal();
+    }
+
+    /// <summary>
+    /// 选下一个要去的地方：最近的、本域能占的、还不属于自己队的资源点。
+    /// 找不到就退回 objective，再退回地图中心。
+    /// </summary>
+    Vector3 ChooseGoal()
+    {
+        var mm = MatchManager.Instance;
+        if (captureZones && mm != null && _self != null && _self.Def != null)
+        {
+            ZoneState best = null;
+            float bestD = float.MaxValue;
+            foreach (var z in mm.zones)
+            {
+                if (z == null || z.def == null) continue;
+                if (z.def.domain != _self.Def.domain) continue;   // 船不抢陆地点，坦克不抢海点
+                if (z.owner == _self.Team) continue;              // 自己队的不用抢
+                var c = new Vector3(z.def.bounds.center.x, 0f, z.def.bounds.center.y);
+                float d = Vector3.Distance(transform.position, c);
+                if (d < bestD) { bestD = d; best = z; }
+            }
+            if (best != null)
+                return new Vector3(best.def.bounds.center.x, 0f, best.def.bounds.center.y);
+        }
+
+        return objective != null ? objective.position : Vector3.zero;
     }
 
     VehicleCombat FindTarget()
@@ -128,62 +178,40 @@ public class VehicleAI : MonoBehaviour
     {
         if (_phys == null) return;
 
-        // 后撤：掉头往回开
-        if (StateText == "后撤")
-        {
-            Vector3 away = transform.position - (Target != null ? Target.transform.position : transform.position);
-            away.y = 0f;
-            if (away.sqrMagnitude > 1f) SteerToward(transform.position + away.normalized * 50f);
-            _phys.aiThrottle = 1f;
-            return;
-        }
-
-        // 交战：停住，只转炮塔
+        // 交战：地面/海上停住只转炮塔；飞机不能停，绕着目标飞
         if (StateText == "交战")
         {
+            if (NavMode == NavGrid.NavMode.Air && Target != null)
+            {
+                SteerToward(Target.transform.position);
+                _phys.aiThrottle = 1f;
+                return;
+            }
             _phys.aiThrottle = 0f;
             _phys.aiSteer = 0f;
             return;
         }
 
-        // 推进 / 接近：沿路径走
-        Vector3 objPoint = objective != null ? objective.position : Vector3.zero;
-        Vector3 goal;
-        if (Target == null)
-        {
-            goal = objPoint;
-        }
-        else if (NavMode == NavGrid.NavMode.Sea && !IsOnWater(Target.transform.position))
-        {
-            // 炮艇追不上岸上的坦克 —— 去海上的目标点巡逻/守点
-            goal = objPoint;
-        }
-        else
-        {
-            goal = Target.transform.position;
-        }
-
         // 飞机不用寻路，直接朝目标飞
         if (NavMode == NavGrid.NavMode.Air)
         {
-            SteerToward(goal);
+            SteerToward(_goal);
             _phys.aiThrottle = 1f;
             return;
         }
 
         // 目标移动较多或到时间就重规划
-        if (Time.time >= _nextRepath || Vector3.Distance(goal, _lastTargetPos) > 60f)
+        if (Time.time >= _nextRepath || Vector3.Distance(_goal, _lastTargetPos) > 60f)
         {
             _nextRepath = Time.time + repathInterval;
-            _lastTargetPos = goal;
-            Repath(goal);
+            _lastTargetPos = _goal;
+            Repath(_goal);
         }
 
-        Vector3 wp = CurrentWaypoint();
-        SteerToward(wp);
+        SteerToward(CurrentWaypoint());
     }
 
-    /// <summary>这个点是不是够深的可航行水面。</summary>
+    /// <summary>这个点是不是够深的可航行水面（炮艇判断目标能不能追上时用）。</summary>
     bool IsOnWater(Vector3 p)
     {
         float draft = _phys != null ? _phys.wadeDepth : 0.8f;

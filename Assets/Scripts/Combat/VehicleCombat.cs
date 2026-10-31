@@ -28,6 +28,10 @@ public class VehicleCombat : MonoBehaviour
     [Tooltip("0 = 我方，1 = 敌方（必须序列化，否则场景里丢失）")]
     public int team;
 
+    [Header("运行时")]
+    [Tooltip("最后打中自己的载具（击杀统计用）")]
+    public VehicleCombat lastAttacker;
+
     VehiclePhysics _phys;
     float _nextFireTime;
 
@@ -158,7 +162,7 @@ public class VehicleCombat : MonoBehaviour
         {
             var t = h.collider.GetComponentInParent<VehicleCombat>();
             if (t == this) continue;
-            if (t != null && t.Alive) t.TakeDamage(w.baseDamage, ammo, origin);
+            if (t != null && t.Alive) t.TakeDamage(w.baseDamage, ammo, origin, this);
             return;
         }
     }
@@ -204,10 +208,12 @@ public class VehicleCombat : MonoBehaviour
 
     // ==================== 受击 ====================
 
-    /// <summary>按方向计算装甲倍率并扣血。</summary>
-    public void TakeDamage(float rawDamage, AmmoDef ammo, Vector3 hitFrom)
+    /// <summary>按方向计算装甲倍率并扣血。attacker 用于击杀统计。</summary>
+    public void TakeDamage(float rawDamage, AmmoDef ammo, Vector3 hitFrom, VehicleCombat attacker = null)
     {
         if (!Alive) return;
+
+        if (attacker != null && attacker != this && attacker.Team != team) lastAttacker = attacker;
 
         // 命中方向：从命中者指向自己 = 自己"被从哪个方向打"
         Vector3 toAttacker = hitFrom - transform.position;
@@ -219,6 +225,7 @@ public class VehicleCombat : MonoBehaviour
         float dmg = rawDamage * ammoMul * armorMul;
 
         hp = Mathf.Max(0f, hp - dmg);
+        BattleEvents.RaiseVehicleDamaged(this);
 
         if (hp <= 0f) Die();
     }
@@ -264,7 +271,7 @@ public class VehicleCombat : MonoBehaviour
 
         // 车体消失
         gameObject.SetActive(false);
-        BattleEvents.RaiseVehicleDestroyed(this);
+        BattleEvents.RaiseVehicleDestroyed(this, lastAttacker);
     }
 
     public void RespawnAt(Vector3 pos, float yaw)
@@ -272,6 +279,8 @@ public class VehicleCombat : MonoBehaviour
         dead = false;
         hp = maxHp;
         _nextFireTime = 0f;
+        lastAttacker = null;
+        if (_phys != null) _phys.ResetState();
         transform.position = pos;
         transform.rotation = Quaternion.Euler(0f, yaw, 0f);
         gameObject.SetActive(true);

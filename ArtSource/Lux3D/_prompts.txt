@@ -1,0 +1,23 @@
+# Lux3D 统一提示词（模板 + 6 台实例）
+# 生成参数（6 台完全一致）：version=G1, style=photorealistic, faceCount=60000, outputFormat=[glb], aiPredictSize=true
+
+[TEMPLATE]
+Low-poly realistic military game asset of {SUBJECT}, {FEATURES}. Military hardware realism, low-polygon game-ready mesh, grey-green camouflage paint scheme, hard-surface panel lines, weathered metal, no cartoon, no anime, no stylized exaggeration, single isolated vehicle, plain neutral grey background, no ground plane, no environment, no people, no text, centered composition, whole vehicle visible, correct real-world proportions ({SIZE}).
+
+[land_light] SUBJECT=a light tank | SIZE=7.1 m long, 2.2 m tall
+Low-poly realistic military game asset of a light tank, twin-man turret with a short-barreled 76mm gun, caterpillar tracks with rubber-padded road wheels, compact low-silhouette hull, grey camouflage paint. Military hardware realism, low-polygon game-ready mesh, grey-green camouflage paint scheme, hard-surface panel lines, weathered metal, no cartoon, no anime, no stylized exaggeration, single isolated vehicle, plain neutral grey background, no ground plane, no environment, no people, no text, centered composition, whole vehicle visible, correct real-world proportions (7.1 m long, 2.2 m tall).
+
+[land_main] SUBJECT=a modern main battle tank | SIZE=8.6 m long, 2.6 m tall
+Low-poly realistic military game asset of a modern main battle tank, wedge-shaped angular turret with a long-barreled 120mm smoothbore main gun, six road wheels per side with steel caterpillar tracks, sloped frontal glacis armor, side skirt armor. Military hardware realism, low-polygon game-ready mesh, grey-green camouflage paint scheme, hard-surface panel lines, weathered metal, no cartoon, no anime, no stylized exaggeration, single isolated vehicle, plain neutral grey background, no ground plane, no environment, no people, no text, centered composition, whole vehicle visible, correct real-world proportions (8.6 m long, 2.6 m tall).
+
+[land_heavy] SUBJECT=a heavy assault tank | SIZE=10.2 m long, 3.0 m tall
+Low-poly realistic military game asset of a heavy assault tank, very thick slab-sided armor, boxy rectangular turret with a heavy long gun, bolted add-on armor blocks on the hull front and turret sides, wide tracks with armored side skirts. Military hardware realism, low-polygon game-ready mesh, grey-green camouflage paint scheme, hard-surface panel lines, weathered metal, no cartoon, no anime, no stylized exaggeration, single isolated vehicle, plain neutral grey background, no ground plane, no environment, no people, no text, centered composition, whole vehicle visible, correct real-world proportions (10.2 m long, 3.0 m tall).
+
+[sea_gunboat] SUBJECT=a river gunboat | SIZE=18 m long, 4.6 m wide
+Low-poly realistic military game asset of a river gunboat, single enclosed main gun turret on the foredeck, raised armored bridge wheelhouse amidships, deck railings and vents, flat-bottomed shallow-draft grey steel hull. Military hardware realism, low-polygon game-ready mesh, grey-green camouflage paint scheme, hard-surface panel lines, weathered metal, no cartoon, no anime, no stylized exaggeration, single isolated vehicle, plain neutral grey background, no ground plane, no environment, no water, no people, no text, centered composition, whole vehicle visible, correct real-world proportions (18 m long, 4.6 m wide).
+
+[air_fighter] SUBJECT=a single-engine jet fighter aircraft | SIZE=11 m long, 10.5 m wingspan
+Low-poly realistic military game asset of a single-engine jet fighter aircraft, delta wing planform, single vertical tail fin, bubble canopy, nose air intake, landing gear retracted. Military hardware realism, low-polygon game-ready mesh, grey-green camouflage paint scheme, hard-surface panel lines, weathered metal, no cartoon, no anime, no stylized exaggeration, single isolated vehicle, plain neutral grey background, no ground plane, no environment, no people, no text, centered composition, whole vehicle visible, correct real-world proportions (11 m long, 10.5 m wingspan).
+
+[air_attacker] SUBJECT=a close air support attack aircraft | SIZE=12 m long
+Low-poly realistic military game asset of a close air support attack aircraft, straight low-mounted wings, underwing weapon pylons carrying bombs and rocket pods, armored cockpit bathtub, single engine with rear exhaust. Military hardware realism, low-polygon game-ready mesh, grey-green camouflage paint scheme, hard-surface panel lines, weathered metal, no cartoon, no anime, no stylized exaggeration, single isolated vehicle, plain neutral grey background, no ground plane, no environment, no people, no text, centered composition, whole vehicle visible, correct real-world proportions (12 m long).

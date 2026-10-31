@@ -336,26 +336,17 @@ public class VehiclePhysics : MonoBehaviour
             GroundY(x, z - d) - GroundY(x, z + d)).normalized;
     }
 
-    // ---------------- 调试 HUD ----------------
+    // ---------------- 复活重置 ----------------
 
-    void OnGUI()
+    /// <summary>复活时把运行时状态清干净（沉没计时、速度、存活标记）。</summary>
+    public void ResetState()
     {
-        if (def == null) return;
-
-        var box = new GUIStyle(GUI.skin.box) { fontSize = 13, alignment = TextAnchor.UpperLeft, padding = new RectOffset(10, 10, 8, 8) };
-        var label = new GUIStyle(GUI.skin.label) { fontSize = 13 };
-        var rich = new GUIStyle(label) { richText = true };
-
-        GUI.Box(new Rect(12, 12, 310, 150), GUIContent.none, box);
-        GUILayout.BeginArea(new Rect(22, 20, 295, 140));
-        GUILayout.Label($"<b>{def.displayName}</b>（{def.domain}）", rich);
-        GUILayout.Label($"状态：{stateText}　速度：{speed:F1} m/s");
-        if (def.domain == Domain.Land)
-            GUILayout.Label($"坡度：{slopeDeg:F1}°　可爬：{maxClimbDeg:F1}°");
-        if (def.domain != Domain.Air)
-            GUILayout.Label($"水深：{Mathf.Max(0f, waterDepth):F2} m　上限：{wadeDepth:F1} m");
-        GUILayout.Label($"功率/重量：{PowerPerTon:F1} kW/t　质量：{mass:F0} t");
-        GUILayout.Label("W/S 前后 · A/D 转向");
-        GUILayout.EndArea();
+        alive = true;
+        speed = 0f;
+        _sinkTimer = 0f;
+        stateText = "正常";
+        aiThrottle = 0f;
+        aiSteer = 0f;
     }
 }
+

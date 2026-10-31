@@ -63,7 +63,7 @@ public class Projectile : MonoBehaviour
                     Debug.Log($"[Shell] {name} 命中 {h.collider.name} 距离 {h.distance:F1} m，目标={(target != null ? target.name : "无")}");
                 if (target != null && target.Alive)
                 {
-                    target.TakeDamage(_damage, _ammo, transform.position);
+                    target.TakeDamage(_damage, _ammo, transform.position, _owner);
                     VehicleCombat.ShotsHit++;
                 }
                 Destroy(gameObject);
