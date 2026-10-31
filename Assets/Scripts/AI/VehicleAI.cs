@@ -13,10 +13,10 @@ using System.Collections.Generic;
 public class VehicleAI : MonoBehaviour
 {
     [Header("感知")]
-    [Tooltip("视野半径（米）")]
-    public float visionRange = 450f;
-    [Tooltip("开火距离（米）")]
-    public float fireRange = 320f;
+    [Tooltip("视野半径（米）。2 km 图上 450 m 太近视，改成 700 m")]
+    public float visionRange = 700f;
+    [Tooltip("开火距离（米）。实际取 min(这个, 武器射程)")]
+    public float fireRange = 600f;
     [Tooltip("同域目标的优先级（越小越优先）")]
     public float sameDomainBonus = 0.6f;
 
@@ -261,18 +261,90 @@ public class VehicleAI : MonoBehaviour
 
     // ==================== 开火 ====================
 
+    /// <summary>实际开火距离：AI 的设置和武器射程取小。</summary>
+    float EffectiveFireRange
+    {
+        get
+        {
+            var w = _self != null ? _self.Weapon : null;
+            if (w == null || w.range <= 1f) return fireRange;
+            return Mathf.Min(fireRange, w.range);
+        }
+    }
+
+    /// <summary>目标速度（提前量用）。</summary>
+    static Vector3 TargetVelocity(VehicleCombat t)
+        => t != null && t.Physics != null ? t.Physics.Velocity : Vector3.zero;
+
+    /// <summary>目标的瞄准点：碰撞盒中心（比 transform.position 更接近车体中心）。</summary>
+    static Vector3 TargetCenter(VehicleCombat t)
+    {
+        if (t == null) return Vector3.zero;
+        var col = t.GetComponent<Collider>();
+        return col != null ? col.bounds.center : t.transform.position + Vector3.up * 1.2f;
+    }
+
+    /// <summary>
+    /// 带提前量的瞄准点：按"炮弹飞到那儿要多久"把目标外推。
+    /// 弹速 780~1600 m/s，600 m 只需 0.4~0.8 秒，但目标 12 m/s 也能跑 5~10 米，
+    /// 车体半宽只有 4 米 —— 不提前量就是打空。
+    /// </summary>
+    Vector3 LeadAimPoint(VehicleCombat target)
+    {
+        Vector3 center = TargetCenter(target);
+        var w = _self != null ? _self.Weapon : null;
+        if (w == null) return center;
+
+        float speed = Mathf.Max(1f, w.projectileSpeed);
+        Vector3 origin = _phys != null ? _phys.GetMuzzlePosition() : transform.position;
+        Vector3 tv = TargetVelocity(target);
+
+        Vector3 aim = center;
+        for (int i = 0; i < 3; i++)
+        {
+            float t = Vector3.Distance(origin, aim) / speed;
+            aim = center + tv * t;
+        }
+        return aim;
+    }
+
+    /// <summary>从炮口到瞄准点之间有没有地形/建筑挡住（挡住了就别开火，省得白打）。</summary>
+    bool HasLineOfSight(Vector3 origin, Vector3 aim, VehicleCombat target)
+    {
+        Vector3 to = aim - origin;
+        float dist = to.magnitude;
+        if (dist < 1f) return true;
+
+        var hits = Physics.RaycastAll(origin, to / dist, dist, ~0, QueryTriggerInteraction.Ignore);
+        if (hits == null || hits.Length == 0) return true;
+
+        System.Array.Sort(hits, (a, b) => a.distance.CompareTo(b.distance));
+        foreach (var h in hits)
+        {
+            var vc = h.collider.GetComponentInParent<VehicleCombat>();
+            if (vc == _self) continue;                 // 自己的车体
+            if (vc == target) return true;             // 打到目标 = 通视
+            if (vc != null) continue;                  // 别的载具挡着，不算地形挡住
+            return false;                              // 地形/建筑挡住
+        }
+        return true;
+    }
+
     void AimAndFire()
     {
         if (Target == null || !Target.Alive) return;
-        if (_self.Weapon == null) return;
+        if (_self.Weapon == null || _phys == null) return;
 
-        Vector3 aim = Target.transform.position + Vector3.up * 1.2f;
-        float dist = Vector3.Distance(transform.position, aim);
-        if (dist > fireRange) return;
+        Vector3 aim = LeadAimPoint(Target);
+        float dist = Vector3.Distance(transform.position, Target.transform.position);
+        if (dist > EffectiveFireRange) return;
 
         float turn = _self.Def != null ? _self.Def.turretTurnSpeed : 90f;
         _phys.AimTurretAt(aim, turn);
 
-        if (_phys.TurretAngleError(aim) < 4f) _self.Fire(aim);
+        if (_phys.TurretAngleError(aim) >= 4f) return;      // 还没对准
+        if (!HasLineOfSight(_phys.GetMuzzlePosition(), aim, Target)) return;   // 被地形挡住
+
+        _self.Fire(aim);
     }
 }

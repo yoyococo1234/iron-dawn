@@ -30,14 +30,18 @@ public static class DataSeeder
         var bomb  = Ammo("bomb",    "航空炸弹",  0.8f, 1.2f, 0.2f, 1.2f, 40);
 
         // ---------- 武器 ----------
-        var gun75  = Weapon("gun_75",   "75mm 炮",     180f, 3.0f,  160f, 140f, Domain.Land, ap, he);
-        var gun120 = Weapon("gun_120",  "120mm 主炮",  300f, 4.5f,  200f, 150f, Domain.Land, ap, he, heat);
-        var gun130 = Weapon("gun_130",  "130mm 重炮",  420f, 6.0f,  220f, 150f, Domain.Land, ap, heat);
-        var mg12   = Weapon("mg_12",    "12mm 机枪",    25f, 0.12f,  60f, 200f, Domain.Land, ap);
-        var naval  = Weapon("naval_gun","舰炮",        260f, 5.0f,  600f, 180f, Domain.Sea,  he, heat);
-        var torpL  = Weapon("torpedo_launcher", "鱼雷管", 850f, 12f, 300f, 40f, Domain.Sea,  torp);
-        var gun20  = Weapon("gun_20",   "20mm 机炮",    60f, 0.15f, 150f, 250f, Domain.Air,  ap, aa);
-        var bombR  = Weapon("bomb_rack","航空炸弹挂架", 750f, 8.0f,  60f,   0f, Domain.Air,  bomb);
+        // 弹速 = 真实炮口初速。原来写 140~250 m/s（约等于弹弓），2 km 图上要飞 4~5 秒，
+        // 目标早开出 50 米 —— 这就是"炮弹打不中"的真正根因。现在按真炮取值：
+        //   75mm 780 / 120mm 1600 / 130mm 950 / 20mm 机炮 1050 / 舰炮 800 m/s
+        // 射程也同步放大到 2 km 图该有的交战距离（原来 160 m 在 2000 m 图上等于刺刀）。
+        var gun75  = Weapon("gun_75",   "75mm 炮",     180f, 3.0f,  700f,  780f, Domain.Land, ap, he);
+        var gun120 = Weapon("gun_120",  "120mm 主炮",  300f, 4.5f, 1200f, 1600f, Domain.Land, ap, he, heat);
+        var gun130 = Weapon("gun_130",  "130mm 重炮",  420f, 6.0f,  900f,  950f, Domain.Land, ap, heat);
+        var mg12   = Weapon("mg_12",    "12mm 机枪",    25f, 0.12f, 400f,  850f, Domain.Land, ap);
+        var naval  = Weapon("naval_gun","舰炮",        260f, 5.0f, 1200f,  800f, Domain.Sea,  he, heat);
+        var torpL  = Weapon("torpedo_launcher", "鱼雷管", 850f, 12f, 500f, 40f, Domain.Sea,  torp);
+        var gun20  = Weapon("gun_20",   "20mm 机炮",    60f, 0.15f, 800f, 1050f, Domain.Air,  ap, aa);
+        var bombR  = Weapon("bomb_rack","航空炸弹挂架", 750f, 8.0f, 300f,   0f, Domain.Air,  bomb);
 
         // ---------- 载具 ----------
         // 参数顺序：id, 名, 域, 价, 血, 装甲模式, 正/侧/背, 统一, 速度, 转向, 炮塔转速,

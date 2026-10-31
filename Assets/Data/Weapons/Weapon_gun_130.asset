@@ -16,8 +16,8 @@ MonoBehaviour:
   displayName: "130mm \u91CD\u70AE"
   baseDamage: 420
   reloadTime: 6
-  range: 220
-  projectileSpeed: 150
+  range: 900
+  projectileSpeed: 950
   ammoTypes:
   - {fileID: 11400000, guid: 8ec15d407009f244592e1f152ea927ad, type: 2}
   - {fileID: 11400000, guid: d3393b2f8fe215541ae86468dd6731d4, type: 2}

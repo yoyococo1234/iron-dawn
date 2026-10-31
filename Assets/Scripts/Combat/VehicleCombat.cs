@@ -31,6 +31,12 @@ public class VehicleCombat : MonoBehaviour
     VehiclePhysics _phys;
     float _nextFireTime;
 
+    // ---- 命中率统计（验收/调参用，静态计数）----
+    public static int ShotsFired;
+    public static int ShotsHit;
+    public static void ResetStats() { ShotsFired = 0; ShotsHit = 0; }
+    public static float HitRate => ShotsFired > 0 ? (float)ShotsHit / ShotsFired : 0f;
+
     public bool Alive => !dead && hp > 0f;
     public int Team => team;
     public VehicleDef Def => def;
@@ -113,12 +119,21 @@ public class VehicleCombat : MonoBehaviour
         origin = PushOutsideOwnCollider(origin, dir);
         origin += dir * 1f;
 
+        // 弹速为 0 的武器（炸弹架）走瞬时命中，否则会变成 1 m/s 的爬行弹
+        if (w.projectileSpeed <= 1f)
+        {
+            ShotsFired++;
+            FireHitscan(origin, dir, w, ammo);
+            return true;
+        }
+
         var go = new GameObject($"Shell_{def.id}");
         go.transform.position = origin;
         go.transform.rotation = Quaternion.LookRotation(dir);
 
+        ShotsFired++;
         var shell = go.AddComponent<Projectile>();
-        shell.Launch(dir, w.projectileSpeed, w.baseDamage, ammo, this);
+        shell.Launch(dir, w.projectileSpeed, w.baseDamage, ammo, this, w.range);
 
         // 简易炮口闪光
         var light = go.AddComponent<Light>();
@@ -129,6 +144,23 @@ public class VehicleCombat : MonoBehaviour
         Object.Destroy(light, 0.08f);
 
         return true;
+    }
+
+    /// <summary>瞬时命中（弹速 0 的武器用）：沿射线找第一个不是自己的目标。</summary>
+    void FireHitscan(Vector3 origin, Vector3 dir, WeaponDef w, AmmoDef ammo)
+    {
+        float maxRange = Mathf.Max(1f, w.range);
+        // 注意：本类有同名属性 Physics（VehiclePhysics），所以必须写全 UnityEngine.Physics
+        var hits = UnityEngine.Physics.RaycastAll(origin, dir, maxRange, ~0, QueryTriggerInteraction.Ignore);
+        if (hits == null || hits.Length == 0) return;
+        System.Array.Sort(hits, (a, b) => a.distance.CompareTo(b.distance));
+        foreach (var h in hits)
+        {
+            var t = h.collider.GetComponentInParent<VehicleCombat>();
+            if (t == this) continue;
+            if (t != null && t.Alive) t.TakeDamage(w.baseDamage, ammo, origin);
+            return;
+        }
     }
 
     /// <summary>把出膛点推到自身碰撞盒外面（沿发射方向），最多推 20 m。</summary>

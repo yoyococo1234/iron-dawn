@@ -16,8 +16,8 @@ MonoBehaviour:
   displayName: "120mm \u4E3B\u70AE"
   baseDamage: 300
   reloadTime: 4.5
-  range: 200
-  projectileSpeed: 150
+  range: 1200
+  projectileSpeed: 1600
   ammoTypes:
   - {fileID: 11400000, guid: 8ec15d407009f244592e1f152ea927ad, type: 2}
   - {fileID: 11400000, guid: 27d1975081f4e974d920437d2f2f6365, type: 2}

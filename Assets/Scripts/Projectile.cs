@@ -14,16 +14,21 @@ public class Projectile : MonoBehaviour
     Vector3 _vel;
     float _damage;
     float _life;
+    float _maxRange;      // 射程上限（0 = 不限）
+    float _travelled;
     AmmoDef _ammo;
     VehicleCombat _owner;
 
-    public void Launch(Vector3 dir, float speed, float damage, AmmoDef ammo, VehicleCombat owner)
+    public void Launch(Vector3 dir, float speed, float damage, AmmoDef ammo, VehicleCombat owner, float maxRange = 0f)
     {
         _vel = dir.normalized * Mathf.Max(1f, speed);
         _damage = damage;
         _ammo = ammo;
         _owner = owner;
-        _life = 12f;
+        _maxRange = Mathf.Max(0f, maxRange);
+        // 生命 = 飞满射程所需时间 + 余量；没给射程就按 12 秒兜底
+        _life = _maxRange > 1f ? _maxRange / Mathf.Max(1f, speed) + 0.5f : 12f;
+        _travelled = 0f;
         transform.rotation = Quaternion.LookRotation(_vel);
 
         var tr = gameObject.AddComponent<TrailRenderer>();
@@ -57,14 +62,21 @@ public class Projectile : MonoBehaviour
                 if (DebugHits)
                     Debug.Log($"[Shell] {name} 命中 {h.collider.name} 距离 {h.distance:F1} m，目标={(target != null ? target.name : "无")}");
                 if (target != null && target.Alive)
+                {
                     target.TakeDamage(_damage, _ammo, transform.position);
+                    VehicleCombat.ShotsHit++;
+                }
                 Destroy(gameObject);
                 return;
             }
         }
 
         transform.position += stepVec;
+        _travelled += step;
         transform.rotation = Quaternion.LookRotation(_vel);
+
+        // 飞出射程就消失（否则炮弹会一直飞过整张图）
+        if (_maxRange > 1f && _travelled >= _maxRange) { Destroy(gameObject); return; }
 
         if (DebugHits && Time.frameCount % 12 == 0)
             Debug.Log($"[Shell] {name} pos={transform.position:F1} 距地={transform.position.y - BattlefieldTerrain.SampleHeight(transform.position.x, transform.position.z):F1}");

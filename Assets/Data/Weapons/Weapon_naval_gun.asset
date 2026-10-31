@@ -16,8 +16,8 @@ MonoBehaviour:
   displayName: "\u8230\u70AE"
   baseDamage: 260
   reloadTime: 5
-  range: 600
-  projectileSpeed: 180
+  range: 1200
+  projectileSpeed: 800
   ammoTypes:
   - {fileID: 11400000, guid: 27d1975081f4e974d920437d2f2f6365, type: 2}
   - {fileID: 11400000, guid: d3393b2f8fe215541ae86468dd6731d4, type: 2}

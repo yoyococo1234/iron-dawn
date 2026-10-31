@@ -74,6 +74,9 @@ public class VehiclePhysics : MonoBehaviour
     public float PowerPerTon => enginePower / Mathf.Max(1f, mass);
     public float MaxClimbDeg => Mathf.Atan(PowerPerTon / 30f) * Mathf.Rad2Deg;
 
+    /// <summary>当前速度向量（给 AI 算提前量用）。</summary>
+    public Vector3 Velocity => transform.forward * speed;
+
     void Start() => ApplyDef();
 
     public void ApplyDef()
