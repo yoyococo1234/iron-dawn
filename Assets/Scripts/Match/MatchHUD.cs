@@ -65,25 +65,25 @@ public class MatchHUD : MonoBehaviour
 
     void DrawTopBar(MatchManager mm)
     {
-        float w = 460f, h = 80f;
+        float w = 520f, h = 80f;
         float x = _vw * 0.5f - w * 0.5f;
         Panel(new Rect(x, 12f, w, h));
 
         Text(new Rect(x, 18f, w, 30f), mm.TimeText, _s32, Color.white, TextAnchor.MiddleCenter);
 
-        Text(new Rect(x + 16f, 48f, w * 0.5f - 16f, 26f), $"你的命 <b>{mm.livesLeft}</b>", _s20, CAlly, TextAnchor.MiddleLeft);
-        Text(new Rect(x + w * 0.5f, 48f, w * 0.5f - 16f, 26f), $"敌方 <b>{mm.enemiesLeft}</b> 台", _s20, CEnemy, TextAnchor.MiddleRight);
+        Text(new Rect(x + 16f, 48f, w * 0.5f - 16f, 26f), $"我方命 <b>{mm.TeamLives(0)}</b>", _s20, CAlly, TextAnchor.MiddleLeft);
+        Text(new Rect(x + w * 0.5f, 48f, w * 0.5f - 16f, 26f), $"<b>{mm.TeamLives(1)}</b> 敌方命", _s20, CEnemy, TextAnchor.MiddleRight);
 
-        Text(new Rect(x, 94f, w, 22f), "打光敌方载具获胜 · 命数用光即失败", _s18, new Color(1f, 1f, 1f, 0.5f), TextAnchor.MiddleCenter);
+        Text(new Rect(x, 94f, w, 22f), $"场上：我方 {mm.TeamAlive(0)} / 敌方 {mm.TeamAlive(1)}", _s18, new Color(1f, 1f, 1f, 0.5f), TextAnchor.MiddleCenter);
     }
 
-    // ---------------- 左上：金币 ----------------
+    // ---------------- 左上：金币（个人） ----------------
 
     void DrawGold(MatchManager mm)
     {
-        Panel(new Rect(16f, 12f, 240f, 78f));
-        Text(new Rect(28f, 16f, 216f, 40f), $"<b>{mm.gold[0]}</b> 金", _s32, CGold, TextAnchor.MiddleLeft);
-        Text(new Rect(28f, 56f, 216f, 22f), "占资源点每 10 秒产金", _s18, new Color(1f, 1f, 1f, 0.5f), TextAnchor.MiddleLeft);
+        Panel(new Rect(16f, 12f, 250f, 78f));
+        Text(new Rect(28f, 16f, 226f, 40f), $"<b>{mm.Gold}</b> 金", _s32, CGold, TextAnchor.MiddleLeft);
+        Text(new Rect(28f, 56f, 226f, 22f), $"我的命 {mm.LivesLeft} · 占点全队产金", _s18, new Color(1f, 1f, 1f, 0.5f), TextAnchor.MiddleLeft);
     }
 
     // ---------------- 左侧：资源点 ----------------
@@ -127,7 +127,7 @@ public class MatchHUD : MonoBehaviour
             Panel(new Rect(x, y, w, h));
             Text(new Rect(x, y + 20f, w, 36f), "载具已损失", _s32, CEnemy, TextAnchor.MiddleCenter);
             Text(new Rect(x, y + 62f, w, 26f),
-                mm.livesLeft > 0 ? "正在返回车库…" : "没有剩余部署机会",
+                mm.LivesLeft > 0 ? "正在返回车库…" : "没有剩余部署机会",
                 _s20, Color.white, TextAnchor.MiddleCenter);
             return;
         }
@@ -229,8 +229,8 @@ public class MatchHUD : MonoBehaviour
         Text(new Rect(x, y + 30f, w, 70f), win ? "胜利" : "失败", _s56, win ? CAlly : CEnemy, TextAnchor.MiddleCenter);
         Text(new Rect(x, y + 110f, w, 30f), mm.resultText, _s20, new Color(1f, 1f, 1f, 0.8f), TextAnchor.MiddleCenter);
 
-        Text(new Rect(x, y + 170f, w, 34f), $"剩余命数 {mm.livesLeft}　·　敌方剩余 {mm.enemiesLeft} 台", _s32, Color.white, TextAnchor.MiddleCenter);
-        Text(new Rect(x, y + 216f, w, 28f), $"金币 {mm.gold[0]}　·　剩余时间 {mm.TimeText}", _s20, CGold, TextAnchor.MiddleCenter);
+        Text(new Rect(x, y + 170f, w, 34f), $"我方命 {mm.TeamLives(0)}　:　{mm.TeamLives(1)} 敌方命", _s32, Color.white, TextAnchor.MiddleCenter);
+        Text(new Rect(x, y + 216f, w, 28f), $"我的金币 {mm.Gold}　·　剩余时间 {mm.TimeText}", _s20, CGold, TextAnchor.MiddleCenter);
 
         Text(new Rect(x, y + 280f, w, 40f), "按 <b>R</b> 重新开始", _s24, new Color(1f, 1f, 1f, 0.9f), TextAnchor.MiddleCenter);
     }
