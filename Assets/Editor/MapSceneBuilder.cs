@@ -98,9 +98,11 @@ public static class MapSceneBuilder
         {
             def.modelPrefab = hull;
             def.modelTurretPrefab = turret;
-            def.modelTurretPivot = ReadTurretPivot(def.id);
+            ReadTurretPivot(def.id, out var pivot, out var origin);
+            def.modelTurretPivot = pivot;
+            def.modelTurretMeshOrigin = origin;
+            def.autoTurretWellPatch = true;
             def.modelYawOffset = 0f;        // 拆件脚本里已经把长轴统一到 +Z，不需要再转
-            def.showTurretRing = true;      // 车体是空心壳，压一块深色井底盖住洞口
         }
         else if (def.modelPrefab == null)
         {
@@ -112,22 +114,33 @@ public static class MapSceneBuilder
         EditorUtility.SetDirty(def);
     }
 
-    /// <summary>读 ArtSource/Lux3D/turret_pivots.txt（Blender 拆件时算出的炮塔转轴）。</summary>
-    static Vector3 ReadTurretPivot(string id)
+    /// <summary>
+    /// 读 ArtSource/Lux3D/turret_pivots.txt：id px py pz ox oy oz
+    /// p = 转轴（炮塔本体中心），o = 炮塔网格原点（Blender 切割面中心）。
+    /// 老格式只有 4 个数时，两个都取 p。
+    /// </summary>
+    static void ReadTurretPivot(string id, out Vector3 pivot, out Vector3 origin)
     {
+        pivot = Vector3.zero;
+        origin = Vector3.zero;
         const string path = "D:/UnityProjects/Tank3D/ArtSource/Lux3D/turret_pivots.txt";
-        if (!System.IO.File.Exists(path)) return Vector3.zero;
+        if (!System.IO.File.Exists(path)) return;
 
+        var ci = System.Globalization.CultureInfo.InvariantCulture;
         foreach (var line in System.IO.File.ReadAllLines(path))
         {
             var parts = line.Split(new[] { ' ', '\t' }, System.StringSplitOptions.RemoveEmptyEntries);
             if (parts.Length < 4 || parts[0] != id) continue;
-            if (float.TryParse(parts[1], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var x) &&
-                float.TryParse(parts[2], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var y) &&
-                float.TryParse(parts[3], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var z))
-                return new Vector3(x, y, z);
+
+            var f = new float[6];
+            int n = Mathf.Min(6, parts.Length - 1);
+            for (int i = 0; i < n; i++)
+                float.TryParse(parts[i + 1], System.Globalization.NumberStyles.Float, ci, out f[i]);
+
+            pivot = new Vector3(f[0], f[1], f[2]);
+            origin = n >= 6 ? new Vector3(f[3], f[4], f[5]) : pivot;
+            return;
         }
-        return Vector3.zero;
     }
 
     static Material EnsureMaterial(VehicleDef def)
