@@ -63,6 +63,8 @@ public class VehicleDef : ScriptableObject
     public Material modelMaterial;
     [Tooltip("炮塔模型（Lux3D part_split 拆出来的）。有它炮塔就能真的转")]
     public GameObject modelTurretPrefab;
+    [Tooltip("要不要用拆件炮塔。关掉 = 用整体模型（外观和原模型一模一样，但炮塔不会转）")]
+    public bool useSplitTurret = false;
     [Tooltip("炮塔转轴在车体局部坐标下的位置（= 炮塔本体中心，绕它转才不甩）")]
     public Vector3 modelTurretPivot;
     [Tooltip("炮塔网格自身原点在车体局部坐标下的位置（= Blender 拆件时的切割面中心）。改转轴时用它把炮塔摆回原位")]

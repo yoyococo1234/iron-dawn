@@ -91,9 +91,13 @@ public static class MapSceneBuilder
     {
         if (def == null) return;
 
-        // 优先用 Lux3D part_split 拆出来的「车体 + 独立炮塔」—— 炮塔能真的转
-        var hull = AssetDatabase.LoadAssetAtPath<GameObject>($"Assets/Models/Vehicles/Split/{def.id}_hull.fbx");
-        var turret = AssetDatabase.LoadAssetAtPath<GameObject>($"Assets/Models/Vehicles/Split/{def.id}_turret.fbx");
+        // 拆件炮塔：只有 def.useSplitTurret 打开时才用。
+        // 关掉时用整体模型 —— 外观和原模型一模一样（拆件会在车体甲板上留破口，
+        // part_split 把炮塔连同车顶一截甲板一起切走了，怎么补都不如原模型）。
+        var hull = def.useSplitTurret
+            ? AssetDatabase.LoadAssetAtPath<GameObject>($"Assets/Models/Vehicles/Split/{def.id}_hull.fbx") : null;
+        var turret = def.useSplitTurret
+            ? AssetDatabase.LoadAssetAtPath<GameObject>($"Assets/Models/Vehicles/Split/{def.id}_turret.fbx") : null;
         if (hull != null && turret != null)
         {
             def.modelPrefab = hull;
@@ -104,10 +108,11 @@ public static class MapSceneBuilder
             def.autoTurretWellPatch = true;
             def.modelYawOffset = 0f;        // 拆件脚本里已经把长轴统一到 +Z，不需要再转
         }
-        else if (def.modelPrefab == null)
+        else
         {
-            def.modelPrefab = VehicleModelBinder.AutoFindModel(def.id);
             def.modelTurretPrefab = null;
+            def.autoTurretWellPatch = false;
+            if (def.modelPrefab == null) def.modelPrefab = VehicleModelBinder.AutoFindModel(def.id);
         }
 
         if (def.modelMaterial == null) def.modelMaterial = EnsureMaterial(def);
