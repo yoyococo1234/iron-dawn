@@ -71,6 +71,8 @@ public class VehicleDef : ScriptableObject
     public GameObject modelTrackWellRef;
     [Tooltip("炮塔单独生成时，它自己的材质（贴图和车体不是同一张）")]
     public Material modelTurretMaterial;
+    [Tooltip("履带总成自己的材质（Lux3D 履带模型的 baseColor 贴图）。留空 = 用 modelMaterial")]
+    public Material modelTracksMaterial;
     [Tooltip("炮管模型（从炮塔上切出来的，单独做俯仰）。留空 = 炮塔整体不会抬炮")]
     public GameObject modelBarrelPrefab;
     [Tooltip("炮管转轴在炮塔局部坐标下的位置（炮盾中心）")]

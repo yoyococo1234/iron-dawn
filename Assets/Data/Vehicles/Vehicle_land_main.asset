@@ -38,15 +38,16 @@ MonoBehaviour:
   modelPrefab: {fileID: 919132149155446097, guid: 1f93747e274c5f24fbc34b43d367f968, type: 3}
   modelMaterial: {fileID: 2100000, guid: 0f9b934adc150844598489f80b8d6198, type: 2}
   modelTurretPrefab: {fileID: 919132149155446097, guid: 4f65f5cade69bac4e9af0c6ca0bee222, type: 3}
+  useSplitTurret: 1
+  modelTracksPrefab: {fileID: 919132149155446097, guid: 21df1defe4dfc5f4a8f4632a3465aeb9, type: 3}
+  modelTrackWellRef: {fileID: 0}
+  modelTurretMaterial: {fileID: 2100000, guid: d2e1a489204222042b5fd570679e75b8, type: 2}
+  modelTracksMaterial: {fileID: 2100000, guid: e8dfe2c82d18f734889eefd1fa6cdbbe, type: 2}
+  modelBarrelPrefab: {fileID: 919132149155446097, guid: 7e303e7360d6c4346927bb4b98826c2e, type: 3}
+  modelBarrelPivot: {x: -0.0875, y: 0.4941, z: 1.3779}
   modelTurretPivot: {x: 0.0023, y: 2.4421, z: -0.2471}
   modelTurretMeshOrigin: {x: 0.0023, y: 2.4421, z: -0.2471}
   autoTurretWellPatch: 0
-  useSplitTurret: 1
-  modelTracksPrefab: {fileID: 919132149155446097, guid: 3734002ea589b3b47aeef7ab88f439fa, type: 3}
-  modelTrackWellRef: {fileID: 0}
-  modelTurretMaterial: {fileID: 2100000, guid: d2e1a489204222042b5fd570679e75b8, type: 2}
-  modelBarrelPrefab: {fileID: 919132149155446097, guid: 7e303e7360d6c4346927bb4b98826c2e, type: 3}
-  modelBarrelPivot: {x: -0.0875, y: 0.4941, z: 1.3779}
   turretBoneName: Turret
   muzzleBoneName: Muzzle
   modelYawOffset: 0
