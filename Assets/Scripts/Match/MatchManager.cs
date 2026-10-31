@@ -105,6 +105,13 @@ public class MatchManager : MonoBehaviour
 
         CountEnemies();
         PushFeed($"敌方 {enemiesLeft} 台载具 · 你还有 {livesLeft} 条命");
+
+        // 启动自检：打包后最容易出问题的是「数据资产没序列化进场景」
+        int rosterCount = Roster != null ? Roster.Length : 0;
+        Debug.Log($"[MatchManager] 启动自检 roster={rosterCount} zones={zones.Count} " +
+                  $"allyX={battlefield.allySpawnLineX:F0} startingGold={match.startingGold} lives={livesLeft}");
+        if (rosterCount == 0) Debug.LogError("[MatchManager] roster 为空 —— MatchDef 没序列化进场景，车库会没有车可选");
+        if (zones.Count == 0) Debug.LogError("[MatchManager] zones 为空 —— BattlefieldDef 没序列化进场景");
     }
 
     void OnDestroy() => BattleEvents.VehicleDestroyed -= OnVehicleDestroyed;

@@ -68,7 +68,17 @@ public static class MapSceneBuilder
         // 对局主控 + HUD + 车库 + 开局封面
         var matchGo = GameObject.Find("Match");
         if (matchGo == null) matchGo = new GameObject("Match");
-        if (matchGo.GetComponent<MatchManager>() == null) matchGo.AddComponent<MatchManager>();
+        var mm = matchGo.GetComponent<MatchManager>();
+        if (mm == null) mm = matchGo.AddComponent<MatchManager>();
+
+        // 关键：必须把数据资产序列化进场景！
+        // 打包后 #if UNITY_EDITOR 的自动加载会失效，字段为空会导致车库列表空、资源点空、出兵线错。
+        mm.match = AssetDatabase.LoadAssetAtPath<MatchDef>("Assets/Data/Match/Match_Default.asset");
+        mm.battlefield = AssetDatabase.LoadAssetAtPath<BattlefieldDef>("Assets/Data/Battlefield/Battlefield_Default.asset");
+        if (mm.match == null) Debug.LogError("[MapSceneBuilder] 找不到 Match_Default.asset");
+        if (mm.battlefield == null) Debug.LogError("[MapSceneBuilder] 找不到 Battlefield_Default.asset");
+        EditorUtility.SetDirty(mm);
+
         if (matchGo.GetComponent<MatchHUD>() == null) matchGo.AddComponent<MatchHUD>();
         if (matchGo.GetComponent<GarageScreen>() == null) matchGo.AddComponent<GarageScreen>();
         if (matchGo.GetComponent<GameStartScreen>() == null) matchGo.AddComponent<GameStartScreen>();
