@@ -28,10 +28,39 @@ public class VehiclePhysics : MonoBehaviour
     public float tiltSpeed = 6f;
 
     [Header("空中")]
-    [Tooltip("固定飞行高度（离地面/水面）。设计 25 m × 16.667 ≈ 417 m，要能飞过 300 m 的山")]
+    [Tooltip("AI 巡逻/保持的飞行高度（离地面）")]
     public float flightAltitude = 420f;
-    [Tooltip("转向时的侧倾角度")]
+    [Tooltip("转向时的侧倾角度（AI 用）")]
     public float bankAngle = 30f;
+
+    [Header("飞行手感（战争雷霆式：鼠标控姿态 + W/S 油门 + A/D 横滚）")]
+    [Tooltip("鼠标灵敏度（虚拟摇杆）")]
+    public float airMouseSensitivity = 0.5f;
+    [Tooltip("鼠标松手后虚拟摇杆回中速度")]
+    public float airRecenterSpeed = 1.8f;
+    [Tooltip("最大俯仰角速度（度/秒）")]
+    public float airPitchRate = 55f;
+    [Tooltip("最大偏航角速度（度/秒）")]
+    public float airYawRate = 32f;
+    [Tooltip("横滚角速度（度/秒）")]
+    public float airRollRate = 120f;
+    [Tooltip("靠横滚带出的转弯强度（度/秒，满横滚时）")]
+    public float airBankTurnRate = 42f;
+    [Tooltip("姿态跟随输入的速度")]
+    public float airResponse = 7f;
+    [Tooltip("油门变化速度（每秒）")]
+    public float airThrottleRate = 0.7f;
+    [Tooltip("撞地高度（低于地面这么多米就算坠毁）")]
+    public float airCrashHeight = 3f;
+    [Tooltip("最高飞行高度")]
+    public float airCeiling = 1500f;
+
+    // ---- 飞行姿态（正 = 抬头 / 右横滚）----
+    [System.NonSerialized] public float airPitch;
+    [System.NonSerialized] public float airYaw;
+    [System.NonSerialized] public float airRoll;
+    [System.NonSerialized] public float airThrottle = 0.65f;
+    float _airAimX, _airAimY;
 
     [Header("测试用：自动驾驶（不做输入也能跑）")]
     public bool autoDrive = false;
@@ -236,27 +265,83 @@ public class VehiclePhysics : MonoBehaviour
         slopeDeg = 0f;
         maxClimbDeg = 0f;
 
-        float throttle = ThrottleInput;
-        float steer = SteerInput;
+        float dt = Time.deltaTime;
+        if (dt <= 0f) return;
 
-        speed = Mathf.MoveTowards(speed, throttle * def.speed, acceleration * 2f * Time.deltaTime);
+        if (airYaw == 0f && Mathf.Abs(transform.eulerAngles.y) > 0.01f) airYaw = transform.eulerAngles.y;
 
-        transform.Rotate(0f, steer * def.turnSpeed * Time.deltaTime, 0f, Space.World);
-        transform.position += transform.forward * speed * Time.deltaTime;
+        // ================= 输入 =================
+        if (aiControlled)
+        {
+            // AI：朝 aiSteer 偏航，保持 flightAltitude 高度
+            airYaw += aiSteer * def.turnSpeed * 0.8f * dt;
+            airRoll = Mathf.Lerp(airRoll, -aiSteer * bankAngle, 3f * dt);
+            float wantY = groundY + flightAltitude;
+            airPitch = Mathf.Lerp(airPitch, Mathf.Clamp((wantY - pos.y) * 0.12f, -18f, 18f), 2f * dt);
+            airThrottle = Mathf.Lerp(airThrottle, Mathf.Abs(aiThrottle) < 0.05f ? 0.65f : 0.85f, 2f * dt);
+        }
+        else
+        {
+            // 玩家：W/S 油门，A/D 横滚，鼠标控俯仰偏航（虚拟摇杆，松手自动回中）
+            airThrottle = Mathf.Clamp01(airThrottle + Input.GetAxis("Vertical") * airThrottleRate * dt);
+
+            float rollIn = Input.GetAxis("Horizontal");
+            airRoll = Mathf.Clamp(airRoll + rollIn * airRollRate * dt, -85f, 85f);
+            if (Mathf.Abs(rollIn) < 0.05f) airRoll = Mathf.MoveTowards(airRoll, 0f, 45f * dt);
+
+            _airAimX = Mathf.Clamp(_airAimX + Input.GetAxis("Mouse X") * airMouseSensitivity, -1f, 1f);
+            _airAimY = Mathf.Clamp(_airAimY + Input.GetAxis("Mouse Y") * airMouseSensitivity, -1f, 1f);
+            _airAimX = Mathf.MoveTowards(_airAimX, 0f, airRecenterSpeed * dt);
+            _airAimY = Mathf.MoveTowards(_airAimY, 0f, airRecenterSpeed * dt);
+
+            airPitch += _airAimY * airPitchRate * dt;     // 鼠标上推 = 抬头
+            airYaw += _airAimX * airYawRate * dt;
+        }
+
+        // 横滚带出转弯（压杆转弯）
+        airYaw += Mathf.Sin(airRoll * Mathf.Deg2Rad) * airBankTurnRate * dt;
+        airPitch = Mathf.Clamp(airPitch, -70f, 70f);
+        airYaw = Mathf.Repeat(airYaw, 360f);
+
+        // ================= 姿态 =================
+        var targetRot = Quaternion.Euler(-airPitch, airYaw, -airRoll);
+        transform.rotation = Quaternion.Slerp(transform.rotation, targetRot, airResponse * dt);
+
+        // ================= 速度 =================
+        float targetSpeed = Mathf.Lerp(def.speed * 0.45f, def.speed * 1.15f, airThrottle);
+        speed = Mathf.MoveTowards(speed, targetSpeed, acceleration * 1.5f * dt);
+
+        // ================= 位移 =================
+        transform.position += transform.forward * speed * dt;
         ClampToBounds();
 
-        // 固定高度
         pos = transform.position;
-        pos.y = Mathf.Lerp(pos.y, groundY + flightAltitude, 3f * Time.deltaTime);
-        transform.position = pos;
+        if (pos.y > airCeiling)
+        {
+            pos.y = airCeiling;
+            transform.position = pos;
+            airPitch = Mathf.MoveTowards(airPitch, -20f, 40f * dt);
+        }
 
-        // 转向时侧倾
-        float yaw = transform.eulerAngles.y;
-        float bank = -steer * bankAngle;
-        transform.rotation = Quaternion.Slerp(transform.rotation,
-            Quaternion.Euler(0f, yaw, bank), 2.5f * Time.deltaTime);
+        // 撞地 = 坠毁
+        if (pos.y < groundY + airCrashHeight)
+        {
+            stateText = "坠毁";
+            Crash();
+            return;
+        }
 
-        stateText = "飞行";
+        stateText = $"飞行 · 油门 {airThrottle * 100f:F0}% · {speed:F0} m/s";
+    }
+
+    /// <summary>撞地坠毁：走正常击毁流程（爆炸 / 事件 / 玩家回车库）。</summary>
+    void Crash()
+    {
+        if (!alive) return;
+        alive = false;
+        var combat = GetComponent<VehicleCombat>();
+        if (combat != null) combat.DestroyByEnvironment();
+        else gameObject.SetActive(false);
     }
 
     // ==================== 挂点接口（武器阶段用）====================

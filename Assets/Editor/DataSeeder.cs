@@ -69,15 +69,20 @@ public static class DataSeeder
             1200f, 40f, 1.2f, 1.2f, 0.8f,
             TerrainType.ShallowWater | TerrainType.DeepWater, 80, "海上霸主，吃水 0.8m", naval, torpL);
 
-        Vehicle("air_fighter", "战斗机", Domain.Air, 160, 300, ArmorMode.Uniform,
+        var fighter = Vehicle("air_fighter", "战斗机", Domain.Air, 160, 300, ArmorMode.Uniform,
             1f, 1f, 1f, 1.00f, 45f, 120f, 0f,
             900f, 8f, 0f, 0f, 0f,
             TerrainType.Air, 80, "最快，制空；一击即落", gun20);
+        // Lux3D 的飞机模型机头朝 -Z（其余载具朝 +Z）—— 转 180° 正过来，否则看着像倒着飞
+        fighter.modelYawOffset = 180f;
+        EditorUtility.SetDirty(fighter);
 
-        Vehicle("air_attacker", "攻击机", Domain.Air, 200, 450, ArmorMode.Uniform,
+        var attacker = Vehicle("air_attacker", "攻击机", Domain.Air, 200, 450, ArmorMode.Uniform,
             1f, 1f, 1f, 1.10f, 32f, 80f, 0f,
             1100f, 12f, 0f, 0f, 0f,
             TerrainType.Air, 85, "能打地面，越墙；慢、怕防空", gun20, bombR);
+        attacker.modelYawOffset = 180f;
+        EditorUtility.SetDirty(attacker);
 
         // ---------- 对局与经济 ----------
         var match = GetOrCreate<MatchDef>($"{Root}/Match/Match_Default.asset");
