@@ -70,6 +70,10 @@ public static class VehicleModelBinder
         turret = FindBone(model, def.turretBoneName);
         muzzle = FindBone(model, def.muzzleBoneName);
 
+        // 模型里有真实的炮塔+炮口节点才算"可视炮塔"，否则用逻辑炮塔（出膛点固定在车头）
+        var vp = root.GetComponent<VehiclePhysics>();
+        if (vp != null) vp.turretIsVisual = turret != null && muzzle != null;
+
         if (def.modelMaterial != null)
         {
             foreach (var r in model.GetComponentsInChildren<MeshRenderer>(true))
@@ -105,6 +109,13 @@ public static class VehicleModelBinder
         Vector3 center = root.transform.InverseTransformPoint(b.center);
         float halfLen = Mathf.Max(b.size.x, b.size.z) * 0.5f;
         float height = b.size.y;
+
+        var vp = root.GetComponent<VehiclePhysics>();
+        if (vp != null)
+        {
+            vp.turretIsVisual = false;
+            vp.hullHalfLength = halfLen;
+        }
 
         var tp = new GameObject("Turret");
         tp.transform.SetParent(root.transform, false);

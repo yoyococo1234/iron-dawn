@@ -52,21 +52,24 @@ public class PlayerTankController : MonoBehaviour
         }
     }
 
-    /// <summary>屏幕正中央（准星）打到哪 —— 视角转过去，炮塔就跟着转过去。</summary>
+    /// <summary>
+    /// 屏幕正中央（准星）打到哪。
+    /// 注意：相机有俯角，中心射线往往 20~30 m 就打到脚下了 —— 那样炮口会朝下打地面。
+    /// 所以命中点太近时，改成"沿视线方向、在车体高度上取远处一点"，让炮口水平指出去。
+    /// </summary>
     Vector3 GetAimPoint()
     {
         var ray = _cam.ScreenPointToRay(new Vector3(Screen.width * 0.5f, Screen.height * 0.5f, 0f));
 
         if (Physics.Raycast(ray, out var hit, aimRayLength, ~0, QueryTriggerInteraction.Ignore))
-            return hit.point;
-
-        // 没打中东西 → 和当前高度的水平面求交
-        float y = transform.position.y;
-        if (Mathf.Abs(ray.direction.y) > 0.0001f)
         {
-            float t = (y - ray.origin.y) / ray.direction.y;
-            if (t > 0f) return ray.origin + ray.direction * t;
+            float d = Vector3.Distance(ray.origin, hit.point);
+            if (d >= 120f) return hit.point;          // 远处的命中点直接用
         }
-        return ray.origin + ray.direction * 800f;
+
+        // 太近 / 没打中：沿视线取远处、并拉回自身高度，避免朝地面或朝天空打
+        Vector3 far = ray.origin + ray.direction * 700f;
+        far.y = transform.position.y + 1.5f;
+        return far;
     }
 }

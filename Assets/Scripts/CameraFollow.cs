@@ -11,14 +11,14 @@ public class CameraFollow : MonoBehaviour
 
     [Header("视角")]
     public float yaw;
-    public float pitch = 16f;
-    public float minPitch = -18f;
+    public float pitch = 8f;
+    public float minPitch = -20f;
     public float maxPitch = 72f;
     [Tooltip("鼠标灵敏度")]
     public float sensitivity = 3.2f;
 
     [Header("距离")]
-    public float distance = 16f;
+    public float distance = 18f;
     public float minDistance = 7f;
     public float maxDistance = 55f;
     public float zoomSpeed = 45f;
@@ -38,7 +38,7 @@ public class CameraFollow : MonoBehaviour
     public void ResetToBehindTarget()
     {
         if (target != null) yaw = target.eulerAngles.y;
-        pitch = 16f;
+        pitch = 8f;
     }
 
     void Start() => _dist = distance;
