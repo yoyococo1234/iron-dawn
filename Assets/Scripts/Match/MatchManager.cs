@@ -3,13 +3,14 @@ using UnityEngine.SceneManagement;
 using System.Collections.Generic;
 
 /// <summary>
-/// 对局主控。
+/// 对局主控（5v5 · 每人 3 条命 · 个人经济）。
 ///
-/// 核心规则（2026-10-31 改版）：
-///   · 玩家有 playerLives 条命 = 可以部署 playerLives 次，每次阵亡回车库重新选车（花金币买）
-///   · 敌方有 enemyLives 台载具，打光就赢；玩家命数用光就输
-///   · 资源点占着每 captureInterval 秒产金，金币用来买车
-///   · 击杀奖励：击毁敌方载具按目标车价 × killRewardRate 发钱
+/// 规则：
+///   · 双方各 5 个单位；你是我方 0 号，其余 4 个是我方 AI，敌方 5 个全是 AI
+///   · 每个单位最多 playerLives 条命；命用光就出局，不会再有车
+///   · 经济独立：每人有自己的金币。买车花自己的钱，击毁敌人 +40% 车价进自己口袋
+///   · 唯一共享的收入是资源点：占下来的点每 10 秒给**全队每人**发一份 incomePerTick
+///   · 一方 5 个人全部出局 → 对方获胜；时间到则比剩余命数
 /// </summary>
 public class MatchManager : MonoBehaviour
 {
@@ -22,18 +23,20 @@ public class MatchManager : MonoBehaviour
     [Header("规则")]
     [Tooltip("无争夺时占下一个点要几秒")]
     public float captureSeconds = 6f;
-    [Tooltip("阵亡后多久弹出车库")]
+    [Tooltip("你阵亡后多久弹出车库")]
     public float garageDelay = 2.5f;
+    [Tooltip("AI 阵亡后多久重新出击")]
+    public float aiRespawnDelay = 6f;
+    [Tooltip("每队人数")]
+    public int teamSize = 5;
 
     [Header("运行时状态（只读，给 HUD 用）")]
-    public int[] gold = new int[2];
-    public int livesLeft;
-    public int enemiesLeft;
     public float timeLeft;
     public bool matchOver;
     public int winnerTeam = -1;
     public string resultText = "";
 
+    public readonly List<UnitState> units = new List<UnitState>();
     public readonly List<ZoneState> zones = new List<ZoneState>();
     public readonly List<FeedEntry> feed = new List<FeedEntry>();
 
@@ -43,15 +46,37 @@ public class MatchManager : MonoBehaviour
         public float time;
     }
 
-    VehicleCombat _player;
+    UnitState _human;
+    readonly Dictionary<VehicleCombat, UnitState> _map = new Dictionary<VehicleCombat, UnitState>();
+    readonly Dictionary<VehicleCombat, int> _cache = new Dictionary<VehicleCombat, int>();
     float _garageAt = -1f;
     float _incomeTimer;
-    bool _started;
+    float _nextCache;
 
-    public VehicleCombat Player => _player;
+    // ---------------- 对外只读接口 ----------------
+
+    public UnitState Human => _human;
+    public int Gold => _human != null ? _human.gold : 0;
+    public int LivesLeft => _human != null ? _human.lives : 0;
+    public VehicleCombat Player => _human != null ? _human.vehicle : null;
     public VehicleDef[] Roster => match != null ? match.roster : null;
 
-    /// <summary>车库里最便宜的一台的价格（兜底免费补充用）。</summary>
+    public int TeamLives(int team)
+    {
+        int n = 0;
+        foreach (var u in units) if (u.team == team) n += Mathf.Max(0, u.lives);
+        return n;
+    }
+
+    public int TeamAlive(int team)
+    {
+        int n = 0;
+        foreach (var u in units) if (u.team == team && u.HasVehicle) n++;
+        return n;
+    }
+
+    public int EnemiesLeft => TeamAlive(1);
+
     public int CheapestPrice
     {
         get
@@ -63,13 +88,14 @@ public class MatchManager : MonoBehaviour
         }
     }
 
-    /// <summary>这台车现在买得起吗（一穷二白时最低价那台免费，避免卡死在车库）。</summary>
     public bool CanAfford(VehicleDef def)
     {
-        if (def == null || livesLeft <= 0) return false;
-        if (gold[0] >= def.price) return true;
-        return gold[0] < CheapestPrice && def.price == CheapestPrice;
+        if (def == null || _human == null || _human.lives <= 0) return false;
+        if (_human.gold >= def.price) return true;
+        return _human.gold < CheapestPrice && def.price == CheapestPrice;   // 一穷二白时最低价免费
     }
+
+    // ---------------- 生命周期 ----------------
 
     void Awake()
     {
@@ -91,50 +117,68 @@ public class MatchManager : MonoBehaviour
 
     void Start()
     {
-        gold[0] = gold[1] = match.startingGold;
-        livesLeft = Mathf.Max(1, match.playerLives);
         timeLeft = match.matchTimeLimitMinutes * 60f;
 
         zones.Clear();
         if (battlefield.zones != null)
             foreach (var z in battlefield.zones)
                 if (z != null) zones.Add(new ZoneState { def = z });
-
         ZoneMarker.BuildAll(zones);
+
+        BuildUnits();
         BattleEvents.VehicleDestroyed += OnVehicleDestroyed;
 
-        CountEnemies();
-        PushFeed($"敌方 {enemiesLeft} 台载具 · 你还有 {livesLeft} 条命");
+        // AI 立刻进场（你不用等他们）
+        foreach (var u in units)
+            if (!u.isHuman) SpawnUnit(u, PickDef(u));
 
-        // 启动自检：打包后最容易出问题的是「数据资产没序列化进场景」
         int rosterCount = Roster != null ? Roster.Length : 0;
-        Debug.Log($"[MatchManager] 启动自检 roster={rosterCount} zones={zones.Count} " +
-                  $"allyX={battlefield.allySpawnLineX:F0} startingGold={match.startingGold} lives={livesLeft}");
-        if (rosterCount == 0) Debug.LogError("[MatchManager] roster 为空 —— MatchDef 没序列化进场景，车库会没有车可选");
+        Debug.Log($"[MatchManager] 自检 roster={rosterCount} zones={zones.Count} allyX={battlefield.allySpawnLineX:F0} " +
+                  $"units={units.Count} lives={match.playerLives} gold={match.startingGold}");
+        if (rosterCount == 0) Debug.LogError("[MatchManager] roster 为空 —— MatchDef 没序列化进场景");
         if (zones.Count == 0) Debug.LogError("[MatchManager] zones 为空 —— BattlefieldDef 没序列化进场景");
+
+        PushFeed($"5v5 · 每人 {match.playerLives} 条命 · 打光对方全部命数获胜");
     }
 
     void OnDestroy() => BattleEvents.VehicleDestroyed -= OnVehicleDestroyed;
 
-    void CountEnemies()
+    void BuildUnits()
     {
-        enemiesLeft = 0;
-        foreach (var c in FindObjectsByType<VehicleCombat>(FindObjectsInactive.Include, FindObjectsSortMode.None))
-            if (c != null && c.Team == 1) enemiesLeft++;
+        units.Clear();
+        _map.Clear();
+        _human = null;
+
+        for (int team = 0; team < 2; team++)
+        {
+            for (int i = 0; i < teamSize; i++)
+            {
+                var u = new UnitState
+                {
+                    team = team,
+                    index = i,
+                    isHuman = team == 0 && i == 0,
+                    gold = match.startingGold,
+                    lives = Mathf.Max(1, match.playerLives),
+                };
+                units.Add(u);
+                if (u.isHuman) _human = u;
+            }
+        }
     }
+
+    // ---------------- 每帧 ----------------
 
     void Update()
     {
         if (!GameStartScreen.Started) return;
 
-        // R 只在结算后才是"重开"，战斗中误按不再直接把对局打回开头
         if (matchOver)
         {
             if (Input.GetKeyDown(KeyCode.R)) Restart();
             return;
         }
 
-        // 阵亡后延迟弹车库
         if (_garageAt > 0f && Time.unscaledTime >= _garageAt)
         {
             _garageAt = -1f;
@@ -145,32 +189,81 @@ public class MatchManager : MonoBehaviour
         if (timeLeft <= 0f)
         {
             timeLeft = 0f;
-            EndMatch(enemiesLeft <= 0 ? 0 : 1, "时间到");
+            EndByLives("时间到");
             return;
         }
 
         UpdateZones(Time.deltaTime);
         UpdateIncome(Time.deltaTime);
+        UpdateRespawns();
+        CheckTeamWipe();
     }
 
-    // ==================== 车库 / 部署 ====================
+    void RefreshCache()
+    {
+        if (Time.time < _nextCache) return;
+        _nextCache = Time.time + 0.4f;
+        _cache.Clear();
+        foreach (var v in FindObjectsByType<VehicleCombat>(FindObjectsInactive.Include, FindObjectsSortMode.None))
+            if (v != null) _cache[v] = v.Team;
+    }
+
+    // ---------------- 出击 / 复活 ----------------
+
+    VehicleDef PickDef(UnitState u)
+    {
+        string[] ids = u.team == 0
+            ? new[] { "land_main", "land_heavy", "sea_gunboat", "air_fighter" }
+            : new[] { "land_main", "land_heavy", "sea_gunboat", "air_fighter", "air_attacker" };
+        string id = ids[u.index % ids.Length];
+
+        var r = Roster;
+        if (r != null) foreach (var d in r) if (d != null && d.id == id) return d;
+        return r != null && r.Length > 0 ? r[0] : null;
+    }
+
+    VehicleCombat SpawnUnit(UnitState u, VehicleDef def)
+    {
+        if (u == null || def == null || u.lives <= 0) return null;
+
+        Vector3 pos = FindSpawnPoint(u.team == 0, def.domain, u.index);
+        float yaw = u.team == 0 ? 90f : -90f;
+
+        var v = VehicleFactory.Spawn(def, u.team, pos, yaw, u.isHuman);
+        if (v == null) return null;
+
+        u.vehicle = v;
+        u.lastDef = def;
+        u.respawnAt = -1f;
+        _map[v] = u;
+
+        if (u.isHuman)
+        {
+            var cam = Camera.main;
+            if (cam != null)
+            {
+                var cf = cam.GetComponent<CameraFollow>();
+                if (cf != null) { cf.target = v.transform; cf.ResetToBehindTarget(); }
+            }
+        }
+        return v;
+    }
 
     /// <summary>开局：进车库选第一台车。</summary>
     public void OpenGarageFirst()
     {
-        _started = true;
-        OpenGarage("选择你的载具", $"还剩 {livesLeft} 次部署机会 · 金币 {gold[0]}");
+        OpenGarage("选择你的载具", $"还剩 {LivesLeft} 次部署 · 你的金币 {Gold}");
     }
 
     void OpenGarageForRespawn()
     {
         if (matchOver) return;
-        if (livesLeft <= 0)
+        if (LivesLeft <= 0)
         {
-            EndMatch(1, "你的载具全部损失");
+            EndMatch(1, "你的 3 条命用完了");
             return;
         }
-        OpenGarage("载具被击毁 —— 重新选择", $"还剩 {livesLeft} 次部署机会 · 金币 {gold[0]}");
+        OpenGarage("载具被击毁 —— 重新选择", $"还剩 {LivesLeft} 次部署 · 你的金币 {Gold}");
     }
 
     void OpenGarage(string title, string subtitle)
@@ -180,52 +273,70 @@ public class MatchManager : MonoBehaviour
         g.Open(title, subtitle);
     }
 
-    /// <summary>玩家在车库里点了一台车。</summary>
+    /// <summary>你在车库里点了一台车（花你自己的钱）。</summary>
     public void DeployPlayer(VehicleDef def)
     {
-        if (def == null || matchOver) return;
+        if (def == null || matchOver || _human == null) return;
         if (!CanAfford(def)) return;
 
-        int cost = gold[0] >= def.price ? def.price : 0;   // 买不起时最低价那台免费
-        gold[0] -= cost;
-        livesLeft--;
+        int cost = _human.gold >= def.price ? def.price : 0;
+        _human.gold -= cost;
+        _human.lives--;
 
-        Vector3 pos = FindSpawnPoint(def.domain);
-
-        // 清掉上一台残骸
-        if (_player != null) Destroy(_player.gameObject);
-
-        _player = VehicleFactory.Spawn(def, 0, pos, 90f, true);
-        PushFeed(cost > 0 ? $"部署 {def.displayName}  -{cost}金" : $"部署 {def.displayName}（免费补充）");
-
-        var cam = Camera.main;
-        if (cam != null)
+        if (_human.vehicle != null)
         {
-            var cf = cam.GetComponent<CameraFollow>();
-            if (cf != null) { cf.target = _player.transform; cf.ResetToBehindTarget(); }
+            _map.Remove(_human.vehicle);
+            Destroy(_human.vehicle.gameObject);
+            _human.vehicle = null;
         }
+
+        SpawnUnit(_human, def);
+        PushFeed(cost > 0 ? $"你 部署 {def.displayName}  -{cost}金" : $"你 部署 {def.displayName}（免费补充）");
 
         if (GarageScreen.Instance != null) GarageScreen.Instance.Close();
     }
 
-    /// <summary>
-    /// 按载具所在域挑出兵点。
-    /// 出兵线在 x 上固定、z 跨整张图，北半张是海 —— 不按域挑的话
-    /// 坦克会生成在海里、船会生成在陆地上。
-    /// </summary>
-    Vector3 FindSpawnPoint(Domain domain)
+    void UpdateRespawns()
     {
-        float x = battlefield.allySpawnLineX;
+        foreach (var u in units)
+        {
+            if (u.isHuman || u.lives <= 0 || u.vehicle != null) continue;
+            if (u.respawnAt < 0f || Time.time < u.respawnAt) continue;
+
+            var def = u.lastDef != null ? u.lastDef : PickDef(u);
+            int cost = def != null ? def.price : 0;
+
+            if (u.gold < cost)
+            {
+                // AI 钱不够：攒钱，过几秒再试
+                u.respawnAt = Time.time + 2f;
+                continue;
+            }
+
+            u.gold -= cost;
+            u.lives--;
+            if (SpawnUnit(u, def) != null)
+                PushFeed($"{u.Label} 重新出击  -{cost}金");
+        }
+    }
+
+    // ---------------- 出生点 ----------------
+
+    Vector3 FindSpawnPoint(bool ally, Domain domain, int slot)
+    {
+        float x = ally ? battlefield.allySpawnLineX : battlefield.enemySpawnLineX;
         float zMin = battlefield.spawnLineZMin, zMax = battlefield.spawnLineZMax;
 
-        float bestZ = 0f;
+        // 每个单位从不同的 z 起点扫，避免全挤在同一个点上
+        float start = 0.5f + (slot - 2) * 0.08f;
+        float bestZ = Mathf.Lerp(zMin, zMax, 0.5f);
         bool found = false;
 
-        // 从中线往两边扫，取第一个符合本域的位置
-        for (int i = 0; i < 70; i++)
+        for (int i = 0; i < 80; i++)
         {
-            float t = (i % 2 == 0) ? 0.5f + i * 0.0075f : 0.5f - i * 0.0075f;
-            float z = Mathf.Lerp(zMin, zMax, Mathf.Clamp01(t));
+            float t = start + (i % 2 == 0 ? 1f : -1f) * (i * 0.006f);
+            if (t < 0.02f || t > 0.98f) continue;
+            float z = Mathf.Lerp(zMin, zMax, t);
             if (FitsDomain(x, z, domain)) { bestZ = z; found = true; break; }
         }
         if (!found) bestZ = Mathf.Lerp(zMin, zMax, 0.5f);
@@ -234,15 +345,9 @@ public class MatchManager : MonoBehaviour
         float y;
         switch (domain)
         {
-            case Domain.Air:
-                y = Mathf.Max(ground, BattlefieldTerrain.WaterLevel) + 420f;
-                break;
-            case Domain.Sea:
-                y = BattlefieldTerrain.WaterLevel + 0.5f;
-                break;
-            default:
-                y = ground + 1.2f;
-                break;
+            case Domain.Air: y = Mathf.Max(ground, BattlefieldTerrain.WaterLevel) + 420f; break;
+            case Domain.Sea: y = BattlefieldTerrain.WaterLevel + 0.5f; break;
+            default: y = ground + 1.2f; break;
         }
         return new Vector3(x, y, bestZ);
     }
@@ -250,25 +355,13 @@ public class MatchManager : MonoBehaviour
     static bool FitsDomain(float x, float z, Domain domain)
     {
         if (domain == Domain.Air) return true;
-
         float ground = BattlefieldTerrain.SampleHeight(x, z);
         float depth = BattlefieldTerrain.WaterDepth(x, z);
-
-        if (domain == Domain.Sea) return depth >= 2.5f;                       // 船要有足够水深
-        return depth <= 0f && BattlefieldTerrain.SampleSteepness(x, z) < 18f; // 车要干地 + 不陡
+        if (domain == Domain.Sea) return depth >= 2.5f;
+        return depth <= 0f && BattlefieldTerrain.SampleSteepness(x, z) < 18f;
     }
 
-    // ==================== 资源点 ====================
-
-    VehicleCombat[] _cache = new VehicleCombat[0];
-    float _nextCache;
-
-    void RefreshCache()
-    {
-        if (Time.time < _nextCache) return;
-        _nextCache = Time.time + 0.4f;
-        _cache = FindObjectsByType<VehicleCombat>(FindObjectsInactive.Include, FindObjectsSortMode.None);
-    }
+    // ---------------- 资源点 ----------------
 
     void UpdateZones(float dt)
     {
@@ -276,8 +369,9 @@ public class MatchManager : MonoBehaviour
         foreach (var z in zones)
         {
             int team0 = 0, team1 = 0;
-            foreach (var v in _cache)
+            foreach (var kv in _cache)
             {
+                var v = kv.Key;
                 if (v == null || !v.Alive || !z.CanBeCapturedBy(v)) continue;
                 if (!z.Contains(v.transform.position)) continue;
                 if (v.Team == 0) team0++; else if (v.Team == 1) team1++;
@@ -308,48 +402,79 @@ public class MatchManager : MonoBehaviour
         }
     }
 
+    /// <summary>资源点产金是**全队加成**：占着的点每 tick 给该队每个活着的单位各发一份。</summary>
     void UpdateIncome(float dt)
     {
         _incomeTimer += dt;
         if (_incomeTimer < match.captureInterval) return;
         _incomeTimer -= match.captureInterval;
 
+        int income0 = 0, income1 = 0;
         foreach (var z in zones)
         {
             if (z.owner < 0 || z.def == null) continue;
-            gold[z.owner] += z.def.incomePerTick;
+            if (z.owner == 0) income0 += z.def.incomePerTick;
+            else income1 += z.def.incomePerTick;
         }
+
+        if (income0 > 0) foreach (var u in units) if (u.team == 0 && !u.Eliminated) u.gold += income0;
+        if (income1 > 0) foreach (var u in units) if (u.team == 1 && !u.Eliminated) u.gold += income1;
     }
 
-    // ==================== 击杀 / 胜负 ====================
+    // ---------------- 击杀 / 胜负 ----------------
 
     void OnVehicleDestroyed(VehicleCombat victim, VehicleCombat killer)
     {
         if (victim == null) return;
 
-        if (victim.Team == 1)
-        {
-            enemiesLeft = Mathf.Max(0, enemiesLeft - 1);
-            if (killer != null && killer.Team == 0)
-            {
-                int reward = Mathf.RoundToInt((victim.Def != null ? victim.Def.price : 100) * match.killRewardRate);
-                gold[0] += reward;
-                PushFeed($"击毁 {victim.name}  +{reward}金　敌方剩 {enemiesLeft} 台");
-            }
-            else PushFeed($"{victim.name} 被摧毁　敌方剩 {enemiesLeft} 台");
+        if (_map.TryGetValue(victim, out var victimUnit)) _map.Remove(victim);
+        else victimUnit = null;
 
-            if (enemiesLeft <= 0) EndMatch(0, "敌方载具全部击毁");
+        if (victimUnit != null)
+        {
+            victimUnit.vehicle = null;
+
+            if (victimUnit.isHuman)
+            {
+                PushFeed("你的载具被击毁");
+                _garageAt = Time.unscaledTime + garageDelay;
+            }
+            else if (victimUnit.lives > 0)
+            {
+                victimUnit.respawnAt = Time.time + aiRespawnDelay;
+            }
+        }
+
+        // 击杀奖励归**击杀者个人**
+        if (killer != null && _map.TryGetValue(killer, out var killerUnit) && killerUnit != victimUnit)
+        {
+            int reward = Mathf.RoundToInt((victim.Def != null ? victim.Def.price : 100) * match.killRewardRate);
+            killerUnit.gold += reward;
+            PushFeed($"{killerUnit.Label} 击毁 {victim.name}  +{reward}金");
         }
         else
         {
-            // 玩家阵亡
-            PushFeed(victim.name + " 被击毁");
-            _garageAt = Time.unscaledTime + garageDelay;
-            if (_player != null && _player == victim) _player = null;
+            PushFeed($"{victim.name} 被摧毁");
         }
+
+        CheckTeamWipe();
     }
 
-    // ==================== 结算 / 重开 ====================
+    void CheckTeamWipe()
+    {
+        if (matchOver) return;
+        if (TeamLives(1) <= 0 && TeamAlive(1) == 0) { EndMatch(0, "敌方全部出局"); return; }
+        if (TeamLives(0) <= 0 && TeamAlive(0) == 0) { EndMatch(1, "我方全部出局"); return; }
+        if (_human != null && _human.lives <= 0 && _human.vehicle == null)
+            EndMatch(TeamLives(0) > 0 ? 1 : 1, "你的 3 条命用完了");
+    }
+
+    void EndByLives(string reason)
+    {
+        int a = TeamLives(0), e = TeamLives(1);
+        if (a == e) EndMatch(0, reason + " · 平局判我方胜");
+        else EndMatch(a > e ? 0 : 1, reason + " · 比剩余命数");
+    }
 
     public void EndMatch(int winner, string reason)
     {
@@ -369,7 +494,7 @@ public class MatchManager : MonoBehaviour
         SceneManager.LoadScene(SceneManager.GetActiveScene().buildIndex);
     }
 
-    // ==================== 工具 ====================
+    // ---------------- 工具 ----------------
 
     public void PushFeed(string text)
     {

@@ -79,8 +79,8 @@ public class GarageScreen : MonoBehaviour
             Text(new Rect(0, 100f, vw, 28f), _subtitle, _center, new Color(1f, 1f, 1f, 0.6f), TextAnchor.MiddleCenter);
 
         // 状态行
-        Text(new Rect(vw * 0.5f - 420f, 140f, 840f, 32f),
-            $"金币 <b>{mm.gold[0]}</b>　　剩余部署 <b>{mm.livesLeft}</b> 次　　敌方剩余 <b>{mm.enemiesLeft}</b> 台",
+        Text(new Rect(vw * 0.5f - 480f, 140f, 960f, 32f),
+            $"我的金币 <b>{mm.Gold}</b>　　剩余部署 <b>{mm.LivesLeft}</b> 次　　敌方在场 <b>{mm.EnemiesLeft}</b> 台　　我方剩余命 <b>{mm.TeamLives(0)}</b>",
             _s22, CGold, TextAnchor.MiddleCenter);
 
         // 卡片
@@ -104,7 +104,7 @@ public class GarageScreen : MonoBehaviour
                 var r = new Rect(x0 + col * (cw + gap), y0 + row * (ch + gap), cw, ch);
 
                 bool afford = mm.CanAfford(def);
-                bool free = afford && mm.gold[0] < def.price;
+                bool free = afford && mm.Gold < def.price;
                 bool hover = r.Contains(mouse) && afford;
 
                 Fill(r, hover ? new Color(0.12f, 0.16f, 0.22f, 0.98f) : new Color(0.07f, 0.09f, 0.12f, 0.95f));

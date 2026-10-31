@@ -24,28 +24,13 @@ public static class MapSceneBuilder
         if (old != null) Object.DestroyImmediate(old);
         var holder = new GameObject(RootName);
 
-        float S = BattlefieldTerrain.Scale;
-
         // 先把每台车的模型 Prefab / 材质绑到 VehicleDef 上（运行时动态生成要用）
         foreach (var def in LoadRoster())
             EnsureModelAssets(def);
 
-        // 敌方 3 台：陆 / 海 / 空各一 —— 打光就赢
-        SpawnEnemy(holder, "Vehicle_land_main", new Vector2(-8f, -10f), -90f, S);
-        SpawnEnemy(holder, "Vehicle_sea_gunboat", new Vector2(12f, 42f), -90f, S);
-        SpawnEnemy(holder, "Vehicle_air_fighter", new Vector2(16f, -22f), -90f, S);
-
-        // AI 的兜底目标点
-        var objSea = new GameObject("Objective_Sea");
-        objSea.transform.position = new Vector3(0f, 0f, 40f * S);
-        var objCenter = new GameObject("Objective_Center");
-        objCenter.transform.position = Vector3.zero;
-
-        foreach (var ai in holder.GetComponentsInChildren<VehicleAI>())
-        {
-            var def = ai.GetComponent<VehicleCombat>().Def;
-            ai.objective = (def != null && def.domain == Domain.Sea) ? objSea.transform : objCenter.transform;
-        }
+        // 注意：这里不再预摆任何载具。
+        // 5v5 的 10 个单位全部由 MatchManager.Start 在运行时生成，
+        // 这样每个单位都能对上自己的 UnitState（金币/命数/复活）。
 
         // 相机
         var camGo = GameObject.Find("Main Camera");

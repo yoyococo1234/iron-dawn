@@ -86,7 +86,12 @@ public class VehicleCombat : MonoBehaviour
         }
     }
 
-    public void SetTeam(int t) => team = t;
+    /// <summary>设阵营。注意 Awake 时 team 还是 0，所以这里要重新上色。</summary>
+    public void SetTeam(int t)
+    {
+        team = t;
+        ApplyTeamTint();
+    }
 
     /// <summary>
     /// 给载具加一个可被击中的碰撞体。
