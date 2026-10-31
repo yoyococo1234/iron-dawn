@@ -100,7 +100,7 @@ public static class MapSceneBuilder
             def.modelTurretPrefab = turret;
             def.modelTurretPivot = ReadTurretPivot(def.id);
             def.modelYawOffset = 0f;        // 拆件脚本里已经把长轴统一到 +Z，不需要再转
-            def.showTurretRing = false;     // 车体已经补好洞，不需要再压圆盘
+            def.showTurretRing = true;      // 车体是空心壳，压一块深色井底盖住洞口
         }
         else if (def.modelPrefab == null)
         {

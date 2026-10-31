@@ -39,7 +39,7 @@ MonoBehaviour:
   modelMaterial: {fileID: 2100000, guid: 3ef683c9a868562449a40ef238d6148e, type: 2}
   modelTurretPrefab: {fileID: 919132149155446097, guid: 1e203cd5129e16143bd57336b4373ed7, type: 3}
   modelTurretPivot: {x: 0.0865, y: 2.2393, z: -0.0236}
-  showTurretRing: 0
+  showTurretRing: 1
   turretBoneName: Turret
   muzzleBoneName: Muzzle
   modelYawOffset: 0
