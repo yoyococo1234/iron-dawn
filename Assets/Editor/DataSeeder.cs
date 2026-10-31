@@ -87,7 +87,8 @@ public static class DataSeeder
             1f, 1f, 1f, 1.10f, 32f, 80f, 0f,
             1100f, 12f, 0f, 0f, 0f,
             TerrainType.Air, 85, "对地攻击机：机炮 + 反坦克导弹", gun20, misAt);
-        attacker.modelYawOffset = 180f;
+        // 攻击机模型机头本来就朝 +Z，不需要转（战斗机才需要 180）
+        attacker.modelYawOffset = 0f;
         EditorUtility.SetDirty(attacker);
 
         // ---------- 对局与经济 ----------
