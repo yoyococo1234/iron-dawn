@@ -79,7 +79,8 @@ public static class VehicleModelBinder
             tracks.name = "Tracks";
             tracks.transform.localPosition = Vector3.zero;
             StripColliders(tracks);
-            if (def.modelMaterial != null) ApplyMaterial(tracks, def.modelMaterial);
+            if (def.modelMaterial != null || def.modelTracksMaterial != null)
+                ApplyMaterial(tracks, def.modelTracksMaterial != null ? def.modelTracksMaterial : def.modelMaterial);
             // 拆件版履带总成（belt + wheel_*）用 TrackAssembly；老的整体履带用 TrackScroller
             bool isAssembly = false;
             foreach (var t in tracks.GetComponentsInChildren<Transform>(true))
@@ -88,7 +89,6 @@ public static class VehicleModelBinder
             {
                 var asm = tracks.AddComponent<TrackAssembly>();
                 asm.vehicle = vp;
-                asm.wellReference = def.modelTrackWellRef;
             }
             else
             {
