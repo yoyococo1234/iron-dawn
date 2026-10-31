@@ -58,9 +58,16 @@ public static class VehicleModelBinder
 
         var model = Object.Instantiate(modelSource, root.transform);
         model.name = "Model";
+
+        // 注意：FBX 导入出来的根节点自带「导入缩放」和「上轴修正旋转」，
+        // 直接覆盖 localScale/localRotation 会把模型缩成 1/100 并且歪掉。
+        // 所以要在原值基础上叠加，而不是替换。
+        var baseScale = model.transform.localScale;
+        var baseRot = model.transform.localRotation;
+
         model.transform.localPosition = Vector3.zero;
-        model.transform.localRotation = Quaternion.Euler(0f, def.modelYawOffset, 0f);
-        model.transform.localScale = Vector3.one * Mathf.Max(0.001f, def.modelScale);
+        model.transform.localRotation = Quaternion.Euler(0f, def.modelYawOffset, 0f) * baseRot;
+        model.transform.localScale = baseScale * Mathf.Max(0.001f, def.modelScale);
 
         // 模型本身不做碰撞（碰撞交给逻辑，别让物理引擎和我们的贴地打架）
         foreach (var c in model.GetComponentsInChildren<Collider>(true))

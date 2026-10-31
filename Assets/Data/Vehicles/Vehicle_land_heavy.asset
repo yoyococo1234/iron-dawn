@@ -38,6 +38,6 @@ MonoBehaviour:
   modelPrefab: {fileID: 0}
   turretBoneName: Turret
   muzzleBoneName: Muzzle
-  modelYawOffset: 0
+  modelYawOffset: 90
   modelScale: 1
   description: "\u6B63\u9762\u6781\u786C\uFF0C\u53EA\u80FD\u722C 22\xB0"

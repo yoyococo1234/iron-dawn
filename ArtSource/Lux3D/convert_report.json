@@ -1,0 +1,104 @@
+{
+  "land_light": {
+    "status": "OK",
+    "fbx": "D:\\UnityProjects\\Tank3D\\Assets\\Models\\Vehicles\\land_light.fbx",
+    "fbx_bytes": 2766268,
+    "raw_dims": [
+      4.8,
+      8.802,
+      4.419
+    ],
+    "scale_applied": 0.80663,
+    "final_dims": [
+      3.87,
+      7.1,
+      3.56
+    ],
+    "tris": 59590
+  },
+  "land_main": {
+    "status": "OK",
+    "fbx": "D:\\UnityProjects\\Tank3D\\Assets\\Models\\Vehicles\\land_main.fbx",
+    "fbx_bytes": 2636332,
+    "raw_dims": [
+      9.8,
+      20.796,
+      8.429
+    ],
+    "scale_applied": 0.41354,
+    "final_dims": [
+      4.05,
+      8.6,
+      3.49
+    ],
+    "tris": 58104
+  },
+  "land_heavy": {
+    "status": "OK",
+    "fbx": "D:\\UnityProjects\\Tank3D\\Assets\\Models\\Vehicles\\land_heavy.fbx",
+    "fbx_bytes": 2720300,
+    "raw_dims": [
+      9.5,
+      4.655,
+      3.628
+    ],
+    "scale_applied": 1.07368,
+    "final_dims": [
+      10.2,
+      5.0,
+      3.9
+    ],
+    "tris": 59388
+  },
+  "sea_gunboat": {
+    "status": "OK",
+    "fbx": "D:\\UnityProjects\\Tank3D\\Assets\\Models\\Vehicles\\sea_gunboat.fbx",
+    "fbx_bytes": 2681132,
+    "raw_dims": [
+      35.0,
+      132.236,
+      48.507
+    ],
+    "scale_applied": 0.13612,
+    "final_dims": [
+      4.76,
+      18.0,
+      6.6
+    ],
+    "tris": 58208
+  },
+  "air_fighter": {
+    "status": "OK",
+    "fbx": "D:\\UnityProjects\\Tank3D\\Assets\\Models\\Vehicles\\air_fighter.fbx",
+    "fbx_bytes": 2273724,
+    "raw_dims": [
+      14.45,
+      17.737,
+      7.328
+    ],
+    "scale_applied": 0.62016,
+    "final_dims": [
+      8.96,
+      11.0,
+      4.54
+    ],
+    "tris": 57520
+  },
+  "air_attacker": {
+    "status": "OK",
+    "fbx": "D:\\UnityProjects\\Tank3D\\Assets\\Models\\Vehicles\\air_attacker.fbx",
+    "fbx_bytes": 2456252,
+    "raw_dims": [
+      20.009,
+      17.53,
+      6.322
+    ],
+    "scale_applied": 0.59972,
+    "final_dims": [
+      12.0,
+      10.51,
+      3.79
+    ],
+    "tris": 59598
+  }
+}

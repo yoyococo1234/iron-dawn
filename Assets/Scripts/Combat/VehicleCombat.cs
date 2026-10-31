@@ -68,27 +68,59 @@ public class VehicleCombat : MonoBehaviour
         if (def == null) def = _phys != null ? _phys.def : null;
         if (def != null) { maxHp = def.maxHp; hp = maxHp; }
         EnsureHitCollider();
+        ApplyTeamTint();
+    }
+
+    /// <summary>阵营色调：我方偏冷、敌方偏暖，一眼能分清敌我（不污染共享材质）。</summary>
+    void ApplyTeamTint()
+    {
+        var tint = team == 0 ? new Color(0.74f, 0.87f, 1.00f) : new Color(1.00f, 0.74f, 0.66f);
+        var mpb = new MaterialPropertyBlock();
+        foreach (var r in GetComponentsInChildren<MeshRenderer>(true))
+        {
+            r.GetPropertyBlock(mpb);
+            mpb.SetColor("_Color", tint);
+            r.SetPropertyBlock(mpb);
+        }
     }
 
     public void SetTeam(int t) => team = t;
 
-    /// <summary>给载具加一个可被击中的碰撞体（方块占位模型没有碰撞体）。</summary>
+    /// <summary>
+    /// 给载具加一个可被击中的碰撞体。
+    /// 必须按「网格局部包围盒」算，不能拿世界 AABB —— 车一转 yaw，世界 AABB 的长宽就互换，
+    /// 命中盒会横过来，炮弹从车头穿过去都判定不到。
+    /// </summary>
     void EnsureHitCollider()
     {
         if (GetComponent<Collider>() != null) return;
-        var rs = GetComponentsInChildren<MeshRenderer>();
-        if (rs.Length == 0) return;
 
-        var b = rs[0].bounds;
-        foreach (var r in rs) b.Encapsulate(r.bounds);
+        bool has = false;
+        Bounds local = new Bounds(Vector3.zero, Vector3.zero);
 
+        foreach (var mf in GetComponentsInChildren<MeshFilter>())
+        {
+            if (mf.sharedMesh == null) continue;
+            var mb = mf.sharedMesh.bounds;
+            var e = mb.extents;
+            var toRoot = transform.worldToLocalMatrix * mf.transform.localToWorldMatrix;
+
+            for (int i = 0; i < 8; i++)
+            {
+                var corner = new Vector3(
+                    mb.center.x + ((i & 1) == 0 ? -e.x : e.x),
+                    mb.center.y + ((i & 2) == 0 ? -e.y : e.y),
+                    mb.center.z + ((i & 4) == 0 ? -e.z : e.z));
+                var p = toRoot.MultiplyPoint3x4(corner);
+                if (!has) { local = new Bounds(p, Vector3.zero); has = true; }
+                else local.Encapsulate(p);
+            }
+        }
+
+        if (!has) return;
         var box = gameObject.AddComponent<BoxCollider>();
-        // 把世界包围盒换算成局部空间
-        box.center = transform.InverseTransformPoint(b.center);
-        Vector3 s = transform.lossyScale;
-        box.size = new Vector3(b.size.x / Mathf.Max(0.01f, s.x),
-                               b.size.y / Mathf.Max(0.01f, s.y),
-                               b.size.z / Mathf.Max(0.01f, s.z));
+        box.center = local.center;
+        box.size = local.size;
     }
 
     // ==================== 开火 ====================

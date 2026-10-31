@@ -56,10 +56,13 @@ public static class DataSeeder
             750f, 45f, 0.9f, 1.8f, 1.2f,
             TerrainType.Land | TerrainType.ShallowWater, 80, "均衡，能爬 29°", gun120, mg12);
 
-        Vehicle("land_heavy", "重装坦克", Domain.Land, 220, 1600, ArmorMode.Directional,
+        var heavy = Vehicle("land_heavy", "重装坦克", Domain.Land, 220, 1600, ArmorMode.Directional,
             0.60f, 0.80f, 1.05f, 0f, 8f, 40f, 50f,
             800f, 65f, 1.0f, 2.0f, 1.4f,
             TerrainType.Land | TerrainType.ShallowWater, 90, "正面极硬，只能爬 22°", gun130, mg12);
+        // Lux3D 出的重装坦克长轴沿 +X，其余 5 台沿 +Z —— 这里转正
+        heavy.modelYawOffset = 90f;
+        EditorUtility.SetDirty(heavy);
 
         Vehicle("sea_gunboat", "炮艇", Domain.Sea, 180, 1000, ArmorMode.Directional,
             0.85f, 1.00f, 1.15f, 0f, 22f, 70f, 100f,

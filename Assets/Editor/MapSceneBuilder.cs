@@ -99,8 +99,28 @@ public static class MapSceneBuilder
         vp.terrain = null;                 // ← 关键：留空 = 用 Unity Terrain
         vp.ApplyDef();
 
-        // 方块占位（还没有正式模型）
-        BuildPrimitive(go, def, out var turret, out var muzzle);
+        // 外观：优先用 Lux3D 生成的精细模型；找不到才退回方块占位
+        Transform turret, muzzle;
+        var modelSource = VehicleModelBinder.AutoFindModel(def.id);
+        if (modelSource != null)
+        {
+            VehicleModelBinder.Attach(go, modelSource, def, out turret, out muzzle);
+            ApplyModelMaterial(go, def);
+
+            // Lux3D 的模型是整体网格，没有独立炮塔节点 —— 补一个"逻辑炮塔"，
+            // 让瞄准方向 / 出膛点仍然有真实位置（炮塔暂时不能视觉旋转）
+            if (turret == null || muzzle == null)
+            {
+                BuildLogicBones(go, def, out var lt, out var lm);
+                if (turret == null) turret = lt;
+                if (muzzle == null) muzzle = lm;
+            }
+        }
+        else
+        {
+            BuildPrimitive(go, def, out turret, out muzzle);
+        }
+
         vp.turretBone = turret;
         vp.muzzleBone = muzzle;
 
@@ -185,5 +205,80 @@ public static class MapSceneBuilder
         m.transform.SetParent(parent, false);
         m.transform.localPosition = localPos;
         return m.transform;
+    }
+
+    /// <summary>
+    /// 给模型挂上带贴图的材质。贴图是从 Lux3D 的 GLB 里抽出来的 baseColor 图集
+    /// （FBX 转换时为了统一上色清掉了材质，这里重新挂回去）。
+    /// 阵营色调不写进材质，改由 VehicleCombat 在运行时用 MaterialPropertyBlock 上色。
+    /// </summary>
+    static void ApplyModelMaterial(GameObject root, VehicleDef def)
+    {
+        string texPath = $"Assets/Models/Vehicles/Textures/{def.id}_base.png";
+        var tex = AssetDatabase.LoadAssetAtPath<Texture2D>(texPath);
+
+        EnsureFolder("Assets/Models");
+        EnsureFolder("Assets/Models/Vehicles");
+        EnsureFolder("Assets/Models/Vehicles/Materials");
+        string matPath = $"Assets/Models/Vehicles/Materials/{def.id}.mat";
+
+        var mat = AssetDatabase.LoadAssetAtPath<Material>(matPath);
+        var std = Shader.Find("Standard");
+        if (mat == null)
+        {
+            mat = new Material(std);
+            AssetDatabase.CreateAsset(mat, matPath);
+        }
+        mat.shader = std;
+        if (tex != null) mat.SetTexture("_MainTex", tex);
+        mat.SetFloat("_Glossiness", 0.18f);
+        mat.SetFloat("_Metallic", 0.10f);
+        // 场景光照偏亮，贴图本身是 0.43 的中灰，直接白着会过曝成塑料感 —— 压成军用灰绿
+        mat.color = new Color(0.58f, 0.61f, 0.55f);
+        EditorUtility.SetDirty(mat);
+
+        foreach (var r in root.GetComponentsInChildren<MeshRenderer>())
+        {
+            var mats = new Material[Mathf.Max(1, r.sharedMaterials.Length)];
+            for (int i = 0; i < mats.Length; i++) mats[i] = mat;
+            r.sharedMaterials = mats;
+        }
+    }
+
+    /// <summary>
+    /// Lux3D 的模型是整体网格，没有独立炮塔节点。按包围盒补一个"逻辑炮塔 + 炮口"，
+    /// 让瞄准方向、出膛位置、弹道起点都是真的（视觉上炮塔暂不旋转）。
+    /// </summary>
+    static void BuildLogicBones(GameObject root, VehicleDef def, out Transform turret, out Transform muzzle)
+    {
+        var rs = root.GetComponentsInChildren<MeshRenderer>();
+        if (rs.Length == 0) { turret = root.transform; muzzle = root.transform; return; }
+
+        var b = rs[0].bounds;
+        foreach (var r in rs) b.Encapsulate(r.bounds);
+
+        // 世界包围盒换成根节点局部坐标（只取中心，尺寸用最大水平边当车长）
+        Vector3 center = root.transform.InverseTransformPoint(b.center);
+        float halfLen = Mathf.Max(b.size.x, b.size.z) * 0.5f;
+        float height = b.size.y;
+
+        var tp = new GameObject("Turret");
+        tp.transform.SetParent(root.transform, false);
+        tp.transform.localPosition = new Vector3(0f, Mathf.Max(0.5f, center.y * 0.85f), 0f);
+        turret = tp.transform;
+
+        var mz = new GameObject("Muzzle");
+        mz.transform.SetParent(tp.transform, false);
+        mz.transform.localPosition = new Vector3(0f, height * 0.10f, halfLen * 0.90f);
+        muzzle = mz.transform;
+    }
+
+    static void EnsureFolder(string path)
+    {
+        if (AssetDatabase.IsValidFolder(path)) return;
+        var parent = System.IO.Path.GetDirectoryName(path).Replace("\\", "/");
+        var leaf = System.IO.Path.GetFileName(path);
+        if (!AssetDatabase.IsValidFolder(parent)) EnsureFolder(parent);
+        AssetDatabase.CreateFolder(parent, leaf);
     }
 }
