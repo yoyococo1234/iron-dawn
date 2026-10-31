@@ -19,6 +19,6 @@ MonoBehaviour:
   range: 800
   projectileSpeed: 1050
   ammoTypes:
-  - {fileID: 11400000, guid: 8ec15d407009f244592e1f152ea927ad, type: 2}
+  - {fileID: 11400000, guid: 87bf420b3ec48124bb3f5658e216853e, type: 2}
   - {fileID: 11400000, guid: 8e4a652136f9bf54a855e3f3cd8bde00, type: 2}
   mountedDomain: 2

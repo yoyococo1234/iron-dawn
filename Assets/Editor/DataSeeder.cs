@@ -28,6 +28,10 @@ public static class DataSeeder
         var aa    = Ammo("aa",      "防空弹",    0.1f, 0.5f, 1.5f, 0.1f, 10);
         var torp  = Ammo("torpedo", "鱼雷",      0.1f, 0.2f, 0.0f, 1.0f, 30);
         var bomb  = Ammo("bomb",    "航空炸弹",  0.8f, 1.2f, 0.2f, 1.2f, 40);
+        // 航空武器：机炮打不穿装甲，导弹才是反坦克/反舰的主力
+        var cannon    = Ammo("cannon",     "机炮炮弹",   0.15f, 0.5f, 1.5f, 0.10f, 3);
+        var missileAt = Ammo("missile_at", "反坦克导弹", 2.60f, 1.2f, 0.0f, 1.60f, 60);
+        var missileAa = Ammo("missile_aa", "空空导弹",   0.20f, 0.3f, 2.6f, 0.10f, 50);
 
         // ---------- 武器 ----------
         // 弹速 = 真实炮口初速。原来写 140~250 m/s（约等于弹弓），2 km 图上要飞 4~5 秒，
@@ -40,7 +44,9 @@ public static class DataSeeder
         var mg12   = Weapon("mg_12",    "12mm 机枪",    25f, 0.12f, 400f,  850f, Domain.Land, ap);
         var naval  = Weapon("naval_gun","舰炮",        260f, 5.0f, 1200f,  800f, Domain.Sea,  he, heat);
         var torpL  = Weapon("torpedo_launcher", "鱼雷管", 850f, 12f, 500f, 40f, Domain.Sea,  torp);
-        var gun20  = Weapon("gun_20",   "20mm 机炮",    60f, 0.15f, 800f, 1050f, Domain.Air,  ap, aa);
+        var gun20  = Weapon("gun_20",   "20mm 机炮",    60f, 0.15f, 800f, 1050f, Domain.Air,  cannon, aa);
+        var misAt  = Weapon("missile_at","反坦克导弹", 520f, 7.0f, 1400f, 320f, Domain.Air,  missileAt);
+        var misAa  = Weapon("missile_aa","空空导弹",   380f, 5.0f, 1600f, 480f, Domain.Air,  missileAa);
         var bombR  = Weapon("bomb_rack","航空炸弹挂架", 750f, 8.0f, 300f,   0f, Domain.Air,  bomb);
 
         // ---------- 载具 ----------
@@ -72,7 +78,7 @@ public static class DataSeeder
         var fighter = Vehicle("air_fighter", "战斗机", Domain.Air, 160, 300, ArmorMode.Uniform,
             1f, 1f, 1f, 1.00f, 45f, 120f, 0f,
             900f, 8f, 0f, 0f, 0f,
-            TerrainType.Air, 80, "最快，制空；一击即落", gun20);
+            TerrainType.Air, 80, "制空战斗机：机炮 + 空空导弹", gun20, misAa);
         // Lux3D 的飞机模型机头朝 -Z（其余载具朝 +Z）—— 转 180° 正过来，否则看着像倒着飞
         fighter.modelYawOffset = 180f;
         EditorUtility.SetDirty(fighter);
@@ -80,7 +86,7 @@ public static class DataSeeder
         var attacker = Vehicle("air_attacker", "攻击机", Domain.Air, 200, 450, ArmorMode.Uniform,
             1f, 1f, 1f, 1.10f, 32f, 80f, 0f,
             1100f, 12f, 0f, 0f, 0f,
-            TerrainType.Air, 85, "能打地面，越墙；慢、怕防空", gun20, bombR);
+            TerrainType.Air, 85, "对地攻击机：机炮 + 反坦克导弹", gun20, misAt);
         attacker.modelYawOffset = 180f;
         EditorUtility.SetDirty(attacker);
 

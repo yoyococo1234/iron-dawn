@@ -37,7 +37,7 @@ public class VehiclePhysics : MonoBehaviour
     [Tooltip("鼠标灵敏度（虚拟摇杆）")]
     public float airMouseSensitivity = 0.5f;
     [Tooltip("鼠标松手后虚拟摇杆回中速度")]
-    public float airRecenterSpeed = 1.8f;
+    public float airRecenterSpeed = 0.9f;
     [Tooltip("最大俯仰角速度（度/秒）")]
     public float airPitchRate = 55f;
     [Tooltip("最大偏航角速度（度/秒）")]
@@ -46,8 +46,8 @@ public class VehiclePhysics : MonoBehaviour
     public float airRollRate = 120f;
     [Tooltip("靠横滚带出的转弯强度（度/秒，满横滚时）")]
     public float airBankTurnRate = 42f;
-    [Tooltip("姿态跟随输入的速度")]
-    public float airResponse = 7f;
+    [Tooltip("姿态跟随输入的速度。太小的话模型会明显滞后于飞行方向，看着像横着飘")]
+    public float airResponse = 22f;
     [Tooltip("油门变化速度（每秒）")]
     public float airThrottleRate = 0.7f;
     [Tooltip("撞地高度（低于地面这么多米就算坠毁）")]
@@ -61,6 +61,9 @@ public class VehiclePhysics : MonoBehaviour
     [System.NonSerialized] public float airRoll;
     [System.NonSerialized] public float airThrottle = 0.65f;
     float _airAimX, _airAimY;
+
+    /// <summary>飞机准星的屏幕偏移（-1~1），HUD 和瞄准都用它。</summary>
+    public Vector2 AirAim => new Vector2(_airAimX, _airAimY);
 
     [Header("测试用：自动驾驶（不做输入也能跑）")]
     public bool autoDrive = false;

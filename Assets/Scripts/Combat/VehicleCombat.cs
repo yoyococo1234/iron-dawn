@@ -289,14 +289,17 @@ public class VehicleCombat : MonoBehaviour
     }
 
     /// <summary>弹药对"这台载具"的倍率：按目标所在域取。</summary>
-    float AmmoMultiplier(AmmoDef ammo)
+    float AmmoMultiplier(AmmoDef ammo) => AmmoMultiplierVs(ammo, def);
+
+    /// <summary>某弹药打某种载具的倍率（AI 判断"这炮有没有用"用）。</summary>
+    public static float AmmoMultiplierVs(AmmoDef ammo, VehicleDef targetDef)
     {
-        if (ammo == null) return 1f;
-        switch (def.domain)
+        if (ammo == null || targetDef == null) return 1f;
+        switch (targetDef.domain)
         {
             case Domain.Sea: return ammo.vsSea;
             case Domain.Air: return ammo.vsAir;
-            default: return def.armorMode == ArmorMode.Uniform ? ammo.vsSoft : ammo.vsArmor;
+            default: return targetDef.armorMode == ArmorMode.Uniform ? ammo.vsSoft : ammo.vsArmor;
         }
     }
 

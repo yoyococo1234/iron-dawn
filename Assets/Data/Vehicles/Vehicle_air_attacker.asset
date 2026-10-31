@@ -34,11 +34,11 @@ MonoBehaviour:
   terrainAllowed: 8
   weapons:
   - {fileID: 11400000, guid: cdbdcba4a80e9d342ac2582baa4a06ec, type: 2}
-  - {fileID: 11400000, guid: 1656174497aa82a4e98451414936c081, type: 2}
+  - {fileID: 11400000, guid: 143128160f49bfd45be9a47f3b0e9b84, type: 2}
   modelPrefab: {fileID: 919132149155446097, guid: ad8f4e851458e234da2af34190989e74, type: 3}
   modelMaterial: {fileID: 2100000, guid: 6c80b587af7941948a8de83d591dbd14, type: 2}
   turretBoneName: Turret
   muzzleBoneName: Muzzle
   modelYawOffset: 180
   modelScale: 1
-  description: "\u80FD\u6253\u5730\u9762\uFF0C\u8D8A\u5899\uFF1B\u6162\u3001\u6015\u9632\u7A7A"
+  description: "\u5BF9\u5730\u653B\u51FB\u673A\uFF1A\u673A\u70AE + \u53CD\u5766\u514B\u5BFC\u5F39"
