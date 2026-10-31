@@ -90,9 +90,43 @@ public static class MapSceneBuilder
     static void EnsureModelAssets(VehicleDef def)
     {
         if (def == null) return;
-        if (def.modelPrefab == null) def.modelPrefab = VehicleModelBinder.AutoFindModel(def.id);
+
+        // 优先用 Lux3D part_split 拆出来的「车体 + 独立炮塔」—— 炮塔能真的转
+        var hull = AssetDatabase.LoadAssetAtPath<GameObject>($"Assets/Models/Vehicles/Split/{def.id}_hull.fbx");
+        var turret = AssetDatabase.LoadAssetAtPath<GameObject>($"Assets/Models/Vehicles/Split/{def.id}_turret.fbx");
+        if (hull != null && turret != null)
+        {
+            def.modelPrefab = hull;
+            def.modelTurretPrefab = turret;
+            def.modelTurretPivot = ReadTurretPivot(def.id);
+            def.modelYawOffset = 0f;        // 拆件脚本里已经把长轴统一到 +Z，不需要再转
+        }
+        else if (def.modelPrefab == null)
+        {
+            def.modelPrefab = VehicleModelBinder.AutoFindModel(def.id);
+            def.modelTurretPrefab = null;
+        }
+
         if (def.modelMaterial == null) def.modelMaterial = EnsureMaterial(def);
         EditorUtility.SetDirty(def);
+    }
+
+    /// <summary>读 ArtSource/Lux3D/turret_pivots.txt（Blender 拆件时算出的炮塔转轴）。</summary>
+    static Vector3 ReadTurretPivot(string id)
+    {
+        const string path = "D:/UnityProjects/Tank3D/ArtSource/Lux3D/turret_pivots.txt";
+        if (!System.IO.File.Exists(path)) return Vector3.zero;
+
+        foreach (var line in System.IO.File.ReadAllLines(path))
+        {
+            var parts = line.Split(new[] { ' ', '\t' }, System.StringSplitOptions.RemoveEmptyEntries);
+            if (parts.Length < 4 || parts[0] != id) continue;
+            if (float.TryParse(parts[1], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var x) &&
+                float.TryParse(parts[2], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var y) &&
+                float.TryParse(parts[3], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var z))
+                return new Vector3(x, y, z);
+        }
+        return Vector3.zero;
     }
 
     static Material EnsureMaterial(VehicleDef def)

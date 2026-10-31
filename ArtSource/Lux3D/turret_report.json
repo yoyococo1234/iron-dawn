@@ -1,0 +1,38 @@
+{
+  "land_light": {
+    "status": "OK",
+    "pivot_unity": [
+      0.0865,
+      2.2393,
+      -0.0236
+    ],
+    "hull_faces": 56033,
+    "turret_faces": 3557,
+    "hull_fbx": "D:\\UnityProjects\\Tank3D\\Assets\\Models\\Vehicles\\Split\\land_light_hull.fbx",
+    "turret_fbx": "D:\\UnityProjects\\Tank3D\\Assets\\Models\\Vehicles\\Split\\land_light_turret.fbx"
+  },
+  "land_main": {
+    "status": "OK",
+    "pivot_unity": [
+      -0.0107,
+      1.677,
+      0.8594
+    ],
+    "hull_faces": 48664,
+    "turret_faces": 9440,
+    "hull_fbx": "D:\\UnityProjects\\Tank3D\\Assets\\Models\\Vehicles\\Split\\land_main_hull.fbx",
+    "turret_fbx": "D:\\UnityProjects\\Tank3D\\Assets\\Models\\Vehicles\\Split\\land_main_turret.fbx"
+  },
+  "land_heavy": {
+    "status": "OK",
+    "pivot_unity": [
+      0.0001,
+      2.2936,
+      -1.084
+    ],
+    "hull_faces": 52139,
+    "turret_faces": 7249,
+    "hull_fbx": "D:\\UnityProjects\\Tank3D\\Assets\\Models\\Vehicles\\Split\\land_heavy_hull.fbx",
+    "turret_fbx": "D:\\UnityProjects\\Tank3D\\Assets\\Models\\Vehicles\\Split\\land_heavy_turret.fbx"
+  }
+}

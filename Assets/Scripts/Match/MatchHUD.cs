@@ -61,7 +61,7 @@ public class MatchHUD : MonoBehaviour
         GUI.matrix = oldMatrix;
     }
 
-    // ---------------- 顶部：时间 + 剩余命数 ----------------
+    // ---------------- 顶部：时间 + 击杀数 ----------------
 
     void DrawTopBar(MatchManager mm)
     {
@@ -69,12 +69,13 @@ public class MatchHUD : MonoBehaviour
         float x = _vw * 0.5f - w * 0.5f;
         Panel(new Rect(x, 12f, w, h));
 
-        Text(new Rect(x, 18f, w, 30f), mm.TimeText, _s32, Color.white, TextAnchor.MiddleCenter);
+        Text(new Rect(x, 16f, w, 30f), mm.TimeText, _s32, Color.white, TextAnchor.MiddleCenter);
 
-        Text(new Rect(x + 16f, 48f, w * 0.5f - 16f, 26f), $"我方命 <b>{mm.TeamLives(0)}</b>", _s20, CAlly, TextAnchor.MiddleLeft);
-        Text(new Rect(x + w * 0.5f, 48f, w * 0.5f - 16f, 26f), $"<b>{mm.TeamLives(1)}</b> 敌方命", _s20, CEnemy, TextAnchor.MiddleRight);
+        Text(new Rect(x + 16f, 46f, w * 0.5f - 16f, 26f), $"我方击杀 <b>{mm.kills[0]}</b>", _s20, CAlly, TextAnchor.MiddleLeft);
+        Text(new Rect(x + w * 0.5f, 46f, w * 0.5f - 16f, 26f), $"<b>{mm.kills[1]}</b> 敌方击杀", _s20, CEnemy, TextAnchor.MiddleRight);
 
-        Text(new Rect(x, 94f, w, 22f), $"场上：我方 {mm.TeamAlive(0)} / 敌方 {mm.TeamAlive(1)}", _s18, new Color(1f, 1f, 1f, 0.5f), TextAnchor.MiddleCenter);
+        Text(new Rect(x, 94f, w, 22f), $"剩余命 我方 {mm.TeamLives(0)} / 敌方 {mm.TeamLives(1)}　·　在场 {mm.TeamAlive(0)} / {mm.TeamAlive(1)}",
+             _s18, new Color(1f, 1f, 1f, 0.5f), TextAnchor.MiddleCenter);
     }
 
     // ---------------- 左上：金币（个人） ----------------
@@ -82,7 +83,7 @@ public class MatchHUD : MonoBehaviour
     void DrawGold(MatchManager mm)
     {
         Panel(new Rect(16f, 12f, 250f, 78f));
-        Text(new Rect(28f, 16f, 226f, 40f), $"<b>{mm.Gold}</b> 金", _s32, CGold, TextAnchor.MiddleLeft);
+        Text(new Rect(28f, 16f, 226f, 40f), $"<b>￥{mm.Gold}</b>", _s32, CGold, TextAnchor.MiddleLeft);
         Text(new Rect(28f, 56f, 226f, 22f), $"我的命 {mm.LivesLeft} · 占点全队产金", _s18, new Color(1f, 1f, 1f, 0.5f), TextAnchor.MiddleLeft);
     }
 
@@ -149,13 +150,13 @@ public class MatchHUD : MonoBehaviour
 
         var w2 = p.Weapon;
         string ammo = p.Ammo != null ? p.Ammo.displayName : "—";
-        Text(new Rect(x + 20f, y + 66f, w - 40f, 24f), $"弹药：{ammo}　武器：{(w2 != null ? w2.displayName : "—")}", _s18, new Color(1f, 1f, 1f, 0.8f), TextAnchor.MiddleLeft);
+        Text(new Rect(x + 20f, y + 64f, 300f, 24f), $"弹药 {ammo} · 武器 {(w2 != null ? w2.displayName : "—")}", _s18, new Color(1f, 1f, 1f, 0.8f), TextAnchor.MiddleLeft);
 
         var rlBar = new Rect(x + 20f, y + 92f, w - 40f, 8f);
         Fill(rlBar, new Color(1f, 1f, 1f, 0.10f));
         Fill(new Rect(rlBar.x, rlBar.y, rlBar.width * Mathf.Clamp01(p.ReloadProgress), rlBar.height), CGold);
 
-        Text(new Rect(x + w - 300f, y + 66f, 280f, 24f), "左键开火 · 右键副武器 · 1/2/3 切弹", _s18, new Color(1f, 1f, 1f, 0.5f), TextAnchor.MiddleRight);
+        Text(new Rect(x + w - 200f, y + 64f, 180f, 24f), "Q 切武器 · 右键开镜", _s18, new Color(1f, 1f, 1f, 0.55f), TextAnchor.MiddleRight);
     }
 
     // ---------------- 右上：击杀提示 ----------------

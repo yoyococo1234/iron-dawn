@@ -27,10 +27,18 @@ public class CameraFollow : MonoBehaviour
     public float followLerp = 10f;
     public float lookHeight = 2.2f;
 
+    [Header("开镜（右键按住）")]
+    public float normalFov = 50f;
+    public float zoomFov = 14f;
+    public float scopeSpeed = 12f;
+    [Tooltip("开镜时的鼠标灵敏度倍率")]
+    public float zoomSensitivity = 0.3f;
+
     Vector3 _shake;
     float _shakeAmount;
     float _dist = 16f;
     float _curYaw;
+    bool _scoped;
 
     public void Shake(float amount) => _shakeAmount = Mathf.Max(_shakeAmount, amount);
 
@@ -85,9 +93,19 @@ public class CameraFollow : MonoBehaviour
 
         if (Cursor.lockState == CursorLockMode.Locked)
         {
-            yaw += Input.GetAxis("Mouse X") * sensitivity;
-            pitch -= Input.GetAxis("Mouse Y") * sensitivity;
+            float sens = sensitivity * (_scoped ? zoomSensitivity : 1f);
+            yaw += Input.GetAxis("Mouse X") * sens;
+            pitch -= Input.GetAxis("Mouse Y") * sens;
             pitch = Mathf.Clamp(pitch, minPitch, maxPitch);
+        }
+
+        // 开镜：右键按住把 FOV 拉近（战雷式）
+        _scoped = Cursor.lockState == CursorLockMode.Locked && Input.GetMouseButton(1);
+        var cam = GetComponent<Camera>();
+        if (cam != null)
+        {
+            float wantFov = _scoped ? zoomFov : normalFov;
+            cam.fieldOfView = Mathf.Lerp(cam.fieldOfView, wantFov, scopeSpeed * Time.unscaledDeltaTime);
         }
 
         float scroll = Input.GetAxis("Mouse ScrollWheel");
@@ -127,6 +145,9 @@ public class CameraFollow : MonoBehaviour
     {
         float dt = Time.unscaledDeltaTime;
         _dist = Mathf.Lerp(_dist, distance, 8f * dt);
+
+        var cam = GetComponent<Camera>();
+        if (cam != null) cam.fieldOfView = Mathf.Lerp(cam.fieldOfView, normalFov, scopeSpeed * dt);
 
         var desired = target.position - target.forward * _dist + target.up * (_dist * 0.22f);
         float ground = Mathf.Max(BattlefieldTerrain.SampleHeight(desired.x, desired.z), BattlefieldTerrain.WaterLevel) + 2f;

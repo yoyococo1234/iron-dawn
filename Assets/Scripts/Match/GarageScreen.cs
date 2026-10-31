@@ -126,7 +126,7 @@ public class GarageScreen : MonoBehaviour
                 Text(new Rect(r.x + 20f, r.y + 158f, r.width - 40f, 60f), def.description, _s14, new Color(1f, 1f, 1f, 0.55f), TextAnchor.UpperLeft);
 
                 Text(new Rect(r.x + 20f, r.y + ch - 56f, r.width - 40f, 40f),
-                    afford ? (free ? "<b>免费补充</b>　点击出击" : $"<b>{def.price}</b> 金　点击出击") : $"{def.price} 金　金币不足",
+                    afford ? (free ? "<b>免费补充</b>　点击出击" : $"<b>￥{def.price}</b>　点击出击") : $"￥{def.price}　金币不足",
                     _s22, afford ? CGold : new Color(1f, 1f, 1f, 0.35f), TextAnchor.MiddleLeft);
 
                 if (afford && Event.current.type == EventType.MouseDown && Event.current.button == 0 && r.Contains(mouse))

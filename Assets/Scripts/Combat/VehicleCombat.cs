@@ -19,6 +19,8 @@ public class VehicleCombat : MonoBehaviour
     public float hp = 1f;
     public float maxHp = 1f;
     public int ammoIndex;
+    [Tooltip("当前使用第几把武器（Q 键切换）")]
+    public int weaponIndex;
     public bool dead;
 
     [Header("表现")]
@@ -46,10 +48,24 @@ public class VehicleCombat : MonoBehaviour
     public VehicleDef Def => def;
     public VehiclePhysics Physics => _phys;
 
-    /// <summary>主武器（第一把）。</summary>
-    public WeaponDef Weapon => def != null && def.weapons != null && def.weapons.Length > 0 ? def.weapons[0] : null;
+    /// <summary>当前武器（Q 键切换）。</summary>
+    public WeaponDef Weapon
+    {
+        get
+        {
+            if (def == null || def.weapons == null || def.weapons.Length == 0) return null;
+            return def.weapons[Mathf.Clamp(weaponIndex, 0, def.weapons.Length - 1)];
+        }
+    }
 
-    /// <summary>副武器（第二把：炸弹 / 鱼雷）。没有就返回 null。</summary>
+    /// <summary>切到下一把武器（玩家按 Q）。</summary>
+    public void CycleWeapon()
+    {
+        if (def == null || def.weapons == null || def.weapons.Length <= 1) return;
+        weaponIndex = (weaponIndex + 1) % def.weapons.Length;
+    }
+
+    /// <summary>副武器（第二把：炸弹 / 导弹）。AI 用。</summary>
     public WeaponDef Secondary => def != null && def.weapons != null && def.weapons.Length > 1 ? def.weapons[1] : null;
 
     /// <summary>指定武器的当前弹药。</summary>

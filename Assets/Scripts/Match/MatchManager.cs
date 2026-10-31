@@ -36,6 +36,9 @@ public class MatchManager : MonoBehaviour
     public int winnerTeam = -1;
     public string resultText = "";
 
+    /// <summary>双方击杀数（HUD 顶部显示）。</summary>
+    public readonly int[] kills = new int[2];
+
     public readonly List<UnitState> units = new List<UnitState>();
     public readonly List<ZoneState> zones = new List<ZoneState>();
     public readonly List<FeedEntry> feed = new List<FeedEntry>();
@@ -450,7 +453,8 @@ public class MatchManager : MonoBehaviour
         {
             int reward = Mathf.RoundToInt((victim.Def != null ? victim.Def.price : 100) * match.killRewardRate);
             killerUnit.gold += reward;
-            PushFeed($"{killerUnit.Label} 击毁 {victim.name}  +{reward}金");
+            kills[Mathf.Clamp(killerUnit.team, 0, 1)]++;
+            PushFeed($"{killerUnit.Label} 击毁 {victim.name}  +{reward}");
         }
         else
         {
