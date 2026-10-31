@@ -68,10 +68,16 @@ public static class MapSceneBuilder
         follow.target = target;
         camGo.transform.position = target.position + new Vector3(0f, 12f, -22f);
 
+        // 对局主控 + HUD（资源点占领 / 产金 / 复活 / 结算 / 重开）
+        var matchGo = GameObject.Find("Match");
+        if (matchGo == null) matchGo = new GameObject("Match");
+        if (matchGo.GetComponent<MatchManager>() == null) matchGo.AddComponent<MatchManager>();
+        if (matchGo.GetComponent<MatchHUD>() == null) matchGo.AddComponent<MatchHUD>();
+
         EditorSceneManager.MarkSceneDirty(scene);
         EditorSceneManager.SaveScene(scene, ScenePath);
         AssetDatabase.SaveAssets();
-        Debug.Log($"[MapSceneBuilder] 载具已放到正式地图：{ScenePath}");
+        Debug.Log($"[MapSceneBuilder] 载具 + 对局主控已放到正式地图：{ScenePath}");
     }
 
     static GameObject Spawn(GameObject holder, string defAsset, Vector2 designPos, float yaw, float S,
