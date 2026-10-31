@@ -367,14 +367,28 @@ public class VehicleAI : MonoBehaviour
 
         Vector3 aim = LeadAimPoint(Target);
         float dist = Vector3.Distance(transform.position, Target.transform.position);
-        if (dist > EffectiveFireRange) return;
 
-        float turn = _self.Def != null ? _self.Def.turretTurnSpeed : 90f;
-        _phys.AimTurretAt(aim, turn);
+        // 没有炮塔 / 炮塔转速为 0（飞机）就不做对准门槛，否则永远打不出来
+        bool hasTurret = _phys.turretBone != null && _self.Def != null && _self.Def.turretTurnSpeed > 0.1f;
+        if (hasTurret)
+        {
+            _phys.AimTurretAt(aim, _self.Def.turretTurnSpeed);
+            if (_phys.TurretAngleError(aim) >= 4f) return;      // 还没对准
+        }
 
-        if (_phys.TurretAngleError(aim) >= 4f) return;      // 还没对准
         if (!HasLineOfSight(_phys.GetMuzzlePosition(), aim, Target)) return;   // 被地形挡住
 
+        // 飞机对地面/海面目标：副武器（炸弹）在射程内就优先扔
+        var sec = _self.Secondary;
+        if (sec != null && _self.Def != null && _self.Def.domain == Domain.Air
+            && Target.Def != null && Target.Def.domain != Domain.Air
+            && dist <= sec.range)
+        {
+            _self.FireSecondary(aim);
+            return;
+        }
+
+        if (dist > EffectiveFireRange) return;
         _self.Fire(aim);
     }
 }
