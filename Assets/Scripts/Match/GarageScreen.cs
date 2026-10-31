@@ -114,8 +114,13 @@ public class GarageScreen : MonoBehaviour
                 Text(new Rect(r.x + 20f, r.y + 56f, r.width - 40f, 24f), DomainText(def.domain), _s18, new Color(1f, 1f, 1f, 0.55f), TextAnchor.MiddleLeft);
 
                 Text(new Rect(r.x + 20f, r.y + 92f, r.width - 40f, 26f), $"血量 {def.maxHp:F0}　　速度 {def.speed:F0} m/s", _s18, new Color(1f, 1f, 1f, 0.8f), TextAnchor.MiddleLeft);
-                string weapon = def.weapons != null && def.weapons.Length > 0 && def.weapons[0] != null
-                    ? $"{def.weapons[0].displayName}（{def.weapons[0].baseDamage:F0} 伤害 / {def.weapons[0].range:F0} m）" : "无武器";
+                string weapon = "无武器";
+                if (def.weapons != null && def.weapons.Length > 0 && def.weapons[0] != null)
+                {
+                    weapon = $"{def.weapons[0].displayName}（{def.weapons[0].baseDamage:F0} 伤害 / {def.weapons[0].range:F0} m）";
+                    if (def.weapons.Length > 1 && def.weapons[1] != null)
+                        weapon += $" + {def.weapons[1].displayName}";
+                }
                 Text(new Rect(r.x + 20f, r.y + 122f, r.width - 40f, 24f), weapon, _s14, new Color(1f, 1f, 1f, 0.65f), TextAnchor.MiddleLeft);
 
                 Text(new Rect(r.x + 20f, r.y + 158f, r.width - 40f, 60f), def.description, _s14, new Color(1f, 1f, 1f, 0.55f), TextAnchor.UpperLeft);

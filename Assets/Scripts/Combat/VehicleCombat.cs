@@ -46,19 +46,21 @@ public class VehicleCombat : MonoBehaviour
     public VehicleDef Def => def;
     public VehiclePhysics Physics => _phys;
 
-    /// <summary>当前武器（取第一把；多武器以后再说）。</summary>
+    /// <summary>主武器（第一把）。</summary>
     public WeaponDef Weapon => def != null && def.weapons != null && def.weapons.Length > 0 ? def.weapons[0] : null;
 
-    /// <summary>当前弹药。</summary>
-    public AmmoDef Ammo
+    /// <summary>副武器（第二把：炸弹 / 鱼雷）。没有就返回 null。</summary>
+    public WeaponDef Secondary => def != null && def.weapons != null && def.weapons.Length > 1 ? def.weapons[1] : null;
+
+    /// <summary>指定武器的当前弹药。</summary>
+    public AmmoDef AmmoFor(WeaponDef w)
     {
-        get
-        {
-            var w = Weapon;
-            if (w == null || w.ammoTypes == null || w.ammoTypes.Length == 0) return null;
-            return w.ammoTypes[Mathf.Clamp(ammoIndex, 0, w.ammoTypes.Length - 1)];
-        }
+        if (w == null || w.ammoTypes == null || w.ammoTypes.Length == 0) return null;
+        return w.ammoTypes[Mathf.Clamp(ammoIndex, 0, w.ammoTypes.Length - 1)];
     }
+
+    /// <summary>主武器当前弹药。</summary>
+    public AmmoDef Ammo => AmmoFor(Weapon);
 
     public float ReloadProgress => Weapon == null ? 1f : Mathf.Clamp01(1f - (_nextFireTime - Time.time) / Mathf.Max(0.01f, Weapon.reloadTime));
 
@@ -127,20 +129,32 @@ public class VehicleCombat : MonoBehaviour
 
     public bool CanFire => Alive && Weapon != null && Time.time >= _nextFireTime;
 
-    /// <summary>朝世界坐标点开火（先转炮塔，对准了才打）。返回是否真的打出去了。</summary>
+    /// <summary>
+    /// 朝世界坐标点开火（先转炮塔，对准了才打）。
+    /// 没有炮塔 / 炮塔转速为 0 的载具（飞机、机炮）不做"对准"门槛 —— 否则永远打不出来。
+    /// </summary>
     public bool FireAt(Vector3 worldPoint, float maxTurnDegPerSec = 999f)
     {
-        if (!CanFire) return false;
-        _phys.AimTurretAt(worldPoint, maxTurnDegPerSec);
-        if (_phys.TurretAngleError(worldPoint) > 4f) return false;   // 还没对准
+        if (!CanFire || _phys == null) return false;
+
+        bool hasTurret = _phys.turretBone != null && def != null && def.turretTurnSpeed > 0.1f;
+        if (hasTurret)
+        {
+            _phys.AimTurretAt(worldPoint, maxTurnDegPerSec);
+            if (_phys.TurretAngleError(worldPoint) > 4f) return false;   // 还没对准
+        }
         return Fire(worldPoint);
     }
 
-    /// <summary>开火。给了瞄准点就打向那个点（带仰角），否则朝炮口水平朝向。</summary>
-    public bool Fire(Vector3? aimPoint = null)
+    /// <summary>开火（主武器）。给了瞄准点就打向那个点（带仰角），否则朝炮口水平朝向。</summary>
+    public bool Fire(Vector3? aimPoint = null) => FireWeapon(Weapon, aimPoint);
+
+    /// <summary>打副武器（炸弹 / 鱼雷）。没有副武器返回 false。</summary>
+    public bool FireSecondary(Vector3? aimPoint = null) => FireWeapon(Secondary, aimPoint);
+
+    bool FireWeapon(WeaponDef w, Vector3? aimPoint)
     {
-        var w = Weapon;
-        var ammo = Ammo;
+        var ammo = AmmoFor(w);
         if (w == null || ammo == null || !CanFire) return false;
 
         _nextFireTime = Time.time + w.reloadTime;

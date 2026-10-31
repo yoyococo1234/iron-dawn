@@ -155,7 +155,7 @@ public class MatchHUD : MonoBehaviour
         Fill(rlBar, new Color(1f, 1f, 1f, 0.10f));
         Fill(new Rect(rlBar.x, rlBar.y, rlBar.width * Mathf.Clamp01(p.ReloadProgress), rlBar.height), CGold);
 
-        Text(new Rect(x + w - 260f, y + 66f, 240f, 24f), "左键开火 · 1/2/3 切弹 · 滚轮缩放", _s18, new Color(1f, 1f, 1f, 0.5f), TextAnchor.MiddleRight);
+        Text(new Rect(x + w - 300f, y + 66f, 280f, 24f), "左键开火 · 右键副武器 · 1/2/3 切弹", _s18, new Color(1f, 1f, 1f, 0.5f), TextAnchor.MiddleRight);
     }
 
     // ---------------- 右上：击杀提示 ----------------
