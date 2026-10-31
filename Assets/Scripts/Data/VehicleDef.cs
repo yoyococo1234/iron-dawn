@@ -65,6 +65,10 @@ public class VehicleDef : ScriptableObject
     public GameObject modelTurretPrefab;
     [Tooltip("要不要用拆件炮塔。关掉 = 用整体模型（外观和原模型一模一样，但炮塔不会转）")]
     public bool useSplitTurret = false;
+    [Tooltip("履带模型（可选）。给了就会按车速滚动 UV，看起来履带在转")]
+    public GameObject modelTracksPrefab;
+    [Tooltip("炮塔单独生成时，它自己的材质（贴图和车体不是同一张）")]
+    public Material modelTurretMaterial;
     [Tooltip("炮塔转轴在车体局部坐标下的位置（= 炮塔本体中心，绕它转才不甩）")]
     public Vector3 modelTurretPivot;
     [Tooltip("炮塔网格自身原点在车体局部坐标下的位置（= Blender 拆件时的切割面中心）。改转轴时用它把炮塔摆回原位")]

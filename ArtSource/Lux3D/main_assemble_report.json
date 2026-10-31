@@ -1,0 +1,24 @@
+{
+  "status": "OK",
+  "name": "main",
+  "deck": 2.442,
+  "ring_center": [
+    0.002,
+    -0.247
+  ],
+  "ring_radius": 1.104,
+  "turret_scale": 0.922,
+  "pivot_unity": [
+    0.0023,
+    2.4421,
+    -0.2471
+  ],
+  "hull_faces": 36161,
+  "turret_faces": 59535,
+  "tracks_faces": 21539,
+  "fbx": {
+    "hull": "D:\\UnityProjects\\Tank3D\\Assets\\Models\\Vehicles\\Split\\main_hull_v4.fbx",
+    "turret": "D:\\UnityProjects\\Tank3D\\Assets\\Models\\Vehicles\\Split\\main_turret_v4.fbx",
+    "tracks": "D:\\UnityProjects\\Tank3D\\Assets\\Models\\Vehicles\\Split\\main_tracks_v4.fbx"
+  }
+}
