@@ -65,8 +65,8 @@ public class VehicleDef : ScriptableObject
     public GameObject modelTurretPrefab;
     [Tooltip("炮塔转轴在车体局部坐标下的位置")]
     public Vector3 modelTurretPivot;
-    [Tooltip("要不要在切割面下方压一个深色炮塔井（盖住洞，默认开）")]
-    public bool showTurretRing = true;
+    [Tooltip("要不要在切割面下方压一个深色炮塔井（车体已经补好洞了，默认关）")]
+    public bool showTurretRing = false;
     [Tooltip("炮塔节点名（模型里的子物体名），炮塔要能转就靠它")]
     public string turretBoneName = "Turret";
     [Tooltip("炮口节点名（开火时子弹从这里出）")]
