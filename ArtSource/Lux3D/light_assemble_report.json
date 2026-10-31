@@ -1,0 +1,24 @@
+{
+  "status": "OK",
+  "name": "light",
+  "deck": 2.301,
+  "ring_center": [
+    0.009,
+    -0.11
+  ],
+  "ring_radius": 0.961,
+  "turret_scale": 0.777,
+  "pivot_unity": [
+    0.0088,
+    2.3006,
+    -0.1105
+  ],
+  "hull_faces": 31307,
+  "turret_faces": 59795,
+  "tracks_faces": 28244,
+  "fbx": {
+    "hull": "D:\\UnityProjects\\Tank3D\\Assets\\Models\\Vehicles\\Split\\light_hull_v4.fbx",
+    "turret": "D:\\UnityProjects\\Tank3D\\Assets\\Models\\Vehicles\\Split\\light_turret_v4.fbx",
+    "tracks": "D:\\UnityProjects\\Tank3D\\Assets\\Models\\Vehicles\\Split\\light_tracks_v4.fbx"
+  }
+}
