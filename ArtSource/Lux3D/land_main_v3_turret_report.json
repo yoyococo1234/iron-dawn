@@ -1,0 +1,18 @@
+{
+  "name": "land_main_v3",
+  "status": "OK",
+  "pivot_unity": [
+    0.0037,
+    1.6896,
+    -0.2338
+  ],
+  "hull_faces": 47114,
+  "turret_faces": 12628,
+  "turret_parts": [
+    "Mesh_1",
+    "Mesh_0",
+    "Mesh_3"
+  ],
+  "hull_fbx": "D:\\UnityProjects\\Tank3D\\Assets\\Models\\Vehicles\\Split\\land_main_v3_hull_v3.fbx",
+  "turret_fbx": "D:\\UnityProjects\\Tank3D\\Assets\\Models\\Vehicles\\Split\\land_main_v3_turret_v3.fbx"
+}

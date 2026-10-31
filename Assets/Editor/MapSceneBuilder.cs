@@ -91,28 +91,14 @@ public static class MapSceneBuilder
     {
         if (def == null) return;
 
-        // 拆件炮塔：只有 def.useSplitTurret 打开时才用。
-        // 关掉时用整体模型 —— 外观和原模型一模一样（拆件会在车体甲板上留破口，
-        // part_split 把炮塔连同车顶一截甲板一起切走了，怎么补都不如原模型）。
-        var hull = def.useSplitTurret
-            ? AssetDatabase.LoadAssetAtPath<GameObject>($"Assets/Models/Vehicles/Split/{def.id}_hull.fbx") : null;
-        var turret = def.useSplitTurret
-            ? AssetDatabase.LoadAssetAtPath<GameObject>($"Assets/Models/Vehicles/Split/{def.id}_turret.fbx") : null;
-        if (hull != null && turret != null)
+        // 模型是「车体 / 炮塔 / 履带」分开生成再拼装的（work/assemble_tank.py），
+        // 资产路径由 VehicleDef 自己指着（见交接文档），这里**不再覆盖**已经配好的。
+        // 只有完全没配模型时，才按旧约定去找一个整体模型。
+        if (def.modelPrefab == null)
         {
-            def.modelPrefab = hull;
-            def.modelTurretPrefab = turret;
-            ReadTurretPivot(def.id, out var pivot, out var origin);
-            def.modelTurretPivot = pivot;
-            def.modelTurretMeshOrigin = origin;
-            def.autoTurretWellPatch = true;
-            def.modelYawOffset = 0f;        // 拆件脚本里已经把长轴统一到 +Z，不需要再转
-        }
-        else
-        {
+            def.modelPrefab = VehicleModelBinder.AutoFindModel(def.id);
             def.modelTurretPrefab = null;
             def.autoTurretWellPatch = false;
-            if (def.modelPrefab == null) def.modelPrefab = VehicleModelBinder.AutoFindModel(def.id);
         }
 
         if (def.modelMaterial == null) def.modelMaterial = EnsureMaterial(def);

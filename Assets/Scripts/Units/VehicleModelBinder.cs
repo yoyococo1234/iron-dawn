@@ -71,6 +71,18 @@ public static class VehicleModelBinder
         if (def.modelMaterial != null) ApplyMaterial(model, def.modelMaterial);
         var hullFilter = model.GetComponentInChildren<MeshFilter>();
 
+        // ---------- 履带（单独一块，按车速滚 UV 让它"转"起来）----------
+        if (def.modelTracksPrefab != null)
+        {
+            var tracks = Object.Instantiate(def.modelTracksPrefab, root.transform);
+            tracks.name = "Tracks";
+            tracks.transform.localPosition = Vector3.zero;
+            StripColliders(tracks);
+            if (def.modelMaterial != null) ApplyMaterial(tracks, def.modelMaterial);
+            var scroller = tracks.AddComponent<TrackScroller>();
+            scroller.vehicle = vp;
+        }
+
         // ---------- 炮塔（Lux3D 拆件）----------
         if (def.modelTurretPrefab != null)
         {
@@ -84,7 +96,8 @@ public static class VehicleModelBinder
             // 所以要把网格反向偏移回去：外观位置不变，只是转起来绕本体中心，不再甩。
             tm.transform.localPosition = def.modelTurretMeshOrigin - def.modelTurretPivot;
             StripColliders(tm);
-            if (def.modelMaterial != null) ApplyMaterial(tm, def.modelMaterial);
+            var turMat = def.modelTurretMaterial != null ? def.modelTurretMaterial : def.modelMaterial;
+            if (turMat != null) ApplyMaterial(tm, turMat);
 
             // 炮口放在炮塔最前端（含炮管）
             var lb = LocalBounds(tp.transform);
