@@ -82,6 +82,20 @@ public static class DataSeeder
         // ---------- 对局与经济 ----------
         var match = GetOrCreate<MatchDef>($"{Root}/Match/Match_Default.asset");
         match.teamSize = 5;
+
+        // 3 条命规则：玩家部署 3 次；敌方 3 台载具，打光即胜
+        match.playerLives = 3;
+        match.enemyLives = 3;
+
+        // 车库可选载具
+        var roster = new List<VehicleDef>();
+        foreach (var id in new[] { "land_light", "land_main", "land_heavy", "sea_gunboat", "air_fighter", "air_attacker" })
+        {
+            var d = GetOrCreate<VehicleDef>($"{Root}/Vehicles/Vehicle_{id}.asset");
+            if (d != null) roster.Add(d);
+        }
+        match.roster = roster.ToArray();
+
         match.startingGold = 200;
         match.respawnBase = 80;
         match.respawnGrowth = 1.22f;

@@ -48,10 +48,8 @@ public class VehiclePhysics : MonoBehaviour
     /// <summary>转向输入：AI 优先，其次键盘。</summary>
     float SteerInput => aiControlled ? aiSteer : Input.GetAxis("Horizontal");
 
-    [Tooltip("从开始下沉到彻底消失要几秒（方便观察，默认 3 秒）")]
-    public float sinkDuration = 3f;
-    [Tooltip("下沉速度 m/s")]
-    public float sinkSpeed = 1.2f;
+    [Tooltip("进水后多少秒整车报废（会正常爆炸并计入阵亡）")]
+    public float drownSeconds = 5f;
 
     [Header("模型挂点（由 VehicleModelBinder 填入）")]
     [Tooltip("炮塔节点，炮塔转动靠它")]
@@ -112,17 +110,24 @@ public class VehiclePhysics : MonoBehaviour
         waterDepth = WaterDepthAt(pos.x, pos.z);
         maxClimbDeg = MaxClimbDeg;
 
-        // 沉没
+        // 进水：不再往地里沉，原地熄火，drownSeconds 秒后整车报废
+        // （报废走正常击毁流程 —— 会爆炸、会触发 BattleEvents，玩家才会回到车库）
         if (waterDepth > wadeDepth)
         {
-            stateText = "沉没中";
-            speed = Mathf.MoveTowards(speed, 0f, brakeDecel * Time.deltaTime);
+            speed = Mathf.MoveTowards(speed, 0f, brakeDecel * 2f * Time.deltaTime);
             _sinkTimer += Time.deltaTime;
-            pos.y -= sinkSpeed * Time.deltaTime;
+            float left = Mathf.Max(0f, drownSeconds - _sinkTimer);
+            stateText = $"进水 · {Mathf.CeilToInt(left)} 秒后报废";
+
+            // 只表现"往下压一点"，绝不穿到地形下面
+            float floorY = GroundY(pos.x, pos.z) + 0.2f;
+            pos.y = Mathf.Lerp(pos.y, Mathf.Max(floorY, pos.y - 0.8f), 2f * Time.deltaTime);
             transform.position = pos;
-            if (_sinkTimer >= sinkDuration) { alive = false; stateText = "已沉没"; gameObject.SetActive(false); }
+
+            if (_sinkTimer >= drownSeconds) Drown();
             return;
         }
+        _sinkTimer = 0f;
 
         float waterFactor = waterDepth > 0f ? 0.5f : 1f;
         bool tooSteep = slopeDeg > MaxClimbDeg;
@@ -143,7 +148,18 @@ public class VehiclePhysics : MonoBehaviour
         float rate = Mathf.Abs(target) > Mathf.Abs(speed) ? acceleration : brakeDecel;
         speed = Mathf.MoveTowards(speed, target, rate * Time.deltaTime);
 
-        transform.position += transform.forward * speed * Time.deltaTime;
+        // 撞墙判定：载具是 transform 移动的（不是刚体），不判就会直接穿过建筑
+        bool blocked = false;
+        Vector3 delta = transform.forward * speed * Time.deltaTime;
+        if (delta.sqrMagnitude > 1e-8f && IsBlockedByObstacle(delta))
+        {
+            speed = 0f;
+            blocked = true;
+        }
+        else
+        {
+            transform.position += delta;
+        }
         ClampToBounds();
 
         // 贴地 + 倾斜
@@ -157,7 +173,10 @@ public class VehiclePhysics : MonoBehaviour
         var targetRot = Quaternion.FromToRotation(Vector3.up, normal) * Quaternion.Euler(0f, yaw, 0f);
         transform.rotation = Quaternion.Slerp(transform.rotation, targetRot, tiltSpeed * Time.deltaTime);
 
-        stateText = tooSteep ? "打滑（坡太陡）" : (waterDepth > 0f ? "涉水中" : "正常");
+        stateText = tooSteep ? "打滑（坡太陡）"
+                  : blocked ? "撞到障碍"
+                  : waterDepth > 0f ? "涉水中"
+                  : "正常";
     }
 
     // ==================== 海 ====================
@@ -310,6 +329,43 @@ public class VehiclePhysics : MonoBehaviour
             GroundY(x, z + d) - GroundY(x, z - d));
     }
 
+    /// <summary>
+    /// 前方这一步会不会撞到实体障碍（建筑/路障）。
+    /// 地形和别的载具不算 —— 地形靠贴地处理，车与车之间先不管。
+    /// </summary>
+    bool IsBlockedByObstacle(Vector3 delta)
+    {
+        var col = GetComponent<Collider>();
+        if (col == null) return false;
+
+        Vector3 center;
+        Vector3 half;
+        if (col is BoxCollider box)
+        {
+            var s = transform.lossyScale;
+            center = transform.TransformPoint(box.center);
+            half = Vector3.Scale(box.size, s) * 0.5f;
+            half = new Vector3(half.x * 0.85f, half.y * 0.6f, half.z * 0.85f);
+        }
+        else
+        {
+            var b = col.bounds;
+            center = b.center;
+            half = b.extents * 0.8f;
+        }
+
+        var hits = UnityEngine.Physics.BoxCastAll(center, half, delta.normalized, transform.rotation,
+                                                  delta.magnitude + 0.2f, ~0, QueryTriggerInteraction.Ignore);
+        foreach (var h in hits)
+        {
+            if (h.collider == null || h.collider == col) continue;
+            if (h.collider is TerrainCollider) continue;                       // 地形不挡
+            if (h.collider.GetComponentInParent<VehicleCombat>() != null) continue;  // 载具不挡
+            return true;
+        }
+        return false;
+    }
+
     // ---------------- 地形源抽象 ----------------
     // terrain 有值 → 旧测试场（TerrainField）；留空 → 正式地图（Unity Terrain 分块）
     // 这样同一套载具代码既能在 Test_Stage1 回归测试，也能跑 2 km 正式图。
@@ -337,6 +393,17 @@ public class VehiclePhysics : MonoBehaviour
     }
 
     // ---------------- 复活重置 ----------------
+
+    /// <summary>进水报废：走正常击毁流程，这样会爆炸、会计入阵亡、玩家会回车库。</summary>
+    void Drown()
+    {
+        if (!alive) return;
+        alive = false;
+        stateText = "已报废";
+        var combat = GetComponent<VehicleCombat>();
+        if (combat != null) combat.DestroyByEnvironment();
+        else gameObject.SetActive(false);
+    }
 
     /// <summary>复活时把运行时状态清干净（沉没计时、速度、存活标记）。</summary>
     public void ResetState()

@@ -10,6 +10,15 @@ public class MatchDef : ScriptableObject
     [Tooltip("每队台数（含玩家）")]
     public int teamSize = 5;
 
+    [Header("命数（本作核心规则）")]
+    [Tooltip("玩家可以部署几次（= 几条命）。用光就输")]
+    public int playerLives = 3;
+    [Tooltip("敌方有几台载具（= 敌方几条命）。打光就赢")]
+    public int enemyLives = 3;
+
+    [Header("可选载具（车库列表）")]
+    public VehicleDef[] roster;
+
     [Header("开局")]
     public int startingGold = 200;
 

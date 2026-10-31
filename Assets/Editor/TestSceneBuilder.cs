@@ -98,13 +98,13 @@ public static class TestSceneBuilder
         vp.ApplyDef();
 
         // 1) 优先用精细模型（VehicleDef 指定的 / 按命名约定自动找的）
-        var modelSource = def.modelPrefab != null ? def.modelPrefab : VehicleModelBinder.AutoFindModel(def.id);
-        if (modelSource != null)
+        if (def.modelPrefab == null) def.modelPrefab = VehicleModelBinder.AutoFindModel(def.id);
+        if (def.modelPrefab != null)
         {
-            VehicleModelBinder.Attach(root, modelSource, def, out var turret, out var muzzle);
+            VehicleModelBinder.Attach(root, def, out var turret, out var muzzle);
             vp.turretBone = turret;
             vp.muzzleBone = muzzle;
-            Debug.Log($"[TestSceneBuilder] {def.displayName} 使用精细模型：{modelSource.name}");
+            Debug.Log($"[TestSceneBuilder] {def.displayName} 使用精细模型：{def.modelPrefab.name}");
         }
         else
         {
