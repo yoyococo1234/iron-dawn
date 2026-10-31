@@ -126,8 +126,13 @@ public class MatchManager : MonoBehaviour
     void Update()
     {
         if (!GameStartScreen.Started) return;
-        if (Input.GetKeyDown(KeyCode.R)) { Restart(); return; }
-        if (matchOver) return;
+
+        // R 只在结算后才是"重开"，战斗中误按不再直接把对局打回开头
+        if (matchOver)
+        {
+            if (Input.GetKeyDown(KeyCode.R)) Restart();
+            return;
+        }
 
         // 阵亡后延迟弹车库
         if (_garageAt > 0f && Time.unscaledTime >= _garageAt)
@@ -185,8 +190,7 @@ public class MatchManager : MonoBehaviour
         gold[0] -= cost;
         livesLeft--;
 
-        Vector3 pos = battlefield.GetSpawnPoint(true);
-        pos.y = BattlefieldTerrain.SampleHeight(pos.x, pos.z) + 1f;
+        Vector3 pos = FindSpawnPoint(def.domain);
 
         // 清掉上一台残骸
         if (_player != null) Destroy(_player.gameObject);
@@ -202,6 +206,56 @@ public class MatchManager : MonoBehaviour
         }
 
         if (GarageScreen.Instance != null) GarageScreen.Instance.Close();
+    }
+
+    /// <summary>
+    /// 按载具所在域挑出兵点。
+    /// 出兵线在 x 上固定、z 跨整张图，北半张是海 —— 不按域挑的话
+    /// 坦克会生成在海里、船会生成在陆地上。
+    /// </summary>
+    Vector3 FindSpawnPoint(Domain domain)
+    {
+        float x = battlefield.allySpawnLineX;
+        float zMin = battlefield.spawnLineZMin, zMax = battlefield.spawnLineZMax;
+
+        float bestZ = 0f;
+        bool found = false;
+
+        // 从中线往两边扫，取第一个符合本域的位置
+        for (int i = 0; i < 70; i++)
+        {
+            float t = (i % 2 == 0) ? 0.5f + i * 0.0075f : 0.5f - i * 0.0075f;
+            float z = Mathf.Lerp(zMin, zMax, Mathf.Clamp01(t));
+            if (FitsDomain(x, z, domain)) { bestZ = z; found = true; break; }
+        }
+        if (!found) bestZ = Mathf.Lerp(zMin, zMax, 0.5f);
+
+        float ground = BattlefieldTerrain.SampleHeight(x, bestZ);
+        float y;
+        switch (domain)
+        {
+            case Domain.Air:
+                y = Mathf.Max(ground, BattlefieldTerrain.WaterLevel) + 420f;
+                break;
+            case Domain.Sea:
+                y = BattlefieldTerrain.WaterLevel + 0.5f;
+                break;
+            default:
+                y = ground + 1.2f;
+                break;
+        }
+        return new Vector3(x, y, bestZ);
+    }
+
+    static bool FitsDomain(float x, float z, Domain domain)
+    {
+        if (domain == Domain.Air) return true;
+
+        float ground = BattlefieldTerrain.SampleHeight(x, z);
+        float depth = BattlefieldTerrain.WaterDepth(x, z);
+
+        if (domain == Domain.Sea) return depth >= 2.5f;                       // 船要有足够水深
+        return depth <= 0f && BattlefieldTerrain.SampleSteepness(x, z) < 18f; // 车要干地 + 不陡
     }
 
     // ==================== 资源点 ====================

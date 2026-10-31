@@ -74,6 +74,15 @@ public class CameraFollow : MonoBehaviour
         if (target == null) AutoFindTarget();
         if (target == null) return;
 
+        // 开飞机时是追尾视角：鼠标用来操控飞机，不能同时转镜头
+        var mm = MatchManager.Instance;
+        var pl = mm != null ? mm.Player : null;
+        if (pl != null && pl.Def != null && pl.Def.domain == Domain.Air)
+        {
+            ChaseCamera();
+            return;
+        }
+
         if (Cursor.lockState == CursorLockMode.Locked)
         {
             yaw += Input.GetAxis("Mouse X") * sensitivity;
@@ -111,5 +120,29 @@ public class CameraFollow : MonoBehaviour
         if (mm == null) return;
         var p = mm.Player;
         if (p != null) target = p.transform;
+    }
+
+    /// <summary>飞机追尾视角：贴着机尾看，随飞机姿态转。</summary>
+    void ChaseCamera()
+    {
+        float dt = Time.unscaledDeltaTime;
+        _dist = Mathf.Lerp(_dist, distance, 8f * dt);
+
+        var desired = target.position - target.forward * _dist + target.up * (_dist * 0.22f);
+        float ground = Mathf.Max(BattlefieldTerrain.SampleHeight(desired.x, desired.z), BattlefieldTerrain.WaterLevel) + 2f;
+        if (desired.y < ground) desired.y = ground;
+
+        transform.position = Vector3.Lerp(transform.position, desired, 9f * dt);
+
+        var lookAt = target.position + target.forward * 80f;
+        transform.rotation = Quaternion.Slerp(transform.rotation,
+            Quaternion.LookRotation(lookAt - transform.position), 10f * dt);
+
+        if (_shakeAmount > 0.001f)
+        {
+            _shake = Random.insideUnitSphere * _shakeAmount;
+            _shakeAmount = Mathf.MoveTowards(_shakeAmount, 0f, Time.deltaTime * 14f);
+            transform.rotation *= Quaternion.Euler(_shake.x * 2f, _shake.y * 2f, _shake.z * 2f);
+        }
     }
 }

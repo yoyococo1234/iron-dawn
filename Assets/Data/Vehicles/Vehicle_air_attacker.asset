@@ -39,6 +39,6 @@ MonoBehaviour:
   modelMaterial: {fileID: 2100000, guid: 6c80b587af7941948a8de83d591dbd14, type: 2}
   turretBoneName: Turret
   muzzleBoneName: Muzzle
-  modelYawOffset: 0
+  modelYawOffset: 180
   modelScale: 1
   description: "\u80FD\u6253\u5730\u9762\uFF0C\u8D8A\u5899\uFF1B\u6162\u3001\u6015\u9632\u7A7A"
