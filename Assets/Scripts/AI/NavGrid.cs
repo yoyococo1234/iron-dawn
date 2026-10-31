@@ -23,6 +23,8 @@ public class NavGrid : MonoBehaviour
     public float[] heights;
     public float[] slopes;
     public float[] depths;
+    /// <summary>格子中心落在建筑里 = true（A* 绕开走，否则 AI 会一头撞在墙上卡死）</summary>
+    public bool[] blocked;
 
     Vector3 _origin;
     readonly List<int> _open = new List<int>();
@@ -46,6 +48,7 @@ public class NavGrid : MonoBehaviour
         heights = new float[size * size];
         slopes = new float[size * size];
         depths = new float[size * size];
+        blocked = new bool[size * size];
 
         for (int z = 0; z < size; z++)
         {
@@ -59,9 +62,46 @@ public class NavGrid : MonoBehaviour
             }
         }
 
+        int marked = MarkBuildings();
+
         sw.Stop();
         BuildMs = sw.ElapsedMilliseconds;
-        Debug.Log($"[NavGrid] {size}×{size} 格（{cellSize} m/格）建成，用时 {BuildMs} ms");
+        Debug.Log($"[NavGrid] {size}×{size} 格（{cellSize} m/格）建成，建筑障碍格 {marked}，用时 {BuildMs} ms");
+    }
+
+    /// <summary>把中心落在建筑碰撞盒里的格子标成不可走。</summary>
+    int MarkBuildings()
+    {
+        var props = GameObject.Find("Props");
+        if (props == null) return 0;
+
+        int marked = 0;
+        foreach (var col in props.GetComponentsInChildren<BoxCollider>())
+        {
+            if (col == null) continue;
+            var b = col.bounds;
+
+            int x0 = Mathf.FloorToInt((b.min.x - _origin.x) / cellSize);
+            int x1 = Mathf.FloorToInt((b.max.x - _origin.x) / cellSize);
+            int z0 = Mathf.FloorToInt((b.min.z - _origin.z) / cellSize);
+            int z1 = Mathf.FloorToInt((b.max.z - _origin.z) / cellSize);
+
+            for (int z = z0; z <= z1; z++)
+            {
+                for (int x = x0; x <= x1; x++)
+                {
+                    if (x < 0 || x >= size || z < 0 || z >= size) continue;
+                    int i = Idx(x, z);
+                    if (blocked[i]) continue;
+                    // 只标"格子中心真的落在楼里"的格子，否则整片城区会全被封死
+                    var c = CellCenter(x, z);
+                    if (!b.Contains(new Vector3(c.x, b.center.y, c.z))) continue;
+                    blocked[i] = true;
+                    marked++;
+                }
+            }
+        }
+        return marked;
     }
 
     public Vector3 CellCenter(int x, int z)
@@ -89,7 +129,7 @@ public class NavGrid : MonoBehaviour
         return true;
     }
 
-    /// <summary>按域判定（海：水深 ≥ 吃水；空：全图；陆：坡度+涉水）。</summary>
+    /// <summary>按域判定（海：水深 ≥ 吃水；空：全图；陆：坡度+涉水+建筑）。</summary>
     public bool Walkable(int x, int z, NavMode mode, float maxSlope, float waterParam)
     {
         if (x < 0 || x >= size || z < 0 || z >= size) return false;
@@ -98,7 +138,7 @@ public class NavGrid : MonoBehaviour
         {
             case NavMode.Sea:  return depths[i] >= waterParam;      // waterParam = 吃水深度
             case NavMode.Air:  return true;
-            default:           return slopes[i] <= maxSlope && depths[i] <= waterParam;
+            default:           return !blocked[i] && slopes[i] <= maxSlope && depths[i] <= waterParam;
         }
     }
 

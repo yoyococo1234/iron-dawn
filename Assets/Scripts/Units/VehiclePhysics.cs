@@ -101,6 +101,7 @@ public class VehiclePhysics : MonoBehaviour
     [System.NonSerialized] public float slopeDeg;
     [System.NonSerialized] public float waterDepth;
     [System.NonSerialized] public float maxClimbDeg;
+    [System.NonSerialized] public float blockedTime;
     [System.NonSerialized] public string stateText = "正常";
     [System.NonSerialized] public bool alive = true;
 
@@ -197,6 +198,7 @@ public class VehiclePhysics : MonoBehaviour
         {
             transform.position += delta;
         }
+        blockedTime = blocked ? blockedTime + Time.deltaTime : 0f;
         ClampToBounds();
 
         // 贴地 + 倾斜
@@ -450,6 +452,17 @@ public class VehiclePhysics : MonoBehaviour
             var b = col.bounds;
             center = b.center;
             half = b.extents * 0.8f;
+        }
+
+        // 已经卡在障碍里了 → 不再阻挡，否则永远出不来（被建筑夹住的元凶）
+        var inside = UnityEngine.Physics.OverlapBox(center, half * 0.88f, transform.rotation,
+                                                    ~0, QueryTriggerInteraction.Ignore);
+        foreach (var h in inside)
+        {
+            if (h == null || h == col) continue;
+            if (h is TerrainCollider) continue;
+            if (h.GetComponentInParent<VehicleCombat>() != null) continue;
+            return false;
         }
 
         var hits = UnityEngine.Physics.BoxCastAll(center, half, delta.normalized, transform.rotation,
