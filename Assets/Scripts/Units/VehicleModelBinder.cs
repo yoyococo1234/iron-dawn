@@ -2,7 +2,11 @@ using UnityEngine;
 
 /// <summary>
 /// 模型挂点绑定：把"精细模型"接到代码上。
-/// 代码只认三个东西：整体、炮塔节点、炮口节点。模型长什么样无所谓。
+/// 代码只认三个东西：整体、炮塔节点、炮口节点。
+///
+/// 两种模型形态都支持：
+///   · Lux3D part_split 拆件（车体 + 独立炮塔）→ 炮塔真的会转
+///   · 整体网格（没有炮塔部件）→ 补一个逻辑炮塔，出膛点固定在车头
 /// </summary>
 public static class VehicleModelBinder
 {
@@ -38,7 +42,7 @@ public static class VehicleModelBinder
     }
 
     /// <summary>
-    /// 挂模型 + 补逻辑炮塔。找不到模型返回 false（调用方自己退回方块占位）。
+    /// 挂模型 + 炮塔。找不到模型返回 false（调用方自己退回方块占位）。
     /// 运行时可调用（用 VehicleDef.modelPrefab，不碰 AssetDatabase）。
     /// </summary>
     public static bool Attach(GameObject root, VehicleDef def, out Transform turret, out Transform muzzle)
@@ -47,6 +51,9 @@ public static class VehicleModelBinder
         muzzle = null;
         if (root == null || def == null || def.modelPrefab == null) return false;
 
+        var vp = root.GetComponent<VehiclePhysics>();
+
+        // ---------- 车体 ----------
         var model = Object.Instantiate(def.modelPrefab, root.transform);
         model.name = "Model";
 
@@ -55,49 +62,63 @@ public static class VehicleModelBinder
         // 所以要在原值基础上叠加，而不是替换。
         var baseScale = model.transform.localScale;
         var baseRot = model.transform.localRotation;
-
         model.transform.localPosition = Vector3.zero;
         model.transform.localRotation = Quaternion.Euler(0f, def.modelYawOffset, 0f) * baseRot;
         model.transform.localScale = baseScale * Mathf.Max(0.001f, def.modelScale);
 
-        // 模型本身不做碰撞（碰撞交给逻辑，别让物理引擎和我们的贴地打架）
-        foreach (var c in model.GetComponentsInChildren<Collider>(true))
+        StripColliders(model);
+        if (def.modelMaterial != null) ApplyMaterial(model, def.modelMaterial);
+
+        // ---------- 炮塔（Lux3D 拆件）----------
+        if (def.modelTurretPrefab != null)
         {
-            if (Application.isPlaying) Object.Destroy(c);
-            else Object.DestroyImmediate(c);
-        }
+            var tp = new GameObject("Turret");
+            tp.transform.SetParent(root.transform, false);
+            tp.transform.localPosition = def.modelTurretPivot;
 
-        turret = FindBone(model, def.turretBoneName);
-        muzzle = FindBone(model, def.muzzleBoneName);
+            var tm = Object.Instantiate(def.modelTurretPrefab, tp.transform);
+            tm.name = "TurretModel";
+            // 炮塔网格已经是以转轴为原点的，这里只保留 FBX 自带的上轴修正和缩放
+            tm.transform.localPosition = Vector3.zero;
+            StripColliders(tm);
+            if (def.modelMaterial != null) ApplyMaterial(tm, def.modelMaterial);
 
-        // 模型里有真实的炮塔+炮口节点才算"可视炮塔"，否则用逻辑炮塔（出膛点固定在车头）
-        var vp = root.GetComponent<VehiclePhysics>();
-        if (vp != null) vp.turretIsVisual = turret != null && muzzle != null;
+            // 炮口放在炮塔最前端（含炮管）
+            var lb = LocalBounds(tp.transform);
+            var mz = new GameObject("Muzzle");
+            mz.transform.SetParent(tp.transform, false);
+            mz.transform.localPosition = new Vector3(0f, 0f, lb.max.z * 0.95f);
 
-        if (def.modelMaterial != null)
-        {
-            foreach (var r in model.GetComponentsInChildren<MeshRenderer>(true))
+            // 补一个炮塔座圈，盖住车体顶面被切开的洞（炮塔一转就能看见）
+            // 半径按炮塔"宽度"算，不能按最大边 —— 最大边含炮管，会把座圈做成一个大圆盘
+            if (def.showTurretRing)
             {
-                var mats = new Material[Mathf.Max(1, r.sharedMaterials.Length)];
-                for (int i = 0; i < mats.Length; i++) mats[i] = def.modelMaterial;
-                r.sharedMaterials = mats;
+                float radius = Mathf.Clamp(lb.size.x * 0.42f, 0.5f, 2.0f);
+                var cap = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+                cap.name = "TurretRing";
+                cap.transform.SetParent(root.transform, false);
+                cap.transform.localPosition = def.modelTurretPivot + Vector3.down * 0.10f;
+                cap.transform.localScale = new Vector3(radius * 2f, 0.05f, radius * 2f);
+                var capCol = cap.GetComponent<Collider>();
+                if (capCol != null) { if (Application.isPlaying) Object.Destroy(capCol); else Object.DestroyImmediate(capCol); }
+                var capR = cap.GetComponent<Renderer>();
+                if (capR != null && def.modelMaterial != null) capR.sharedMaterial = def.modelMaterial;
             }
+
+            turret = tp.transform;
+            muzzle = mz.transform;
+            if (vp != null) vp.turretIsVisual = true;
+            return true;
         }
 
-        // 模型是整体网格时没有炮塔节点 —— 按包围盒补一个逻辑炮塔
-        if (turret == null || muzzle == null)
-        {
-            BuildLogicBones(root, out var lt, out var lm);
-            if (turret == null) turret = lt;
-            if (muzzle == null) muzzle = lm;
-        }
+        // ---------- 没有独立炮塔：补逻辑炮塔 ----------
+        BuildLogicBones(root, out var lt, out var lm);
+        turret = lt;
+        muzzle = lm;
         return true;
     }
 
-    /// <summary>
-    /// Lux3D 的模型是整体网格，没有独立炮塔节点。按包围盒补一个"逻辑炮塔 + 炮口"，
-    /// 让瞄准方向、出膛位置、弹道起点都是真的（视觉上炮塔暂不旋转）。
-    /// </summary>
+    /// <summary>整体网格时，按包围盒补一个"逻辑炮塔 + 炮口"（出膛点固定在车头）。</summary>
     public static void BuildLogicBones(GameObject root, out Transform turret, out Transform muzzle)
     {
         var rs = root.GetComponentsInChildren<MeshRenderer>();
@@ -126,5 +147,54 @@ public static class VehicleModelBinder
         mz.transform.SetParent(tp.transform, false);
         mz.transform.localPosition = new Vector3(0f, height * 0.10f, halfLen * 0.90f);
         muzzle = mz.transform;
+    }
+
+    // ---------------- 工具 ----------------
+
+    /// <summary>某个节点下的所有网格，在它自己局部坐标下的包围盒。</summary>
+    static Bounds LocalBounds(Transform root)
+    {
+        bool has = false;
+        var local = new Bounds(Vector3.zero, Vector3.zero);
+        var toRoot = root.worldToLocalMatrix;
+
+        foreach (var mf in root.GetComponentsInChildren<MeshFilter>())
+        {
+            if (mf.sharedMesh == null) continue;
+            var mb = mf.sharedMesh.bounds;
+            var e = mb.extents;
+            var m = toRoot * mf.transform.localToWorldMatrix;
+
+            for (int i = 0; i < 8; i++)
+            {
+                var c = new Vector3(
+                    mb.center.x + ((i & 1) == 0 ? -e.x : e.x),
+                    mb.center.y + ((i & 2) == 0 ? -e.y : e.y),
+                    mb.center.z + ((i & 4) == 0 ? -e.z : e.z));
+                var p = m.MultiplyPoint3x4(c);
+                if (!has) { local = new Bounds(p, Vector3.zero); has = true; }
+                else local.Encapsulate(p);
+            }
+        }
+        return local;
+    }
+
+    static void StripColliders(GameObject go)
+    {
+        foreach (var c in go.GetComponentsInChildren<Collider>(true))
+        {
+            if (Application.isPlaying) Object.Destroy(c);
+            else Object.DestroyImmediate(c);
+        }
+    }
+
+    static void ApplyMaterial(GameObject go, Material mat)
+    {
+        foreach (var r in go.GetComponentsInChildren<MeshRenderer>(true))
+        {
+            var mats = new Material[Mathf.Max(1, r.sharedMaterials.Length)];
+            for (int i = 0; i < mats.Length; i++) mats[i] = mat;
+            r.sharedMaterials = mats;
+        }
     }
 }

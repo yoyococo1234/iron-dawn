@@ -61,6 +61,12 @@ public class VehicleDef : ScriptableObject
     public GameObject modelPrefab;
     [Tooltip("模型用的材质（带 baseColor 贴图）。运行时动态生成载具要用它")]
     public Material modelMaterial;
+    [Tooltip("炮塔模型（Lux3D part_split 拆出来的）。有它炮塔就能真的转")]
+    public GameObject modelTurretPrefab;
+    [Tooltip("炮塔转轴在车体局部坐标下的位置")]
+    public Vector3 modelTurretPivot;
+    [Tooltip("要不要补一个炮塔座圈盖住车体顶面的洞（默认关掉，那个圆盘很出戏）")]
+    public bool showTurretRing = false;
     [Tooltip("炮塔节点名（模型里的子物体名），炮塔要能转就靠它")]
     public string turretBoneName = "Turret";
     [Tooltip("炮口节点名（开火时子弹从这里出）")]

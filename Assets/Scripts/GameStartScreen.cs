@@ -86,17 +86,17 @@ public class GameStartScreen : MonoBehaviour
         float bx = vw * 0.5f - 330f;
         string[] left =
         {
-            "W / S　　　前进 / 后退",
-            "A / D　　　车体转向",
-            "鼠标　　　 炮塔瞄准",
-            "左键 / 空格　开炮",
+            "W / S　　　前进 / 后退（飞机=油门）",
+            "A / D　　　转向（飞机=横滚）",
+            "鼠标　　　 转视角 / 操控飞机",
+            "左键 / 空格　开火",
         };
         string[] right =
         {
+            "右键按住　 开镜",
+            "Q　　　　　切换武器",
             "1 / 2 / 3　切换弹药",
-            "R　　　　　重新开始",
-            "占资源点　　每 10 秒产金",
-            "先到 12 击杀　获胜",
+            "R　　　　　结算后重开",
         };
         for (int i = 0; i < left.Length; i++)
         {

@@ -39,9 +39,9 @@ public class PlayerTankController : MonoBehaviour
         if (Input.GetButton("Fire1") || Input.GetKey(KeyCode.Space))
             _combat.FireAt(aimPoint, turn);
 
-        // 副武器（炸弹 / 鱼雷）：右键。只在光标锁定（战斗中）时生效
-        if (Cursor.lockState == CursorLockMode.Locked && Input.GetMouseButtonDown(1))
-            _combat.FireSecondary(aimPoint);
+        // Q 切换武器（右键留给开镜）
+        if (Input.GetKeyDown(KeyCode.Q))
+            _combat.CycleWeapon();
 
         // 切弹药
         var w = _combat.Weapon;

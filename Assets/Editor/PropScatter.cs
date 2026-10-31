@@ -54,8 +54,7 @@ public static class PropScatter
     };
     static readonly string[] PropModels =
     {
-        "Survival/barrel", "Survival/box", "Survival/box-large",
-        "Survival/fence", "Survival/fence-fortified",
+        // 原来这里是 Kenney 生存包的木箱/油桶/栅栏，摆在战场上像一堆纸箱子 —— 先清掉
     };
 
     [MenuItem("Tools/铁皮黎明/③ 撒细节物件（建筑/树/石）", false, 40)]
