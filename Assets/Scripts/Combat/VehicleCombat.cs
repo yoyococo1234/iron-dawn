@@ -236,14 +236,19 @@ public class VehicleCombat : MonoBehaviour
         }
     }
 
-    /// <summary>玩家车开炮时抖镜头（AI 开炮不抖，否则画面一直晃）。</summary>
+    /// <summary>玩家车开炮时抖镜头（AI 开炮不抖，否则画面一直晃）。按伤害缩放：机炮几乎不抖，主炮才明显。</summary>
     void ShakeCamera(float amount)
     {
         if (GetComponent<PlayerTankController>() == null) return;
         var cam = Camera.main;
         if (cam == null) return;
         var cf = cam.GetComponent<CameraFollow>();
-        if (cf != null) cf.Shake(amount);
+        if (cf == null) return;
+
+        // 60 伤害的机炮不该和 300 伤害的主炮一样抖 —— 否则连射时机枪画面根本没法瞄
+        float dmg = Weapon != null ? Weapon.baseDamage : 300f;
+        float scale = Mathf.Lerp(0.06f, 1f, Mathf.InverseLerp(40f, 320f, dmg));
+        cf.Shake(amount * scale);
     }
 
     /// <summary>把出膛点推到自身碰撞盒外面（沿发射方向），最多推 20 m。</summary>

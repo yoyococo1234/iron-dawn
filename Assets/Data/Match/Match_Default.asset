@@ -22,7 +22,7 @@ MonoBehaviour:
   - {fileID: 11400000, guid: 1b9d18d14d3402f45b528fa57b2e13e3, type: 2}
   - {fileID: 11400000, guid: 0bb4fa1d50644f54495b9005ce0b1813, type: 2}
   - {fileID: 11400000, guid: 7d6f5e3a410f59846901be6d159ceed5, type: 2}
-  startingGold: 200
+  startingGold: 600
   respawnBase: 80
   respawnGrowth: 1.22
   swapGrowth: 1.15

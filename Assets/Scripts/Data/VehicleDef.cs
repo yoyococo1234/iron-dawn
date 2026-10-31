@@ -67,8 +67,14 @@ public class VehicleDef : ScriptableObject
     public bool useSplitTurret = false;
     [Tooltip("履带模型（可选）。给了就会按车速滚动 UV，看起来履带在转")]
     public GameObject modelTracksPrefab;
+    [Tooltip("原模型履带（只用来量车体履带槽尺寸，程序生成轮子+履带时按它对齐）")]
+    public GameObject modelTrackWellRef;
     [Tooltip("炮塔单独生成时，它自己的材质（贴图和车体不是同一张）")]
     public Material modelTurretMaterial;
+    [Tooltip("炮管模型（从炮塔上切出来的，单独做俯仰）。留空 = 炮塔整体不会抬炮")]
+    public GameObject modelBarrelPrefab;
+    [Tooltip("炮管转轴在炮塔局部坐标下的位置（炮盾中心）")]
+    public Vector3 modelBarrelPivot;
     [Tooltip("炮塔转轴在车体局部坐标下的位置（= 炮塔本体中心，绕它转才不甩）")]
     public Vector3 modelTurretPivot;
     [Tooltip("炮塔网格自身原点在车体局部坐标下的位置（= Blender 拆件时的切割面中心）。改转轴时用它把炮塔摆回原位")]

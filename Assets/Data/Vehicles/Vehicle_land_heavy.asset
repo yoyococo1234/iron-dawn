@@ -44,6 +44,8 @@ MonoBehaviour:
   useSplitTurret: 1
   modelTracksPrefab: {fileID: 919132149155446097, guid: dec68b8876dde8e42aacc2a934409797, type: 3}
   modelTurretMaterial: {fileID: 2100000, guid: f609b091b1f3d154980770c5b925ee08, type: 2}
+  modelBarrelPrefab: {fileID: 919132149155446097, guid: 2ace79af1a29c5844ade9690129ef05a, type: 3}
+  modelBarrelPivot: {x: 0.0684, y: 1.1981, z: 1.5496}
   turretBoneName: Turret
   muzzleBoneName: Muzzle
   modelYawOffset: 0

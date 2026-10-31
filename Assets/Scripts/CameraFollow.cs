@@ -34,11 +34,21 @@ public class CameraFollow : MonoBehaviour
     [Tooltip("开镜时的鼠标灵敏度倍率")]
     public float zoomSensitivity = 0.3f;
 
+    [Header("自由视角（按住 C，战雷那套）")]
+    [Tooltip("按住这个键：鼠标只转镜头，炮塔不动")]
+    public KeyCode freeLookKey = KeyCode.C;
+    [Tooltip("松开后视角回到炮口方向的速度")]
+    public float recenterSpeed = 6f;
+
+    /// <summary>当前是否在自由视角（炮塔不跟鼠标）。</summary>
+    public bool FreeLook { get; private set; }
+
     Vector3 _shake;
     float _shakeAmount;
     float _dist = 16f;
     float _curYaw;
     bool _scoped;
+    bool _wasFreeLook;
 
     public void Shake(float amount) => _shakeAmount = Mathf.Max(_shakeAmount, amount);
 
@@ -99,22 +109,53 @@ public class CameraFollow : MonoBehaviour
             pitch = Mathf.Clamp(pitch, minPitch, maxPitch);
         }
 
-        _scoped = Cursor.lockState == CursorLockMode.Locked && Input.GetMouseButton(1);
+        // ---------- 自由视角（按住 C）----------
+        // 战雷里 C 是「环视」：鼠标只转镜头，炮塔保持不动；松开后视角自己回到炮口方向。
+        bool freeLook = Cursor.lockState == CursorLockMode.Locked && Input.GetKey(freeLookKey);
+        FreeLook = freeLook;
+        if (!freeLook && _wasFreeLook)
+        {
+            // 松手：把镜头平滑转回炮口指向
+            var vp = target.GetComponent<VehiclePhysics>();
+            float wantYaw = target.eulerAngles.y + (vp != null ? vp.turretYaw : 0f);
+            float k = Mathf.Clamp01(recenterSpeed * Time.unscaledDeltaTime);
+            yaw = Mathf.LerpAngle(yaw, wantYaw, k);
+            pitch = Mathf.Lerp(pitch, 8f, k);
+        }
+        _wasFreeLook = freeLook;
+
+        _scoped = Cursor.lockState == CursorLockMode.Locked
+                  && (Input.GetMouseButton(1) || Input.GetKey(KeyCode.LeftShift) || Input.GetKey(KeyCode.RightShift));
         var cam = GetComponent<Camera>();
 
-        // ---------- 炮手视角（右键按住）：相机贴到炮塔后方，炮管就在画面下缘 ----------
+        // ---------- 炮手视角（右键按住）：相机贴到炮塔上方，炮管就在画面下缘 ----------
         // 战雷里右键就是这个：看到自己的炮管，准星就是炮口指向。按住 Shift 再拉近一档。
         if (_scoped && cam != null)
         {
-            var rotS = Quaternion.Euler(pitch, yaw, 0f);
-            Vector3 fwd = rotS * Vector3.forward;
+            var vp = target.GetComponent<VehiclePhysics>();
 
-            // 相机贴在炮口后方（不是车体后方）—— 否则炮塔正好挡在画面中间。
-            // 这样炮管会出现在画面下缘，和战雷的炮手镜一致。
-            // 贴近炮塔后上方、视线略向下：坦克和炮管都在画面下缘，准星指向炮口方向。
-            // （相机不能和炮口同高，否则会钻进炮塔内部）
-            Vector3 camPos = target.position + Vector3.up * 3.9f - fwd * 5.0f;
-            Vector3 lookAtS = target.position + Vector3.up * 2.1f + fwd * 200f;
+            // 视线方向 = 玩家自己的 yaw/pitch（**不跟炮管**）。
+            // 跟炮管的话，相机→炮塔→相机 会形成反馈，放大后炮塔会自己往左右漂。
+            Vector3 lookDir = Quaternion.Euler(pitch, yaw, 0f) * Vector3.forward;
+
+            // 机位高度按**炮塔实际包围盒顶**算（重装坦克炮塔又高又大，写死高度会被挡死）
+            float turretTopY = target.position.y + 2f;
+            if (vp != null && vp.turretBone != null)
+            {
+                bool any = false;
+                foreach (var r in vp.turretBone.GetComponentsInChildren<Renderer>())
+                {
+                    if (!r.enabled) continue;
+                    if (!any || r.bounds.max.y > turretTopY) { turretTopY = r.bounds.max.y; any = true; }
+                }
+            }
+            float camY = turretTopY + 0.45f;
+
+            Vector3 back = new Vector3(lookDir.x, 0f, lookDir.z);
+            back = back.sqrMagnitude > 0.0001f ? back.normalized : target.forward;
+
+            Vector3 camPos = new Vector3(target.position.x, camY, target.position.z) - back * 5.0f;
+            Vector3 lookAtS = camPos + lookDir * 300f;
 
             float groundS = Mathf.Max(BattlefieldTerrain.SampleHeight(camPos.x, camPos.z), BattlefieldTerrain.WaterLevel) + 1.2f;
             if (camPos.y < groundS) camPos.y = groundS;
@@ -123,7 +164,9 @@ public class CameraFollow : MonoBehaviour
             transform.rotation = Quaternion.Slerp(transform.rotation,
                 Quaternion.LookRotation(lookAtS - transform.position), 16f * Time.unscaledDeltaTime);
 
-            bool extraZoom = Input.GetKey(KeyCode.LeftShift) || Input.GetKey(KeyCode.RightShift);
+            // 两个放大档：单按右键/Shift 是一档，两个一起按再拉近一档
+            bool extraZoom = (Input.GetMouseButton(1))
+                             && (Input.GetKey(KeyCode.LeftShift) || Input.GetKey(KeyCode.RightShift));
             float wantFovS = extraZoom ? zoomFov * 0.55f : zoomFov * 1.6f;
             cam.fieldOfView = Mathf.Lerp(cam.fieldOfView, wantFovS, scopeSpeed * Time.unscaledDeltaTime);
 
