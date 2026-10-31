@@ -111,7 +111,7 @@ public static class PropScatter
                 var model = models[rng.Next(models.Length)];
                 float scale = BuildingScale(model);
                 float yaw = rng.Next(2) == 0 ? 0f : 90f;
-                Place(holder, model, jx * S, jz * S, scale, yaw);
+                Place(holder, model, jx * S, jz * S, scale, yaw, solid: true);
                 n++;
             }
         }
@@ -270,7 +270,7 @@ public static class PropScatter
         return list.ToArray();
     }
 
-    static void Place(Transform parent, GameObject model, float x, float z, float scale, float yaw)
+    static void Place(Transform parent, GameObject model, float x, float z, float scale, float yaw, bool solid = false)
     {
         float y = BattlefieldTerrain.SampleHeight(x, z);
         var go = (GameObject)PrefabUtility.InstantiatePrefab(model);
@@ -281,6 +281,42 @@ public static class PropScatter
         go.isStatic = true;
         ApplyPalette(go);
         ApplyVariation(go);
+        if (solid) AddSolidCollider(go);
+    }
+
+    /// <summary>
+    /// 给建筑加实体碰撞盒（子弹打不穿、车开不过去）。
+    /// 按网格局部包围盒的 8 个角换算到根节点局部空间，这样 yaw 转 90° 也不会把盒子横过来。
+    /// </summary>
+    static void AddSolidCollider(GameObject go)
+    {
+        bool has = false;
+        var local = new Bounds(Vector3.zero, Vector3.zero);
+        var toRoot = go.transform.worldToLocalMatrix;
+
+        foreach (var mf in go.GetComponentsInChildren<MeshFilter>())
+        {
+            if (mf.sharedMesh == null) continue;
+            var mb = mf.sharedMesh.bounds;
+            var e = mb.extents;
+            var m = toRoot * mf.transform.localToWorldMatrix;
+
+            for (int i = 0; i < 8; i++)
+            {
+                var corner = new Vector3(
+                    mb.center.x + ((i & 1) == 0 ? -e.x : e.x),
+                    mb.center.y + ((i & 2) == 0 ? -e.y : e.y),
+                    mb.center.z + ((i & 4) == 0 ? -e.z : e.z));
+                var p = m.MultiplyPoint3x4(corner);
+                if (!has) { local = new Bounds(p, Vector3.zero); has = true; }
+                else local.Encapsulate(p);
+            }
+        }
+
+        if (!has) return;
+        var box = go.AddComponent<BoxCollider>();
+        box.center = local.center;
+        box.size = local.size;
     }
 
     // ---- 每棵/每栋轻微色差，避免整片一个颜色 ----

@@ -48,10 +48,10 @@ public class PlayerTankController : MonoBehaviour
         }
     }
 
-    /// <summary>鼠标指到的世界坐标：优先打射线命中点，否则取远处的地平面。</summary>
+    /// <summary>屏幕正中央（准星）打到哪 —— 视角转过去，炮塔就跟着转过去。</summary>
     Vector3 GetAimPoint()
     {
-        var ray = _cam.ScreenPointToRay(Input.mousePosition);
+        var ray = _cam.ScreenPointToRay(new Vector3(Screen.width * 0.5f, Screen.height * 0.5f, 0f));
 
         if (Physics.Raycast(ray, out var hit, aimRayLength, ~0, QueryTriggerInteraction.Ignore))
             return hit.point;
@@ -63,6 +63,6 @@ public class PlayerTankController : MonoBehaviour
             float t = (y - ray.origin.y) / ray.direction.y;
             if (t > 0f) return ray.origin + ray.direction * t;
         }
-        return ray.origin + ray.direction * 500f;
+        return ray.origin + ray.direction * 800f;
     }
 }

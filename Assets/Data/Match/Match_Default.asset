@@ -13,6 +13,15 @@ MonoBehaviour:
   m_Name: Match_Default
   m_EditorClassIdentifier: Assembly-CSharp::MatchDef
   teamSize: 5
+  playerLives: 3
+  enemyLives: 3
+  roster:
+  - {fileID: 11400000, guid: 2f2416715f0287f48a56602c070c0b5a, type: 2}
+  - {fileID: 11400000, guid: 867beb4dc6a0ba748bd326ef5dac85f1, type: 2}
+  - {fileID: 11400000, guid: 5d803890ea1c5a0439f0c622c9b84cce, type: 2}
+  - {fileID: 11400000, guid: 1b9d18d14d3402f45b528fa57b2e13e3, type: 2}
+  - {fileID: 11400000, guid: 0bb4fa1d50644f54495b9005ce0b1813, type: 2}
+  - {fileID: 11400000, guid: 7d6f5e3a410f59846901be6d159ceed5, type: 2}
   startingGold: 200
   respawnBase: 80
   respawnGrowth: 1.22

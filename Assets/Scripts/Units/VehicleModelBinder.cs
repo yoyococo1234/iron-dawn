@@ -6,18 +6,15 @@ using UnityEngine;
 /// </summary>
 public static class VehicleModelBinder
 {
-    /// <summary>
-    /// 尝试从 AssetDatabase 自动找模型（编辑器用）。
-    /// 约定：Assets/Models/Vehicles/{id}.prefab 或 {id}.glb
-    /// </summary>
+    /// <summary>编辑器里按约定路径自动找模型。</summary>
     public static GameObject AutoFindModel(string vehicleId)
     {
 #if UNITY_EDITOR
         string[] candidates =
         {
             $"Assets/Models/Vehicles/{vehicleId}.prefab",
-            $"Assets/Models/Vehicles/{vehicleId}.glb",
             $"Assets/Models/Vehicles/{vehicleId}.fbx",
+            $"Assets/Models/Vehicles/{vehicleId}.glb",
         };
         foreach (var p in candidates)
         {
@@ -34,32 +31,26 @@ public static class VehicleModelBinder
         if (root == null || string.IsNullOrEmpty(boneName)) return null;
 
         foreach (var t in root.GetComponentsInChildren<Transform>(true))
-        {
             if (t.name == boneName) return t;
-        }
-        // 退一步：忽略大小写
         foreach (var t in root.GetComponentsInChildren<Transform>(true))
-        {
             if (string.Equals(t.name, boneName, System.StringComparison.OrdinalIgnoreCase)) return t;
-        }
         return null;
     }
 
     /// <summary>
-    /// 把模型实例挂到载具根节点下，并修正朝向/缩放。
-    /// 返回 (炮塔节点, 炮口节点)。
+    /// 挂模型 + 补逻辑炮塔。找不到模型返回 false（调用方自己退回方块占位）。
+    /// 运行时可调用（用 VehicleDef.modelPrefab，不碰 AssetDatabase）。
     /// </summary>
-    public static void Attach(GameObject root, GameObject modelSource, VehicleDef def,
-        out Transform turret, out Transform muzzle)
+    public static bool Attach(GameObject root, VehicleDef def, out Transform turret, out Transform muzzle)
     {
         turret = null;
         muzzle = null;
-        if (root == null || modelSource == null || def == null) return;
+        if (root == null || def == null || def.modelPrefab == null) return false;
 
-        var model = Object.Instantiate(modelSource, root.transform);
+        var model = Object.Instantiate(def.modelPrefab, root.transform);
         model.name = "Model";
 
-        // 注意：FBX 导入出来的根节点自带「导入缩放」和「上轴修正旋转」，
+        // FBX 导入出来的根节点自带「导入缩放」和「上轴修正旋转」，
         // 直接覆盖 localScale/localRotation 会把模型缩成 1/100 并且歪掉。
         // 所以要在原值基础上叠加，而不是替换。
         var baseScale = model.transform.localScale;
@@ -71,14 +62,58 @@ public static class VehicleModelBinder
 
         // 模型本身不做碰撞（碰撞交给逻辑，别让物理引擎和我们的贴地打架）
         foreach (var c in model.GetComponentsInChildren<Collider>(true))
-            Object.DestroyImmediate(c);
+        {
+            if (Application.isPlaying) Object.Destroy(c);
+            else Object.DestroyImmediate(c);
+        }
 
         turret = FindBone(model, def.turretBoneName);
         muzzle = FindBone(model, def.muzzleBoneName);
 
-        if (turret == null)
-            Debug.LogWarning($"[VehicleModelBinder] {def.displayName}: 没找到炮塔节点「{def.turretBoneName}」，炮塔将无法转动。请检查模型节点名，或在 VehicleDef 里改 turretBoneName。");
-        if (muzzle == null)
-            Debug.LogWarning($"[VehicleModelBinder] {def.displayName}: 没找到炮口节点「{def.muzzleBoneName}」，开火将使用默认位置。");
+        if (def.modelMaterial != null)
+        {
+            foreach (var r in model.GetComponentsInChildren<MeshRenderer>(true))
+            {
+                var mats = new Material[Mathf.Max(1, r.sharedMaterials.Length)];
+                for (int i = 0; i < mats.Length; i++) mats[i] = def.modelMaterial;
+                r.sharedMaterials = mats;
+            }
+        }
+
+        // 模型是整体网格时没有炮塔节点 —— 按包围盒补一个逻辑炮塔
+        if (turret == null || muzzle == null)
+        {
+            BuildLogicBones(root, out var lt, out var lm);
+            if (turret == null) turret = lt;
+            if (muzzle == null) muzzle = lm;
+        }
+        return true;
+    }
+
+    /// <summary>
+    /// Lux3D 的模型是整体网格，没有独立炮塔节点。按包围盒补一个"逻辑炮塔 + 炮口"，
+    /// 让瞄准方向、出膛位置、弹道起点都是真的（视觉上炮塔暂不旋转）。
+    /// </summary>
+    public static void BuildLogicBones(GameObject root, out Transform turret, out Transform muzzle)
+    {
+        var rs = root.GetComponentsInChildren<MeshRenderer>();
+        if (rs.Length == 0) { turret = root.transform; muzzle = root.transform; return; }
+
+        var b = rs[0].bounds;
+        foreach (var r in rs) b.Encapsulate(r.bounds);
+
+        Vector3 center = root.transform.InverseTransformPoint(b.center);
+        float halfLen = Mathf.Max(b.size.x, b.size.z) * 0.5f;
+        float height = b.size.y;
+
+        var tp = new GameObject("Turret");
+        tp.transform.SetParent(root.transform, false);
+        tp.transform.localPosition = new Vector3(0f, Mathf.Max(0.5f, center.y * 0.85f), 0f);
+        turret = tp.transform;
+
+        var mz = new GameObject("Muzzle");
+        mz.transform.SetParent(tp.transform, false);
+        mz.transform.localPosition = new Vector3(0f, height * 0.10f, halfLen * 0.90f);
+        muzzle = mz.transform;
     }
 }

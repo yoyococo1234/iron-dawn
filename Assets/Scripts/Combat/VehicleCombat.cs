@@ -171,7 +171,9 @@ public class VehicleCombat : MonoBehaviour
         var shell = go.AddComponent<Projectile>();
         shell.Launch(dir, w.projectileSpeed, w.baseDamage, ammo, this, w.range);
 
-        // 简易炮口闪光
+        // 玩家开炮：镜头抖一下 + 炮口闪光
+        ShakeCamera(0.55f);
+
         var light = go.AddComponent<Light>();
         light.type = LightType.Point;
         light.range = 25f;
@@ -197,6 +199,16 @@ public class VehicleCombat : MonoBehaviour
             if (t != null && t.Alive) t.TakeDamage(w.baseDamage, ammo, origin, this);
             return;
         }
+    }
+
+    /// <summary>玩家车开炮时抖镜头（AI 开炮不抖，否则画面一直晃）。</summary>
+    void ShakeCamera(float amount)
+    {
+        if (GetComponent<PlayerTankController>() == null) return;
+        var cam = Camera.main;
+        if (cam == null) return;
+        var cf = cam.GetComponent<CameraFollow>();
+        if (cf != null) cf.Shake(amount);
     }
 
     /// <summary>把出膛点推到自身碰撞盒外面（沿发射方向），最多推 20 m。</summary>
@@ -272,6 +284,15 @@ public class VehicleCombat : MonoBehaviour
             case Domain.Air: return ammo.vsAir;
             default: return def.armorMode == ArmorMode.Uniform ? ammo.vsSoft : ammo.vsArmor;
         }
+    }
+
+    /// <summary>环境致死（进水报废、掉出地图等），没有击杀者。</summary>
+    public void DestroyByEnvironment()
+    {
+        if (!Alive) return;
+        lastAttacker = null;
+        hp = 0f;
+        Die();
     }
 
     void Die()

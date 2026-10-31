@@ -162,10 +162,12 @@ public class VehicleAI : MonoBehaviour
             float dist = Vector3.Distance(transform.position, c.transform.position);
             if (dist > visionRange) continue;
 
-            // 同域优先；跨域只在很近时才考虑
+            // 同域优先；飞机对所有目标一视同仁（本来就能打地面/海面），
+            // 地面/海上单位只在近处才考虑跨域
             bool sameDomain = c.Def != null && _self.Def != null && c.Def.domain == _self.Def.domain;
             float score = dist * (sameDomain ? sameDomainBonus : 1f);
-            if (!sameDomain && dist > visionRange * 0.5f) continue;
+            bool isAir = _self.Def != null && _self.Def.domain == Domain.Air;
+            if (!sameDomain && !isAir && dist > visionRange * 0.5f) continue;
 
             if (score < bestScore) { bestScore = score; best = c; }
         }
