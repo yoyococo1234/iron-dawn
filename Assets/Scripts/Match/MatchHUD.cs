@@ -156,7 +156,7 @@ public class MatchHUD : MonoBehaviour
         Fill(rlBar, new Color(1f, 1f, 1f, 0.10f));
         Fill(new Rect(rlBar.x, rlBar.y, rlBar.width * Mathf.Clamp01(p.ReloadProgress), rlBar.height), CGold);
 
-        Text(new Rect(x + w - 200f, y + 64f, 180f, 24f), "Q 切武器 · 右键开镜", _s18, new Color(1f, 1f, 1f, 0.55f), TextAnchor.MiddleRight);
+        Text(new Rect(x + w - 230f, y + 64f, 210f, 24f), "Q 切武器 · 右键瞄准 · Shift 拉近", _s18, new Color(1f, 1f, 1f, 0.55f), TextAnchor.MiddleRight);
     }
 
     // ---------------- 右上：击杀提示 ----------------

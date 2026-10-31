@@ -99,14 +99,44 @@ public class CameraFollow : MonoBehaviour
             pitch = Mathf.Clamp(pitch, minPitch, maxPitch);
         }
 
-        // 开镜：右键按住把 FOV 拉近（战雷式）
         _scoped = Cursor.lockState == CursorLockMode.Locked && Input.GetMouseButton(1);
         var cam = GetComponent<Camera>();
-        if (cam != null)
+
+        // ---------- 炮手视角（右键按住）：相机贴到炮塔后方，炮管就在画面下缘 ----------
+        // 战雷里右键就是这个：看到自己的炮管，准星就是炮口指向。按住 Shift 再拉近一档。
+        if (_scoped && cam != null)
         {
-            float wantFov = _scoped ? zoomFov : normalFov;
-            cam.fieldOfView = Mathf.Lerp(cam.fieldOfView, wantFov, scopeSpeed * Time.unscaledDeltaTime);
+            var rotS = Quaternion.Euler(pitch, yaw, 0f);
+            Vector3 fwd = rotS * Vector3.forward;
+
+            // 相机贴在炮口后方（不是车体后方）—— 否则炮塔正好挡在画面中间。
+            // 这样炮管会出现在画面下缘，和战雷的炮手镜一致。
+            // 贴近炮塔后上方、视线略向下：坦克和炮管都在画面下缘，准星指向炮口方向。
+            // （相机不能和炮口同高，否则会钻进炮塔内部）
+            Vector3 camPos = target.position + Vector3.up * 3.9f - fwd * 5.0f;
+            Vector3 lookAtS = target.position + Vector3.up * 2.1f + fwd * 200f;
+
+            float groundS = Mathf.Max(BattlefieldTerrain.SampleHeight(camPos.x, camPos.z), BattlefieldTerrain.WaterLevel) + 1.2f;
+            if (camPos.y < groundS) camPos.y = groundS;
+
+            transform.position = Vector3.Lerp(transform.position, camPos, 16f * Time.unscaledDeltaTime);
+            transform.rotation = Quaternion.Slerp(transform.rotation,
+                Quaternion.LookRotation(lookAtS - transform.position), 16f * Time.unscaledDeltaTime);
+
+            bool extraZoom = Input.GetKey(KeyCode.LeftShift) || Input.GetKey(KeyCode.RightShift);
+            float wantFovS = extraZoom ? zoomFov * 0.55f : zoomFov * 1.6f;
+            cam.fieldOfView = Mathf.Lerp(cam.fieldOfView, wantFovS, scopeSpeed * Time.unscaledDeltaTime);
+
+            if (_shakeAmount > 0.001f)
+            {
+                _shake = Random.insideUnitSphere * _shakeAmount;
+                _shakeAmount = Mathf.MoveTowards(_shakeAmount, 0f, Time.deltaTime * 14f);
+                transform.rotation *= Quaternion.Euler(_shake.x * 2f, _shake.y * 2f, _shake.z * 2.5f);
+            }
+            return;
         }
+
+        if (cam != null) cam.fieldOfView = Mathf.Lerp(cam.fieldOfView, normalFov, scopeSpeed * Time.unscaledDeltaTime);
 
         float scroll = Input.GetAxis("Mouse ScrollWheel");
         if (Mathf.Abs(scroll) > 0.0001f)

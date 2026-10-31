@@ -89,20 +89,21 @@ public static class VehicleModelBinder
             mz.transform.SetParent(tp.transform, false);
             mz.transform.localPosition = new Vector3(0f, 0f, lb.max.z * 0.95f);
 
-            // 补一个炮塔座圈，盖住车体顶面被切开的洞（炮塔一转就能看见）
-            // 半径按炮塔"宽度"算，不能按最大边 —— 最大边含炮管，会把座圈做成一个大圆盘
+            // 炮塔井：一个**深色**圆盘压在车体切割面下方。
+            // 之前用迷彩贴图的大圆盘 → 看着像"板子叠上去"；改用深灰、缩到刚好盖住洞口，
+            // 炮塔转开时看到的就是一个有阴影的炮塔井，而不是一个黑窟窿。
             if (def.showTurretRing)
             {
-                float radius = Mathf.Clamp(lb.size.x * 0.42f, 0.5f, 2.0f);
+                float radius = Mathf.Clamp(lb.size.x * 0.46f, 0.7f, 2.2f);
                 var cap = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
-                cap.name = "TurretRing";
+                cap.name = "TurretWell";
                 cap.transform.SetParent(root.transform, false);
-                cap.transform.localPosition = def.modelTurretPivot + Vector3.down * 0.10f;
-                cap.transform.localScale = new Vector3(radius * 2f, 0.05f, radius * 2f);
+                cap.transform.localPosition = def.modelTurretPivot + Vector3.down * 0.12f;
+                cap.transform.localScale = new Vector3(radius * 2f, 0.06f, radius * 2f);
                 var capCol = cap.GetComponent<Collider>();
                 if (capCol != null) { if (Application.isPlaying) Object.Destroy(capCol); else Object.DestroyImmediate(capCol); }
                 var capR = cap.GetComponent<Renderer>();
-                if (capR != null && def.modelMaterial != null) capR.sharedMaterial = def.modelMaterial;
+                if (capR != null) capR.sharedMaterial = DarkMat();
             }
 
             turret = tp.transform;
@@ -177,6 +178,18 @@ public static class VehicleModelBinder
             }
         }
         return local;
+    }
+
+    static Material _darkMat;
+
+    /// <summary>炮塔井用的深灰材质（共用一份）。</summary>
+    static Material DarkMat()
+    {
+        if (_darkMat != null) return _darkMat;
+        _darkMat = new Material(Shader.Find("Standard"));
+        _darkMat.color = new Color(0.09f, 0.09f, 0.10f);
+        _darkMat.SetFloat("_Glossiness", 0.05f);
+        return _darkMat;
     }
 
     static void StripColliders(GameObject go)
