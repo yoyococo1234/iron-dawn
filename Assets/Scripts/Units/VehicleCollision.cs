@@ -1,19 +1,25 @@
 using UnityEngine;
 
 /// <summary>
-/// 载具之间的碰撞。载具是 transform 移动的（不是刚体），不判就会互相穿过去 —— 两架飞机对着飞会直接穿过。
+/// 载具之间的碰撞。
+/// 载具是 transform 移动的（不是刚体），不判就会互相穿过去。
 ///
-/// 规则：
+/// 规则（2026-10-31 修正）：
 ///   · 任一方是飞机 → 空中相撞，双方一起爆炸
-///   · 都是地面/海上 → 按相对速度互相撞击掉血（不做硬阻挡，避免 AI 顶牛卡死）
+///   · 都是地面/海上 → **不爆炸**，只做"互相推开 + 轻微刮蹭伤害"
+///     （之前算成 相对速度 × 26，两车对撞直接互炸，像碰碰车）
 /// </summary>
 [RequireComponent(typeof(VehicleCombat))]
 public class VehicleCollision : MonoBehaviour
 {
-    [Tooltip("撞击伤害 = 相对速度 × 这个系数")]
-    public float ramDamagePerSpeed = 26f;
+    [Tooltip("撞击伤害 = 相对速度 × 这个系数（地面/海上，很小）")]
+    public float ramDamagePerSpeed = 1.2f;
+    [Tooltip("单次撞击最多扣多少比例的血（防止撞一下就废）")]
+    public float ramDamageCapRatio = 0.06f;
     [Tooltip("相对速度低于这个值不算撞击")]
-    public float ramMinSpeed = 6f;
+    public float ramMinSpeed = 8f;
+    [Tooltip("每次检测互相推开的距离（米）")]
+    public float separation = 0.12f;
 
     VehicleCombat _self;
     Collider _col;
@@ -54,13 +60,23 @@ public class VehicleCollision : MonoBehaviour
                 return;
             }
 
-            // 地面/海上相撞：按相对速度掉血
+            // 地面/海上：推开，不爆炸
+            Vector3 push = transform.position - other.transform.position;
+            push.y = 0f;
+            if (push.sqrMagnitude > 0.01f)
+            {
+                push.Normalize();
+                transform.position += push * separation;
+                other.transform.position -= push * separation;
+            }
+
+            // 刮蹭伤害：小，且有上限
             var ov = other.GetComponent<VehiclePhysics>();
             float rel = 0f;
             if (_phys != null && ov != null) rel = (_phys.Velocity - ov.Velocity).magnitude;
-            if (rel < ramMinSpeed) continue;
+            if (rel < ramMinSpeed) return;
 
-            float dmg = rel * ramDamagePerSpeed;
+            float dmg = Mathf.Min(rel * ramDamagePerSpeed, _self.maxHp * ramDamageCapRatio);
             other.TakeDamage(dmg, null, transform.position, _self);
             if (_self.Alive) _self.TakeDamage(dmg, null, other.transform.position, other);
             return;

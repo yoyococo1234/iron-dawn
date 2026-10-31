@@ -54,6 +54,8 @@ public class VehicleAI : MonoBehaviour
     Vector3 _lastTargetPos;
     Vector3 _goal;                 // 当前要去的世界坐标
     float _losOkTime;              // 最后一次"看得见目标"的时刻
+    float _detourUntil;
+    float _detourSign = 1f;
 
     void Awake()
     {
@@ -202,12 +204,33 @@ public class VehicleAI : MonoBehaviour
             return;
         }
 
+        // 卡在建筑/障碍上超过 1.2 秒 → 侧向绕行（左右交替），并立刻重规划
+        if (_phys.blockedTime > 1.2f)
+        {
+            _detourUntil = Time.time + 2.5f;
+            _detourSign = -_detourSign;
+            _phys.blockedTime = 0f;
+            _nextRepath = 0f;
+        }
+
+        Vector3 target = _goal;
+        if (Time.time < _detourUntil)
+        {
+            Vector3 toGoal = _goal - transform.position;
+            toGoal.y = 0f;
+            if (toGoal.sqrMagnitude > 1f)
+            {
+                Vector3 side = Vector3.Cross(Vector3.up, toGoal.normalized);
+                target = transform.position + toGoal.normalized * 25f + side * (30f * _detourSign);
+            }
+        }
+
         // 目标移动较多或到时间就重规划
-        if (Time.time >= _nextRepath || Vector3.Distance(_goal, _lastTargetPos) > 60f)
+        if (Time.time >= _nextRepath || Vector3.Distance(target, _lastTargetPos) > 60f)
         {
             _nextRepath = Time.time + repathInterval;
-            _lastTargetPos = _goal;
-            Repath(_goal);
+            _lastTargetPos = target;
+            Repath(target);
         }
 
         SteerToward(CurrentWaypoint());
