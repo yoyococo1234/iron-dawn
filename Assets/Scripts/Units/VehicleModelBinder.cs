@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 
 /// <summary>
@@ -68,6 +69,7 @@ public static class VehicleModelBinder
 
         StripColliders(model);
         if (def.modelMaterial != null) ApplyMaterial(model, def.modelMaterial);
+        var hullFilter = model.GetComponentInChildren<MeshFilter>();
 
         // ---------- 炮塔（Lux3D 拆件）----------
         if (def.modelTurretPrefab != null)
@@ -78,8 +80,9 @@ public static class VehicleModelBinder
 
             var tm = Object.Instantiate(def.modelTurretPrefab, tp.transform);
             tm.name = "TurretModel";
-            // 炮塔网格已经是以转轴为原点的，这里只保留 FBX 自带的上轴修正和缩放
-            tm.transform.localPosition = Vector3.zero;
+            // 炮塔网格的原点是 Blender 拆件时的切割面中心；转轴换成了炮塔本体中心，
+            // 所以要把网格反向偏移回去：外观位置不变，只是转起来绕本体中心，不再甩。
+            tm.transform.localPosition = def.modelTurretMeshOrigin - def.modelTurretPivot;
             StripColliders(tm);
             if (def.modelMaterial != null) ApplyMaterial(tm, def.modelMaterial);
 
@@ -89,43 +92,21 @@ public static class VehicleModelBinder
             mz.transform.SetParent(tp.transform, false);
             mz.transform.localPosition = new Vector3(0f, 0f, lb.max.z * 0.95f);
 
-            // 炮塔井：按**炮塔底部截面**量出洞口大小，压一块深色井底。
-            // 挂在车体（root）上而不是炮塔上 —— 洞口在车体上是固定的，圆盘不能跟着转。
-            if (def.showTurretRing)
+            // 炮塔井：车体被炮塔切开的破口，实测后拍平 + 补板（见 WellFixup）
+            if (def.autoTurretWellPatch)
             {
-                var mfT = tm.GetComponentInChildren<MeshFilter>();
-                if (mfT != null && mfT.sharedMesh != null)
+                var fix = WellFixup.GetOrBuild(def, root, model, tp.transform);
+                if (fix.hull != null && hullFilter != null) hullFilter.sharedMesh = fix.hull;
+                if (fix.plate != null)
                 {
-                    var mesh = mfT.sharedMesh;
-                    var verts = mesh.vertices;
-                    var toT = tp.transform.worldToLocalMatrix * mfT.transform.localToWorldMatrix;
-
-                    float minX = float.MaxValue, maxX = float.MinValue, minZ = float.MaxValue, maxZ = float.MinValue;
-                    bool any = false;
-                    for (int i = 0; i < verts.Length; i++)
-                    {
-                        var p = toT.MultiplyPoint3x4(verts[i]);
-                        if (p.y > 0.25f) continue;          // 只看底部那一圈，避开炮管
-                        minX = Mathf.Min(minX, p.x); maxX = Mathf.Max(maxX, p.x);
-                        minZ = Mathf.Min(minZ, p.z); maxZ = Mathf.Max(maxZ, p.z);
-                        any = true;
-                    }
-
-                    if (any)
-                    {
-                        float cx = (minX + maxX) * 0.5f, cz = (minZ + maxZ) * 0.5f;
-                        float r = Mathf.Max(maxX - minX, maxZ - minZ) * 0.5f * 1.15f;
-
-                        var cap = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
-                        cap.name = "TurretWell";
-                        cap.transform.SetParent(root.transform, false);
-                        cap.transform.localPosition = def.modelTurretPivot + new Vector3(cx, -0.18f, cz);
-                        cap.transform.localScale = new Vector3(r * 2f, 0.05f, r * 2f);
-                        var capCol = cap.GetComponent<Collider>();
-                        if (capCol != null) { if (Application.isPlaying) Object.Destroy(capCol); else Object.DestroyImmediate(capCol); }
-                        var capR = cap.GetComponent<Renderer>();
-                        if (capR != null) capR.sharedMaterial = DarkMat();
-                    }
+                    var well = new GameObject("TurretWell");
+                    well.transform.SetParent(root.transform, false);
+                    well.AddComponent<MeshFilter>().sharedMesh = fix.plate;
+                    var wr = well.AddComponent<MeshRenderer>();
+                    // 用和车体同一套材质（UV 全取 0.5 → 采到迷彩贴图上的一个色，颜色和车体同族）
+                    wr.sharedMaterial = def.modelMaterial != null ? def.modelMaterial : DarkMat();
+                    wr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+                    wr.receiveShadows = true;
                 }
             }
 
@@ -173,6 +154,9 @@ public static class VehicleModelBinder
         muzzle = mz.transform;
     }
 
+    /// <summary>清掉炮塔井修补的缓存（改了模型/转轴后调用）。</summary>
+    public static void ClearWellPatchCache() => WellFixup.Clear();
+
     // ---------------- 工具 ----------------
 
     /// <summary>某个节点下的所有网格，在它自己局部坐标下的包围盒。</summary>
@@ -205,13 +189,13 @@ public static class VehicleModelBinder
 
     static Material _darkMat;
 
-    /// <summary>炮塔井用的深灰材质（共用一份）。</summary>
+    /// <summary>补板兜底材质（没有车体材质时用）。中灰，像一块装甲盖板，不是黑洞。</summary>
     static Material DarkMat()
     {
         if (_darkMat != null) return _darkMat;
         _darkMat = new Material(Shader.Find("Standard"));
-        _darkMat.color = new Color(0.09f, 0.09f, 0.10f);
-        _darkMat.SetFloat("_Glossiness", 0.05f);
+        _darkMat.color = new Color(0.45f, 0.45f, 0.44f);
+        _darkMat.SetFloat("_Glossiness", 0.08f);
         return _darkMat;
     }
 
@@ -231,6 +215,345 @@ public static class VehicleModelBinder
             var mats = new Material[Mathf.Max(1, r.sharedMaterials.Length)];
             for (int i = 0; i < mats.Length; i++) mats[i] = mat;
             r.sharedMaterials = mats;
+        }
+    }
+
+    // ==================================================================
+    //  炮塔井修补
+    // ==================================================================
+
+    /// <summary>车体网格的修补结果。</summary>
+    public struct HullFix
+    {
+        public Mesh hull;      // 拍平后的车体网格（null = 没改）
+        public Mesh plate;     // 补板网格（null = 不需要补）
+    }
+
+    /// <summary>
+    /// 把车体上被炮塔切开的破口收拾干净。
+    ///
+    /// 为什么必须"实测"而不是写死数字：
+    ///   Lux3D 出来的模型是面片汤（一台车 6 万个独立三角面，没有语义部件），
+    ///   part_split 把炮塔那块拿走之后，车体甲板上留下的破口形状不规则，
+    ///   而且车体是空心壳 —— 从破口看到的是内壁，也就是那块"黑洞"。
+    ///   圆盘盖不住（洞比炮塔宽）、Blender 补面补不准（洞不是干净边界环）。
+    ///
+    /// 做法两步：
+    ///   ① 拍平：炮塔本体足迹内、落在甲板高度附近的顶点，全部按到甲板平面。
+    ///      破口那些翘起/塌下的碎面片被压平，甲板就连续了（这一步最关键）。
+    ///   ② 补板：拍平之后还低于甲板 0.12 m 以上的格（真正的深洞），
+    ///      按实测格生成一块平面盖住。
+    /// </summary>
+    static class WellFixup
+    {
+        static readonly Dictionary<string, HullFix> _cache = new Dictionary<string, HullFix>();
+
+        public static HullFix GetOrBuild(VehicleDef def, GameObject root, GameObject modelRoot, Transform turretNode)
+        {
+            string key = def != null && !string.IsNullOrEmpty(def.id) ? def.id : "?";
+            if (_cache.TryGetValue(key, out var cached)) return cached;
+
+            var fix = new HullFix();
+            try { fix = Build(def, root, modelRoot, turretNode); }
+            catch (System.Exception e)
+            {
+                Debug.LogWarning($"[WellFixup] 炮塔井修补失败（{key}）：{e.Message}");
+            }
+            _cache[key] = fix;
+            return fix;
+        }
+
+        public static void Clear() => _cache.Clear();
+
+        static HullFix Build(VehicleDef def, GameObject root, GameObject modelRoot, Transform turretNode)
+        {
+            var fix = new HullFix();
+            if (root == null || modelRoot == null || turretNode == null) return fix;
+
+            var hmf = modelRoot.GetComponentInChildren<MeshFilter>();
+            if (hmf == null || hmf.sharedMesh == null) return fix;
+            var tmf = turretNode.GetComponentInChildren<MeshFilter>();
+            if (tmf == null || tmf.sharedMesh == null) return fix;
+
+            var rootToLocal = root.transform.worldToLocalMatrix;
+
+            // ---- 1. 炮塔「本体」足迹（车体局部，米）----
+            // 炮塔那块零件里带着长炮管，直接用整体包围盒会把车头斜坡也算进来；
+            // 所以先按 0.05 m 打点、腐蚀 0.15 m（细炮管被腐蚀掉），取最大连通块的包围盒。
+            var toRootT = rootToLocal * tmf.transform.localToWorldMatrix;
+            var tv = tmf.sharedMesh.vertices;
+            var tt = tmf.sharedMesh.triangles;
+            var TP = new Vector3[tv.Length];
+            var fmin = new Vector3(float.MaxValue, float.MaxValue, float.MaxValue);
+            var fmax = new Vector3(float.MinValue, float.MinValue, float.MinValue);
+            for (int i = 0; i < tv.Length; i++)
+            {
+                TP[i] = toRootT.MultiplyPoint3x4(tv[i]);
+                fmin = Vector3.Min(fmin, TP[i]);
+                fmax = Vector3.Max(fmax, TP[i]);
+            }
+
+            const float tcell = 0.05f;
+            const int erode = 3;
+            int tnx = Mathf.CeilToInt((fmax.x - fmin.x) / tcell) + 1;
+            int tnz = Mathf.CeilToInt((fmax.z - fmin.z) / tcell) + 1;
+            if (tnx < 2 * erode + 4 || tnz < 2 * erode + 4 || (long)tnx * tnz > 300000) return fix;
+
+            var fmask = new bool[tnx * tnz];
+            for (int t = 0; t < tt.Length; t += 3)
+            {
+                Vector3 a = TP[tt[t]], b = TP[tt[t + 1]], c = TP[tt[t + 2]];
+                float minx = Mathf.Min(a.x, Mathf.Min(b.x, c.x)), maxx = Mathf.Max(a.x, Mathf.Max(b.x, c.x));
+                float minz = Mathf.Min(a.z, Mathf.Min(b.z, c.z)), maxz = Mathf.Max(a.z, Mathf.Max(b.z, c.z));
+                int i0 = Mathf.Clamp(Mathf.FloorToInt((minx - fmin.x) / tcell), 0, tnx - 1);
+                int i1 = Mathf.Clamp(Mathf.CeilToInt((maxx - fmin.x) / tcell), 0, tnx - 1);
+                int j0 = Mathf.Clamp(Mathf.FloorToInt((minz - fmin.z) / tcell), 0, tnz - 1);
+                int j1 = Mathf.Clamp(Mathf.CeilToInt((maxz - fmin.z) / tcell), 0, tnz - 1);
+                for (int i = i0; i <= i1; i++)
+                for (int j = j0; j <= j1; j++)
+                {
+                    float px = fmin.x + (i + 0.5f) * tcell, pz = fmin.z + (j + 0.5f) * tcell;
+                    if (!InsideTriXY(px, pz, a, b, c)) continue;
+                    fmask[j * tnx + i] = true;
+                }
+            }
+
+            var emask = new bool[tnx * tnz];
+            for (int i = erode; i < tnx - erode; i++)
+            for (int j = erode; j < tnz - erode; j++)
+            {
+                bool all = true;
+                for (int di = -erode; di <= erode && all; di++)
+                for (int dj = -erode; dj <= erode && all; dj++)
+                    if (!fmask[(j + dj) * tnx + (i + di)]) all = false;
+                emask[j * tnx + i] = all;
+            }
+
+            if (!LargestComponentBounds(emask, tnx, tnz, out int bi0, out int bi1, out int bj0, out int bj1)) return fix;
+
+            float rx0 = fmin.x + (bi0 - erode) * tcell - 0.05f;
+            float rx1 = fmin.x + (bi1 + 1 + erode) * tcell + 0.05f;
+            float rz0 = fmin.z + (bj0 - erode) * tcell - 0.05f;
+            float rz1 = fmin.z + (bj1 + 1 + erode) * tcell + 0.05f;
+
+            // ---- 2. 车体网格 → 车体局部 ----
+            var toRootH = rootToLocal * hmf.transform.localToWorldMatrix;
+            var hv = hmf.sharedMesh.vertices;
+            var ht = hmf.sharedMesh.triangles;
+            var P = new Vector3[hv.Length];
+            for (int i = 0; i < hv.Length; i++) P[i] = toRootH.MultiplyPoint3x4(hv[i]);
+
+            const float cell = 0.08f;
+            int nx = Mathf.CeilToInt((rx1 - rx0) / cell);
+            int nz = Mathf.CeilToInt((rz1 - rz0) / cell);
+            if (nx < 4 || nz < 4 || (long)nx * nz > 200000) return fix;
+
+            var top = new float[nx * nz];
+            System.Action rasterize = () =>
+            {
+                for (int k = 0; k < top.Length; k++) top[k] = float.NegativeInfinity;
+                for (int t = 0; t < ht.Length; t += 3)
+                {
+                    Vector3 a = P[ht[t]], b = P[ht[t + 1]], c = P[ht[t + 2]];
+                    float minx = Mathf.Min(a.x, Mathf.Min(b.x, c.x)), maxx = Mathf.Max(a.x, Mathf.Max(b.x, c.x));
+                    float minz = Mathf.Min(a.z, Mathf.Min(b.z, c.z)), maxz = Mathf.Max(a.z, Mathf.Max(b.z, c.z));
+                    if (maxx < rx0 || minx > rx1 || maxz < rz0 || minz > rz1) continue;
+
+                    int i0 = Mathf.Clamp(Mathf.FloorToInt((minx - rx0) / cell), 0, nx - 1);
+                    int i1 = Mathf.Clamp(Mathf.CeilToInt((maxx - rx0) / cell), 0, nx - 1);
+                    int j0 = Mathf.Clamp(Mathf.FloorToInt((minz - rz0) / cell), 0, nz - 1);
+                    int j1 = Mathf.Clamp(Mathf.CeilToInt((maxz - rz0) / cell), 0, nz - 1);
+                    float my = Mathf.Max(a.y, Mathf.Max(b.y, c.y));
+
+                    for (int i = i0; i <= i1; i++)
+                    for (int j = j0; j <= j1; j++)
+                    {
+                        float px = rx0 + (i + 0.5f) * cell, pz = rz0 + (j + 0.5f) * cell;
+                        if (!InsideTriXY(px, pz, a, b, c)) continue;
+                        int k = j * nx + i;
+                        if (my > top[k]) top[k] = my;
+                    }
+                }
+            };
+
+            rasterize();
+
+            // 甲板高度 = 高度直方图众数（5 cm 一格）：这个范围里最多的那个高度就是甲板面
+            var heights = new List<float>(nx * nz);
+            for (int k = 0; k < top.Length; k++)
+                if (!float.IsNegativeInfinity(top[k])) heights.Add(top[k]);
+            if (heights.Count < 40) return fix;
+
+            var hist = new Dictionary<int, int>();
+            for (int i = 0; i < heights.Count; i++)
+            {
+                int key = Mathf.RoundToInt(heights[i] * 20f);
+                hist[key] = hist.TryGetValue(key, out var c0) ? c0 + 1 : 1;
+            }
+            int bestKey = 0, bestCount = -1;
+            foreach (var kv in hist) if (kv.Value > bestCount) { bestCount = kv.Value; bestKey = kv.Key; }
+            float deck = bestKey / 20f;
+
+            // ---- 3. 拍平：足迹内、甲板附近的顶点全按到甲板平面 ----
+            var hullMesh = Object.Instantiate(hmf.sharedMesh);
+            hullMesh.name = hmf.sharedMesh.name + "_well";
+            var hv2 = hullMesh.vertices;
+            var toRootHInv = toRootH.inverse;
+            float flatY = deck - 0.02f;
+            float bandLo = deck - 0.65f, bandHi = deck + 0.20f;
+            int moved = 0;
+            for (int i = 0; i < hv2.Length; i++)
+            {
+                var p = toRootH.MultiplyPoint3x4(hv2[i]);
+                if (p.x < rx0 || p.x > rx1 || p.z < rz0 || p.z > rz1) continue;
+                if (p.y < bandLo || p.y > bandHi) continue;
+                p.y = flatY;
+                hv2[i] = toRootHInv.MultiplyPoint3x4(p);
+                moved++;
+            }
+
+            if (moved > 0)
+            {
+                hullMesh.vertices = hv2;
+                hullMesh.RecalculateNormals();
+                hullMesh.RecalculateBounds();
+                fix.hull = hullMesh;
+                for (int i = 0; i < hv2.Length; i++) P[i] = toRootH.MultiplyPoint3x4(hv2[i]);
+                rasterize();
+            }
+            else
+            {
+                Object.DestroyImmediate(hullMesh);
+            }
+
+            // ---- 4. 补板：拍平后仍明显低于甲板的格（真正的深洞）----
+            float plateY = deck - 0.05f;
+            var verts = new List<Vector3>();
+            var tris = new List<int>();
+
+            var isHole = new bool[nx * nz];
+            for (int k = 0; k < top.Length; k++)
+            {
+                if (float.IsNegativeInfinity(top[k])) continue;
+                isHole[k] = top[k] < deck - 0.12f;
+            }
+
+            var seen = new bool[nx * nz];
+            var keep = new bool[nx * nz];
+            var stack = new Stack<int>();
+            var comp = new List<int>();
+            int found = 0;
+            for (int start = 0; start < isHole.Length; start++)
+            {
+                if (!isHole[start] || seen[start]) continue;
+
+                comp.Clear();
+                stack.Clear();
+                stack.Push(start);
+                seen[start] = true;
+                while (stack.Count > 0)
+                {
+                    int k = stack.Pop();
+                    comp.Add(k);
+                    int i = k % nx, j = k / nx;
+                    if (i > 0) { int n = k - 1; if (isHole[n] && !seen[n]) { seen[n] = true; stack.Push(n); } }
+                    if (i < nx - 1) { int n = k + 1; if (isHole[n] && !seen[n]) { seen[n] = true; stack.Push(n); } }
+                    if (j > 0) { int n = k - nx; if (isHole[n] && !seen[n]) { seen[n] = true; stack.Push(n); } }
+                    if (j < nz - 1) { int n = k + nx; if (isHole[n] && !seen[n]) { seen[n] = true; stack.Push(n); } }
+                }
+                if (comp.Count * cell * cell < 0.12f) continue;   // 太碎的不管
+                foreach (int k in comp) keep[k] = true;
+                found++;
+            }
+
+            for (int k = 0; k < keep.Length; k++)
+            {
+                if (!keep[k]) continue;
+                int i = k % nx, j = k / nx;
+                float x0 = rx0 + i * cell, x1 = x0 + cell;
+                float z0 = rz0 + j * cell, z1 = z0 + cell;
+                bool left = i == 0 || !keep[k - 1];
+                bool right = i == nx - 1 || !keep[k + 1];
+                bool down = j == 0 || !keep[k - nx];
+                bool up = j == nz - 1 || !keep[k + nx];
+                if (left) x0 -= cell;
+                if (right) x1 += cell;
+                if (down) z0 -= cell;
+                if (up) z1 += cell;
+
+                int b = verts.Count;
+                verts.Add(new Vector3(x0, plateY, z0));
+                verts.Add(new Vector3(x1, plateY, z0));
+                verts.Add(new Vector3(x1, plateY, z1));
+                verts.Add(new Vector3(x0, plateY, z1));
+                tris.Add(b); tris.Add(b + 2); tris.Add(b + 1);
+                tris.Add(b); tris.Add(b + 3); tris.Add(b + 2);
+            }
+
+            if (verts.Count > 0)
+            {
+                var plate = new Mesh { name = "TurretWellPatch" };
+                plate.SetVertices(verts);
+                plate.SetTriangles(tris, 0);
+                var uv = new Vector2[verts.Count];
+                for (int i = 0; i < uv.Length; i++) uv[i] = new Vector2(0.5f, 0.5f);
+                plate.uv = uv;
+                plate.RecalculateNormals();
+                plate.RecalculateBounds();
+                fix.plate = plate;
+            }
+
+            Debug.Log($"[WellFixup] {def.id}: 甲板={deck:F2} 拍平 {moved} 个顶点，补板 {verts.Count / 4} 格 / {found} 块");
+            return fix;
+        }
+
+        /// <summary>格心是否落在三角形的 XY 投影里。</summary>
+        static bool InsideTriXY(float px, float pz, Vector3 a, Vector3 b, Vector3 c)
+        {
+            float d1 = (px - b.x) * (a.z - b.z) - (a.x - b.x) * (pz - b.z);
+            float d2 = (px - c.x) * (b.z - c.z) - (b.x - c.x) * (pz - c.z);
+            float d3 = (px - a.x) * (c.z - a.z) - (c.x - a.x) * (pz - a.z);
+            bool neg = (d1 < 0) || (d2 < 0) || (d3 < 0);
+            bool pos = (d1 > 0) || (d2 > 0) || (d3 > 0);
+            return !(neg && pos);
+        }
+
+        /// <summary>最大 4 连通块的包围盒（栅格坐标）。</summary>
+        static bool LargestComponentBounds(bool[] mask, int nx, int nz,
+            out int bi0, out int bi1, out int bj0, out int bj1)
+        {
+            bi0 = 0; bi1 = -1; bj0 = 0; bj1 = -1;
+            var seen = new bool[mask.Length];
+            var stack = new Stack<int>();
+            int best = 0;
+            for (int s = 0; s < mask.Length; s++)
+            {
+                if (!mask[s] || seen[s]) continue;
+                stack.Clear();
+                stack.Push(s);
+                seen[s] = true;
+                int ci0 = int.MaxValue, ci1 = -1, cj0 = int.MaxValue, cj1 = -1;
+                while (stack.Count > 0)
+                {
+                    int k = stack.Pop();
+                    int i = k % nx, j = k / nx;
+                    if (i < ci0) ci0 = i;
+                    if (i > ci1) ci1 = i;
+                    if (j < cj0) cj0 = j;
+                    if (j > cj1) cj1 = j;
+                    if (i > 0) { int n = k - 1; if (mask[n] && !seen[n]) { seen[n] = true; stack.Push(n); } }
+                    if (i < nx - 1) { int n = k + 1; if (mask[n] && !seen[n]) { seen[n] = true; stack.Push(n); } }
+                    if (j > 0) { int n = k - nx; if (mask[n] && !seen[n]) { seen[n] = true; stack.Push(n); } }
+                    if (j < nz - 1) { int n = k + nx; if (mask[n] && !seen[n]) { seen[n] = true; stack.Push(n); } }
+                }
+                int area = (ci1 - ci0 + 1) * (cj1 - cj0 + 1);
+                if (area > best)
+                {
+                    best = area;
+                    bi0 = ci0; bi1 = ci1; bj0 = cj0; bj1 = cj1;
+                }
+            }
+            return best > 0;
         }
     }
 }
