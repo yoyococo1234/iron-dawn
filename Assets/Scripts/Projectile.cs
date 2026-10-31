@@ -32,9 +32,9 @@ public class Projectile : MonoBehaviour
         transform.rotation = Quaternion.LookRotation(_vel);
 
         var tr = gameObject.AddComponent<TrailRenderer>();
-        tr.time = 0.22f;
-        tr.startWidth = 0.6f;
-        tr.endWidth = 0.05f;
+        tr.time = 0.35f;
+        tr.startWidth = 0.9f;
+        tr.endWidth = 0.06f;
         tr.material = new Material(Shader.Find("Sprites/Default"));
         tr.startColor = new Color(1f, 0.85f, 0.4f, 0.9f);
         tr.endColor = new Color(1f, 0.4f, 0.1f, 0f);

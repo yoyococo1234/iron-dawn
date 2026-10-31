@@ -86,6 +86,11 @@ public class VehiclePhysics : MonoBehaviour
     [Tooltip("炮口节点，开火时子弹从这里出")]
     public Transform muzzleBone;
 
+    [Tooltip("炮塔节点是模型里真实的部件吗？Lux3D 整体网格是逻辑炮塔（不显示旋转）")]
+    [System.NonSerialized] public bool turretIsVisual;
+    [Tooltip("车体半长（米），逻辑炮塔时用来把出膛点固定在车头")]
+    [System.NonSerialized] public float hullHalfLength = 3f;
+
     [System.NonSerialized] public float turretYaw;
 
     // ---- 运行时状态（给 HUD 看）----
@@ -382,6 +387,11 @@ public class VehiclePhysics : MonoBehaviour
     /// <summary>炮口世界坐标（开火起点）。没有炮口节点时退化到车头前方。</summary>
     public Vector3 GetMuzzlePosition()
     {
+        // 逻辑炮塔（模型整体网格、炮塔不视觉旋转）时，出膛点固定在车头正前方。
+        // 否则玩家往侧后方瞄准时，出膛点会绕炮塔转到车尾，看起来就像"子弹向后飞"。
+        if (!turretIsVisual)
+            return transform.position + transform.forward * (hullHalfLength + 0.6f) + transform.up * 0.8f;
+
         if (muzzleBone != null) return muzzleBone.position;
         return transform.position + transform.forward * 3f + Vector3.up * 1.2f;
     }
