@@ -72,6 +72,7 @@ public static class VehicleModelBinder
         var hullFilter = model.GetComponentInChildren<MeshFilter>();
 
         // ---------- 履带（单独一块，按车速滚 UV 让它"转"起来）----------
+        Transform tracksRoot = null;
         if (def.modelTracksPrefab != null)
         {
             var tracks = Object.Instantiate(def.modelTracksPrefab, root.transform);
@@ -79,8 +80,22 @@ public static class VehicleModelBinder
             tracks.transform.localPosition = Vector3.zero;
             StripColliders(tracks);
             if (def.modelMaterial != null) ApplyMaterial(tracks, def.modelMaterial);
-            var scroller = tracks.AddComponent<TrackScroller>();
-            scroller.vehicle = vp;
+            // 拆件版履带总成（belt + wheel_*）用 TrackAssembly；老的整体履带用 TrackScroller
+            bool isAssembly = false;
+            foreach (var t in tracks.GetComponentsInChildren<Transform>(true))
+                if (t.name.ToLowerInvariant().StartsWith("wheel")) { isAssembly = true; break; }
+            if (isAssembly)
+            {
+                var asm = tracks.AddComponent<TrackAssembly>();
+                asm.vehicle = vp;
+                asm.wellReference = def.modelTrackWellRef;
+            }
+            else
+            {
+                var scroller = tracks.AddComponent<TrackScroller>();
+                scroller.vehicle = vp;
+            }
+            tracksRoot = tracks.transform;
         }
 
         // ---------- 炮塔（Lux3D 拆件）----------
@@ -99,11 +114,36 @@ public static class VehicleModelBinder
             var turMat = def.modelTurretMaterial != null ? def.modelTurretMaterial : def.modelMaterial;
             if (turMat != null) ApplyMaterial(tm, turMat);
 
-            // 炮口放在炮塔最前端（含炮管）
-            var lb = LocalBounds(tp.transform);
+            // 炮管（从炮塔上切出来的，单独做俯仰）
+            Transform barrelNode = null;
+            if (def.modelBarrelPrefab != null)
+            {
+                var bp = new GameObject("Barrel");
+                bp.transform.SetParent(tp.transform, false);
+                bp.transform.localPosition = def.modelBarrelPivot;
+                var bm = Object.Instantiate(def.modelBarrelPrefab, bp.transform);
+                bm.name = "BarrelModel";
+                bm.transform.localPosition = Vector3.zero;
+                StripColliders(bm);
+                if (turMat != null) ApplyMaterial(bm, turMat);
+                barrelNode = bp.transform;
+            }
+
+            // 炮口：有炮管就挂在炮管前端（抬炮时跟着动），否则挂在炮塔前端
             var mz = new GameObject("Muzzle");
-            mz.transform.SetParent(tp.transform, false);
-            mz.transform.localPosition = new Vector3(0f, 0f, lb.max.z * 0.95f);
+            if (barrelNode != null)
+            {
+                mz.transform.SetParent(barrelNode, false);
+                var bl = LocalBounds(barrelNode);
+                mz.transform.localPosition = new Vector3(0f, 0f, Mathf.Max(0.3f, bl.max.z * 0.98f));
+            }
+            else
+            {
+                mz.transform.SetParent(tp.transform, false);
+                var lb = LocalBounds(tp.transform);
+                mz.transform.localPosition = new Vector3(0f, 0f, lb.max.z * 0.95f);
+            }
+            if (vp != null) vp.barrelBone = barrelNode;
 
             // 炮塔井：车体被炮塔切开的破口，实测后拍平 + 补板（见 WellFixup）
             if (def.autoTurretWellPatch)
@@ -126,6 +166,9 @@ public static class VehicleModelBinder
             turret = tp.transform;
             muzzle = mz.transform;
             if (vp != null) vp.turretIsVisual = true;
+
+            // 让模型底部正好落在车体原点（= 地面高度），否则整台车会悬空
+            DropToGround(root, model.transform, tracksRoot, tp.transform, vp);
             return true;
         }
 
@@ -133,7 +176,54 @@ public static class VehicleModelBinder
         BuildLogicBones(root, out var lt, out var lm);
         turret = lt;
         muzzle = lm;
+        DropToGround(root, model.transform, null, lt, vp);
         return true;
+    }
+
+    /// <summary>
+    /// 把挂好的模型往下挪，让**最低点正好落在车体原点**。
+    /// VehiclePhysics 会把车体原点放在「地面 + groundClearance」，模型原点如果在包围盒中心，
+    /// 车就会浮在半空（截图里那种悬空）。这里按实际渲染包围盒量出最低点，整体下移。
+    /// </summary>
+    static void DropToGround(GameObject root, Transform model, Transform tracks, Transform turret, VehiclePhysics vp)
+    {
+        bool any = false;
+        float minY = float.MaxValue;
+        var toRoot = root.transform.worldToLocalMatrix;
+
+        var list = new List<Transform>(3);
+        if (model != null) list.Add(model);
+        if (tracks != null) list.Add(tracks);
+        if (turret != null) list.Add(turret);
+
+        foreach (var t in list)
+        {
+            foreach (var r in t.GetComponentsInChildren<Renderer>(true))
+            {
+                if (!r.enabled) continue;
+                var b = r.bounds;
+                for (int i = 0; i < 8; i++)
+                {
+                    var c = b.center + Vector3.Scale(b.extents, new Vector3(
+                        (i & 1) == 0 ? -1f : 1f, (i & 2) == 0 ? -1f : 1f, (i & 4) == 0 ? -1f : 1f));
+                    var p = toRoot.MultiplyPoint3x4(c);
+                    if (!any || p.y < minY) { minY = p.y; any = true; }
+                }
+            }
+        }
+        if (!any) return;
+
+        float dy = -minY;
+        if (Mathf.Abs(dy) > 0.001f)
+            foreach (var t in list) t.localPosition += new Vector3(0f, dy, 0f);
+
+        // 模型底部已经落在车体原点上了，那就把「离地间隙」压到接近 0，
+        // 否则整台车会浮在 0.55 m 的空中（截图里那种悬空）。
+        if (vp != null)
+        {
+            vp.modelSitsOnGround = true;
+            vp.groundClearance = 0.03f;
+        }
     }
 
     /// <summary>整体网格时，按包围盒补一个"逻辑炮塔 + 炮口"（出膛点固定在车头）。</summary>

@@ -15,6 +15,8 @@ public class PlayerTankController : MonoBehaviour
 
     VehicleCombat _combat;
     Camera _cam;
+    Vector3 _lastAimPoint;
+    bool _hasAim;
 
     void Awake() => _combat = GetComponent<VehicleCombat>();
 
@@ -29,11 +31,37 @@ public class PlayerTankController : MonoBehaviour
         if (_combat == null || !_combat.Alive) return;
         if (_cam == null) { _cam = Camera.main; if (_cam == null) return; }
 
-        Vector3 aimPoint = GetAimPoint();
+        // 按住 C = 自由视角（战雷那套）：镜头随便转，炮塔保持不动。
+        // 这时继续用「按下 C 之前的瞄准点」，所以开火还是打在炮口指的方向上。
+        bool freeLook = Input.GetKey(KeyCode.C);
 
-        // 炮塔跟鼠标（受炮塔转速限制）
+        Vector3 aimPoint;
+        if (freeLook && _hasAim)
+        {
+            aimPoint = _lastAimPoint;
+        }
+        else
+        {
+            aimPoint = GetAimPoint();
+            _lastAimPoint = aimPoint;
+            _hasAim = true;
+            // 炮塔跟鼠标（受炮塔转速限制）
+            float turn0 = _combat.def != null ? _combat.def.turretTurnSpeed : 90f;
+            _combat.Physics.AimTurretAt(aimPoint, turn0);
+        }
+
         float turn = _combat.def != null ? _combat.def.turretTurnSpeed : 90f;
-        _combat.Physics.AimTurretAt(aimPoint, turn);
+
+        // ---------- 直接瞄准（战雷那套）----------
+        // 鼠标直接控「炮塔偏航 + 炮管俯仰」，两个轴各自限速、同时运动，可以斜着走。
+        // 不再靠"屏幕中心射线打点再反推"——那样相机和炮塔会互相追，放大时就会往左右漂。
+        var camFollow = _cam.GetComponent<CameraFollow>();
+        if (camFollow != null && _combat.Physics != null && _combat.Physics.turretBone != null)
+        {
+            float wantYawWorld = camFollow.yaw;
+            float wantPitch = -(camFollow.pitch - 8f);   // 镜头默认俯角 8° 当水平
+            _combat.Physics.AimDirect(wantYawWorld, wantPitch, turn);
+        }
 
         // 开火
         if (Input.GetButton("Fire1") || Input.GetKey(KeyCode.Space))
@@ -78,10 +106,18 @@ public class PlayerTankController : MonoBehaviour
         if (air)
         {
             // 不压平高度：直接沿视线打远，俯冲时炮口才会跟着往下
+            Vector3 basePoint;
             if (Physics.Raycast(ray, out var hitAir, aimRayLength, ~0, QueryTriggerInteraction.Ignore)
                 && Vector3.Distance(ray.origin, hitAir.point) >= 150f)
-                return hitAir.point;
-            return ray.origin + ray.direction * 2000f;
+                basePoint = hitAir.point;
+            else
+                basePoint = ray.origin + ray.direction * 2000f;
+
+            // 辅助瞄准：准星附近有敌人就吸过去（导弹吸得宽，机炮吸得窄）
+            var w = _combat.Weapon;
+            bool missile = w != null && w.projectileSpeed <= 600f && w.baseDamage >= 300f;
+            float cone = missile ? 20f : 6f;
+            return AirAimAssist(basePoint, ray.origin, ray.direction, cone);
         }
 
         if (Physics.Raycast(ray, out var hit, aimRayLength, ~0, QueryTriggerInteraction.Ignore))
@@ -90,9 +126,54 @@ public class PlayerTankController : MonoBehaviour
             if (d >= 120f) return hit.point;          // 远处的命中点直接用
         }
 
-        // 太近 / 没打中：沿视线取远处、并拉回自身高度，避免朝地面或朝天空打
-        Vector3 far = ray.origin + ray.direction * 700f;
-        far.y = transform.position.y + 1.5f;
-        return far;
+        // 太近 / 没打中：沿视线取远处。
+        // 注意**不要**把高度拉平 —— 拉平的话炮管永远是 0°，抬炮/压炮就形同虚设。
+        // 往天上瞄就该抬炮，往脚下瞄就该压炮（角度由 maxElevation/maxDepression 限制）。
+        return ray.origin + ray.direction * 700f;
+    }
+
+    /// <summary>
+    /// 空中辅助瞄准：在准星附近（coneDeg 度以内）找最近的敌人，把瞄准点吸到它身上，
+    /// 并按弹速算提前量。导弹给 20° 的大锥角（相当于半自动锁定），机炮只给 6°。
+    /// 找不到就返回原来的瞄准点。
+    /// </summary>
+    Vector3 AirAimAssist(Vector3 fallback, Vector3 rayOrigin, Vector3 rayDir, float coneDeg)
+    {
+        VehicleCombat best = null;
+        float bestAngle = coneDeg;
+        Vector3 bestPoint = fallback;
+        float bestDist = float.MaxValue;
+
+        var all = Object.FindObjectsByType<VehicleCombat>(FindObjectsSortMode.None);
+        foreach (var vc in all)
+        {
+            if (vc == null || vc == _combat || !vc.Alive) continue;
+            if (vc.team == _combat.team) continue;
+
+            Vector3 c = vc.transform.position + Vector3.up * 1.0f;
+            Vector3 to = c - rayOrigin;
+            float dist = to.magnitude;
+            if (dist < 25f || dist > 2400f) continue;
+
+            float ang = Vector3.Angle(rayDir, to);
+            if (ang > bestAngle) continue;
+            // 角度优先，同角度取近的
+            if (ang < bestAngle - 0.5f || dist < bestDist)
+            {
+                bestAngle = ang;
+                bestDist = dist;
+                best = vc;
+                bestPoint = c;
+            }
+        }
+
+        if (best == null) return fallback;
+
+        // 提前量：按当前武器的弹速估飞行时间，打到目标"将要在的位置"
+        float speed = _combat.Weapon != null ? Mathf.Max(120f, _combat.Weapon.projectileSpeed) : 800f;
+        var vp = best.GetComponent<VehiclePhysics>();
+        Vector3 vel = vp != null ? vp.Velocity : Vector3.zero;
+        float tof = Vector3.Distance(rayOrigin, bestPoint) / speed;
+        return bestPoint + vel * tof;
     }
 }

@@ -96,6 +96,18 @@ public class VehiclePhysics : MonoBehaviour
 
     [System.NonSerialized] public float turretYaw;
 
+    [Header("炮管俯仰（有独立炮管时生效）")]
+    [Tooltip("最大仰角（度）")]
+    public float maxElevation = 20f;
+    [Tooltip("最大俯角（度，负值）")]
+    public float maxDepression = -8f;
+    [Tooltip("抬/压炮速度（度/秒）")]
+    public float pitchSpeed = 25f;
+    [System.NonSerialized] public Transform barrelBone;
+    [System.NonSerialized] public float barrelPitch;
+    /// <summary>模型底部已经贴到车体原点（精细模型会这样），离地间隙就用很小的值。</summary>
+    [System.NonSerialized] public bool modelSitsOnGround;
+
     // ---- 运行时状态（给 HUD 看）----
     [System.NonSerialized] public float speed;
     [System.NonSerialized] public float slopeDeg;
@@ -124,7 +136,9 @@ public class VehiclePhysics : MonoBehaviour
         resistanceSoft = def.resistanceSoft;
         wadeDepth = def.wadeDepth;
         maxClimbDeg = MaxClimbDeg;
-        groundClearance = 0.5f;
+        // 精细模型的底部已经落在车体原点上了 → 离地间隙给 3 cm 就够；
+        // 方块占位模型原点在中心，才需要 0.5 m 把它抬起来。
+        groundClearance = modelSitsOnGround ? 0.03f : 0.5f;
     }
 
     void Update()
@@ -375,7 +389,7 @@ public class VehiclePhysics : MonoBehaviour
         return Mathf.Abs(Mathf.DeltaAngle(turretYaw, want));
     }
 
-    /// <summary>把炮塔转向世界坐标点，受炮塔转速限制。</summary>
+    /// <summary>把炮塔转向世界坐标点，受炮塔转速限制；有独立炮管时顺带抬/压炮。</summary>
     public void AimTurretAt(Vector3 worldPoint, float maxDegPerSec)
     {
         if (turretBone == null) return;
@@ -387,6 +401,57 @@ public class VehiclePhysics : MonoBehaviour
         float delta = Mathf.DeltaAngle(turretYaw, want);
         float limit = Mathf.Min(Mathf.Abs(delta), maxDegPerSec * Time.deltaTime);
         RotateTurret(Mathf.Sign(delta) * limit);
+
+        AimBarrelAt(worldPoint);
+    }
+
+    /// <summary>直接设置炮管俯仰（度，正=抬炮）。玩家用鼠标上下控的就是这个。</summary>
+    public void SetBarrelPitch(float deg, bool smooth = true)
+    {
+        if (barrelBone == null) return;
+        float want = Mathf.Clamp(deg, maxDepression, maxElevation);
+        if (smooth)
+        {
+            // 用 SmoothDamp 而不是 MoveTowards：MoveTowards 是匀速直冲，停下来很硬；
+            // SmoothDamp 有加速和收尾，手感接近战雷那种"炮管有重量"。
+            barrelPitch = Mathf.SmoothDamp(barrelPitch, want, ref _pitchVel, Mathf.Max(0.02f, 1f / Mathf.Max(1f, pitchSpeed)));
+        }
+        else barrelPitch = want;
+        barrelBone.localRotation = Quaternion.Euler(-barrelPitch, 0f, 0f);
+    }
+
+    float _pitchVel;
+
+    /// <summary>
+    /// 玩家直接瞄准：偏航 + 俯仰各自限速、**同时**运动（可以左上、右下斜着走）。
+    /// 不像 AimTurretAt 那样要先算出目标点，所以不会有相机→炮塔→相机的反馈漂移。
+    /// </summary>
+    public void AimDirect(float targetYawWorld, float targetPitch, float yawDegPerSec)
+    {
+        if (turretBone != null)
+        {
+            float want = Mathf.DeltaAngle(transform.eulerAngles.y, targetYawWorld);
+            float delta = Mathf.DeltaAngle(turretYaw, want);
+            float limit = Mathf.Min(Mathf.Abs(delta), yawDegPerSec * Time.deltaTime);
+            if (limit > 0f) RotateTurret(Mathf.Sign(delta) * limit);
+        }
+        SetBarrelPitch(targetPitch);
+    }
+
+    /// <summary>炮管俯仰：按目标高度算角度，受 maxElevation/maxDepression 和转速限制（AI 用）。</summary>
+    void AimBarrelAt(Vector3 worldPoint)
+    {
+        if (barrelBone == null) return;
+
+        Vector3 pivot = barrelBone.position;
+        Vector3 to = worldPoint - pivot;
+        float horiz = new Vector2(to.x, to.z).magnitude;
+        if (horiz < 1f) return;
+
+        float want = Mathf.Atan2(to.y, horiz) * Mathf.Rad2Deg;
+        want = Mathf.Clamp(want, maxDepression, maxElevation);
+        barrelPitch = Mathf.MoveTowards(barrelPitch, want, pitchSpeed * Time.deltaTime);
+        barrelBone.localRotation = Quaternion.Euler(-barrelPitch, 0f, 0f);
     }
 
     /// <summary>炮口世界坐标（开火起点）。没有炮口节点时退化到车头前方。</summary>
@@ -401,9 +466,12 @@ public class VehiclePhysics : MonoBehaviour
         return transform.position + transform.forward * 3f + Vector3.up * 1.2f;
     }
 
-    /// <summary>炮口朝向（子弹方向）。</summary>
+    /// <summary>炮口朝向（子弹方向）。有炮口节点就跟着炮口（含俯仰）。</summary>
     public Vector3 GetMuzzleForward()
-        => turretBone != null ? turretBone.forward : transform.forward;
+    {
+        if (muzzleBone != null) return muzzleBone.forward;
+        return turretBone != null ? turretBone.forward : transform.forward;
+    }
 
     // ==================== 公共 ====================
 
