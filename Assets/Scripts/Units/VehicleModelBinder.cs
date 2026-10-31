@@ -89,21 +89,44 @@ public static class VehicleModelBinder
             mz.transform.SetParent(tp.transform, false);
             mz.transform.localPosition = new Vector3(0f, 0f, lb.max.z * 0.95f);
 
-            // 炮塔井：一个**深色**圆盘压在车体切割面下方。
-            // 之前用迷彩贴图的大圆盘 → 看着像"板子叠上去"；改用深灰、缩到刚好盖住洞口，
-            // 炮塔转开时看到的就是一个有阴影的炮塔井，而不是一个黑窟窿。
+            // 炮塔井：按**炮塔底部截面**量出洞口大小，压一块深色井底。
+            // 挂在车体（root）上而不是炮塔上 —— 洞口在车体上是固定的，圆盘不能跟着转。
             if (def.showTurretRing)
             {
-                float radius = Mathf.Clamp(lb.size.x * 0.46f, 0.7f, 2.2f);
-                var cap = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
-                cap.name = "TurretWell";
-                cap.transform.SetParent(root.transform, false);
-                cap.transform.localPosition = def.modelTurretPivot + Vector3.down * 0.12f;
-                cap.transform.localScale = new Vector3(radius * 2f, 0.06f, radius * 2f);
-                var capCol = cap.GetComponent<Collider>();
-                if (capCol != null) { if (Application.isPlaying) Object.Destroy(capCol); else Object.DestroyImmediate(capCol); }
-                var capR = cap.GetComponent<Renderer>();
-                if (capR != null) capR.sharedMaterial = DarkMat();
+                var mfT = tm.GetComponentInChildren<MeshFilter>();
+                if (mfT != null && mfT.sharedMesh != null)
+                {
+                    var mesh = mfT.sharedMesh;
+                    var verts = mesh.vertices;
+                    var toT = tp.transform.worldToLocalMatrix * mfT.transform.localToWorldMatrix;
+
+                    float minX = float.MaxValue, maxX = float.MinValue, minZ = float.MaxValue, maxZ = float.MinValue;
+                    bool any = false;
+                    for (int i = 0; i < verts.Length; i++)
+                    {
+                        var p = toT.MultiplyPoint3x4(verts[i]);
+                        if (p.y > 0.25f) continue;          // 只看底部那一圈，避开炮管
+                        minX = Mathf.Min(minX, p.x); maxX = Mathf.Max(maxX, p.x);
+                        minZ = Mathf.Min(minZ, p.z); maxZ = Mathf.Max(maxZ, p.z);
+                        any = true;
+                    }
+
+                    if (any)
+                    {
+                        float cx = (minX + maxX) * 0.5f, cz = (minZ + maxZ) * 0.5f;
+                        float r = Mathf.Max(maxX - minX, maxZ - minZ) * 0.5f * 1.15f;
+
+                        var cap = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+                        cap.name = "TurretWell";
+                        cap.transform.SetParent(root.transform, false);
+                        cap.transform.localPosition = def.modelTurretPivot + new Vector3(cx, -0.18f, cz);
+                        cap.transform.localScale = new Vector3(r * 2f, 0.05f, r * 2f);
+                        var capCol = cap.GetComponent<Collider>();
+                        if (capCol != null) { if (Application.isPlaying) Object.Destroy(capCol); else Object.DestroyImmediate(capCol); }
+                        var capR = cap.GetComponent<Renderer>();
+                        if (capR != null) capR.sharedMaterial = DarkMat();
+                    }
+                }
             }
 
             turret = tp.transform;
