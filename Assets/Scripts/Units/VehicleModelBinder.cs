@@ -349,9 +349,14 @@ public static class VehicleModelBinder
             if (nx < 4 || nz < 4 || (long)nx * nz > 200000) return fix;
 
             var top = new float[nx * nz];
+            var uvTop = new Vector2[nx * nz];
+            var hasUv = new bool[nx * nz];
+            var srcUv = hmf.sharedMesh.uv;
+            bool uvOk = srcUv != null && srcUv.Length == hv.Length;
+
             System.Action rasterize = () =>
             {
-                for (int k = 0; k < top.Length; k++) top[k] = float.NegativeInfinity;
+                for (int k = 0; k < top.Length; k++) { top[k] = float.NegativeInfinity; hasUv[k] = false; }
                 for (int t = 0; t < ht.Length; t += 3)
                 {
                     Vector3 a = P[ht[t]], b = P[ht[t + 1]], c = P[ht[t + 2]];
@@ -371,7 +376,22 @@ public static class VehicleModelBinder
                         float px = rx0 + (i + 0.5f) * cell, pz = rz0 + (j + 0.5f) * cell;
                         if (!InsideTriXY(px, pz, a, b, c)) continue;
                         int k = j * nx + i;
-                        if (my > top[k]) top[k] = my;
+                        if (my <= top[k]) continue;
+                        top[k] = my;
+                        if (!uvOk) continue;
+                        // 顺手把这个格在车体贴图上的 UV 记下来，补板直接用，颜色才能和甲板连上
+                        var v0 = new Vector2(b.x - a.x, b.z - a.z);
+                        var v1 = new Vector2(c.x - a.x, c.z - a.z);
+                        var v2 = new Vector2(px - a.x, pz - a.z);
+                        float d00 = Vector2.Dot(v0, v0), d01 = Vector2.Dot(v0, v1), d11 = Vector2.Dot(v1, v1);
+                        float d20 = Vector2.Dot(v2, v0), d21 = Vector2.Dot(v2, v1);
+                        float den = d00 * d11 - d01 * d01;
+                        if (Mathf.Abs(den) < 1e-9f) continue;
+                        float wb = (d11 * d20 - d01 * d21) / den;
+                        float wc = (d00 * d21 - d01 * d20) / den;
+                        float wa = 1f - wb - wc;
+                        uvTop[k] = srcUv[ht[t]] * wa + srcUv[ht[t + 1]] * wb + srcUv[ht[t + 2]] * wc;
+                        hasUv[k] = true;
                     }
                 }
             };
@@ -394,48 +414,19 @@ public static class VehicleModelBinder
             foreach (var kv in hist) if (kv.Value > bestCount) { bestCount = kv.Value; bestKey = kv.Key; }
             float deck = bestKey / 20f;
 
-            // ---- 3. 拍平：足迹内、甲板附近的顶点全按到甲板平面 ----
-            var hullMesh = Object.Instantiate(hmf.sharedMesh);
-            hullMesh.name = hmf.sharedMesh.name + "_well";
-            var hv2 = hullMesh.vertices;
-            var toRootHInv = toRootH.inverse;
-            float flatY = deck - 0.02f;
-            float bandLo = deck - 0.65f, bandHi = deck + 0.20f;
-            int moved = 0;
-            for (int i = 0; i < hv2.Length; i++)
-            {
-                var p = toRootH.MultiplyPoint3x4(hv2[i]);
-                if (p.x < rx0 || p.x > rx1 || p.z < rz0 || p.z > rz1) continue;
-                if (p.y < bandLo || p.y > bandHi) continue;
-                p.y = flatY;
-                hv2[i] = toRootHInv.MultiplyPoint3x4(p);
-                moved++;
-            }
-
-            if (moved > 0)
-            {
-                hullMesh.vertices = hv2;
-                hullMesh.RecalculateNormals();
-                hullMesh.RecalculateBounds();
-                fix.hull = hullMesh;
-                for (int i = 0; i < hv2.Length; i++) P[i] = toRootH.MultiplyPoint3x4(hv2[i]);
-                rasterize();
-            }
-            else
-            {
-                Object.DestroyImmediate(hullMesh);
-            }
-
-            // ---- 4. 补板：拍平后仍明显低于甲板的格（真正的深洞）----
-            float plateY = deck - 0.05f;
+            // ---- 3. 补板：炮塔足迹内所有低于甲板平面的格，整片盖平 ----
+            // 补板比甲板高 2 cm（低了会被翘起的碎面片钻出来，高了会有台阶），
+            // UV 用最近一圈甲板的 —— 迷彩纹路接得上，远看就是一片连续甲板。
+            float plateY = deck + 0.02f;
             var verts = new List<Vector3>();
             var tris = new List<int>();
+            var uvs = new List<Vector2>();
 
             var isHole = new bool[nx * nz];
             for (int k = 0; k < top.Length; k++)
             {
                 if (float.IsNegativeInfinity(top[k])) continue;
-                isHole[k] = top[k] < deck - 0.12f;
+                isHole[k] = top[k] < plateY - 0.005f;
             }
 
             var seen = new bool[nx * nz];
@@ -488,6 +479,12 @@ public static class VehicleModelBinder
                 verts.Add(new Vector3(x0, plateY, z1));
                 tris.Add(b); tris.Add(b + 2); tris.Add(b + 1);
                 tris.Add(b); tris.Add(b + 3); tris.Add(b + 2);
+
+                // 补板 UV：取最近一圈甲板的 UV，让迷彩纹路接得上（接不上就退回单色）
+                uvs.Add(NearestUv(uvTop, hasUv, nx, nz, i, j));
+                uvs.Add(NearestUv(uvTop, hasUv, nx, nz, i + 1, j));
+                uvs.Add(NearestUv(uvTop, hasUv, nx, nz, i + 1, j + 1));
+                uvs.Add(NearestUv(uvTop, hasUv, nx, nz, i, j + 1));
             }
 
             if (verts.Count > 0)
@@ -495,21 +492,47 @@ public static class VehicleModelBinder
                 var plate = new Mesh { name = "TurretWellPatch" };
                 plate.SetVertices(verts);
                 plate.SetTriangles(tris, 0);
-                var uv = new Vector2[verts.Count];
-                for (int i = 0; i < uv.Length; i++) uv[i] = new Vector2(0.5f, 0.5f);
-                plate.uv = uv;
+                plate.uv = uvs.ToArray();
                 plate.RecalculateNormals();
                 plate.RecalculateBounds();
                 fix.plate = plate;
             }
 
-            Debug.Log($"[WellFixup] {def.id}: 甲板={deck:F2} 拍平 {moved} 个顶点，补板 {verts.Count / 4} 格 / {found} 块");
+            Debug.Log($"[WellFixup] {def.id}: 甲板={deck:F2} 补板 {verts.Count / 4} 格 / {found} 块");
             return fix;
         }
 
-        /// <summary>格心是否落在三角形的 XY 投影里。</summary>
-        static bool InsideTriXY(float px, float pz, Vector3 a, Vector3 b, Vector3 c)
+        /// <summary>
+        /// 找离 (i,j) 最近的一个「有 UV 记录的甲板格」，把它的 UV 拿来用。
+        /// 补板这样就能采到车体迷彩贴图上同一块花纹，不会变成一块纯色板。
+        /// 找不到（半径 8 格内都没有）就退回贴图中点。
+        /// </summary>
+        static Vector2 NearestUv(Vector2[] uvTop, bool[] hasUv, int nx, int nz, int i, int j)
         {
+            const int maxR = 8;
+            for (int r = 0; r <= maxR; r++)
+            {
+                float bestD = float.MaxValue;
+                Vector2 best = default;
+                bool any = false;
+                for (int di = -r; di <= r; di++)
+                for (int dj = -r; dj <= r; dj++)
+                {
+                    if (Mathf.Abs(di) != r && Mathf.Abs(dj) != r) continue;   // 只看这一圈的边
+                    int ni = i + di, nj = j + dj;
+                    if (ni < 0 || nj < 0 || ni >= nx || nj >= nz) continue;
+                    int k = nj * nx + ni;
+                    if (!hasUv[k]) continue;
+                    float d = di * di + dj * dj;
+                    if (d < bestD) { bestD = d; best = uvTop[k]; any = true; }
+                }
+                if (any) return best;
+            }
+            return new Vector2(0.5f, 0.5f);
+        }
+
+        /// <summary>格心是否落在三角形的 XY 投影里。</summary>
+        static bool InsideTriXY(float px, float pz, Vector3 a, Vector3 b, Vector3 c)        {
             float d1 = (px - b.x) * (a.z - b.z) - (a.x - b.x) * (pz - b.z);
             float d2 = (px - c.x) * (b.z - c.z) - (b.x - c.x) * (pz - c.z);
             float d3 = (px - a.x) * (c.z - a.z) - (c.x - a.x) * (pz - a.z);

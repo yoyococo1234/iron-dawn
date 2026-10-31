@@ -35,12 +35,12 @@ MonoBehaviour:
   weapons:
   - {fileID: 11400000, guid: c7561de8dca93024e9541f725af12d13, type: 2}
   - {fileID: 11400000, guid: cad31bc958dc4ab4b8a311c929be40c4, type: 2}
-  modelPrefab: {fileID: 919132149155446097, guid: 7f187b56f6c9b18439f32e09a17405ea, type: 3}
+  modelPrefab: {fileID: 919132149155446097, guid: 3c58ee6f73515b0478d6c7f38256b24d, type: 3}
   modelMaterial: {fileID: 2100000, guid: 3eb907cbb22fdcb4bb5b6f6f7f7be025, type: 2}
-  modelTurretPrefab: {fileID: 919132149155446097, guid: d0e4e11864f8a1e48a11cbee65bc4b30, type: 3}
+  modelTurretPrefab: {fileID: 0}
   modelTurretPivot: {x: -0.0107, y: 1.677, z: 0.4094}
   modelTurretMeshOrigin: {x: -0.0107, y: 1.677, z: 0.8594}
-  autoTurretWellPatch: 1
+  autoTurretWellPatch: 0
   turretBoneName: Turret
   muzzleBoneName: Muzzle
   modelYawOffset: 0
