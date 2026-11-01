@@ -112,6 +112,18 @@ public class TrackAssembly : MonoBehaviour
         if (verbose && n > 0) Debug.Log($"[TrackAssembly] 隐藏碎片节点 {n} 个");
     }
 
+    /// <summary>把网格整体平移 offset（顶点挪、包围盒重算），用来把几何中心挪到原点。</summary>
+    static Mesh ShiftMesh(Mesh src, Vector3 offset)
+    {
+        var m = Object.Instantiate(src);
+        m.name = src.name + "_pivot";
+        var v = m.vertices;
+        for (int i = 0; i < v.Length; i++) v[i] += offset;
+        m.vertices = v;
+        m.RecalculateBounds();
+        return m;
+    }
+
     void CollectWheels()
     {
         foreach (var t in GetComponentsInChildren<Transform>(true))
@@ -120,6 +132,22 @@ public class TrackAssembly : MonoBehaviour
             var mf = t.GetComponent<MeshFilter>();
             var mr = t.GetComponent<MeshRenderer>();
             if (mf == null || mf.sharedMesh == null) continue;
+
+            // 网格几何中心不在 Transform 原点上 → 转起来会绕着原点甩（不是原地转）。
+            // Lux3D/part_split 的零件位移经常被烘进网格，这里统一纠正：
+            // 把网格平移到「几何中心在原点」，再把 Transform 挪到原来的几何中心位置，外观不动。
+            {
+                var gc = mf.sharedMesh.bounds.center;
+                var worldGC = t.TransformPoint(gc);
+                float d = Vector3.Distance(worldGC, t.position);
+                float rr = Mathf.Min(mf.sharedMesh.bounds.size.y, mf.sharedMesh.bounds.size.z)
+                           * 0.5f * Mathf.Abs(t.lossyScale.y);
+                if (d > Mathf.Max(0.05f, rr * 0.25f))
+                {
+                    mf.sharedMesh = ShiftMesh(mf.sharedMesh, -gc);
+                    t.position = worldGC;
+                }
+            }
 
             // 端部主动轮/诱导轮被 part_split 切出尖刺：按半径截断，只留轮盘本体
             float medianR = 0f;
@@ -659,6 +687,7 @@ public class TrackAssembly : MonoBehaviour
             var sortedM = (float[])mArr.Clone();
             System.Array.Sort(sortedM);
             float p97 = sortedM[Mathf.Clamp((int)(sortedM.Length * 0.97f), 0, sortedM.Length - 1)];
+            // 上限 0.9R：履带板厚度远小于环半径；压太紧会把相邻履带板切成"一动一不动"看起来像融化
             bandLimit = Mathf.Clamp(p97 * 1.05f, 0.25f * R, 0.90f * R);
             if (verbose) Debug.Log($"[TrackAssembly] 履带 {tf.name}: 带宽自适应 p97={p97 * b.unit:F2} m → bandLimit={bandLimit * b.unit:F2} m");
         }
