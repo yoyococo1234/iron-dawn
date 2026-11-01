@@ -33,6 +33,7 @@ public static class VehicleFactory
         combat.def = def;
         combat.SetTeam(team);
         go.AddComponent<VehicleCollision>();      // 载具之间互相碰撞（飞机相撞会炸）
+        go.AddComponent<VehicleAudio>();          // 发动机循环音（随车速变调）
 
         if (isPlayer) go.AddComponent<PlayerTankController>();
         else go.AddComponent<VehicleAI>();
