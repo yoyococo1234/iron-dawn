@@ -190,6 +190,14 @@ public class VehicleCombat : MonoBehaviour
         origin = PushOutsideOwnCollider(origin, dir);
         origin += dir * 1f;
 
+        // 开火音效：按武器威力分主炮 / 机炮；音高随机一点，连射时不至于像复读机
+        bool isMainGun = w.baseDamage >= 90f;
+        Sfx.PlayAt(isMainGun ? Sfx.CannonFire : Sfx.MgFire, origin,
+                   isMainGun ? 1f : 0.75f,
+                   isMainGun ? Random.Range(0.94f, 1.06f) : Random.Range(0.92f, 1.10f),
+                   isMainGun ? 25f : 8f,
+                   isMainGun ? 900f : 300f);
+
         // 弹速为 0 的武器（炸弹架）走瞬时命中，否则会变成 1 m/s 的爬行弹
         if (w.projectileSpeed <= 1f)
         {
@@ -311,6 +319,11 @@ public class VehicleCombat : MonoBehaviour
         hp = Mathf.Max(0f, hp - dmg);
         BattleEvents.RaiseVehicleDamaged(this);
 
+        // 命中音效：打穿了/打空了都是一个声音，但大伤害用重一点的
+        if (hp > 0f)
+            Sfx.PlayAt(dmg >= 60f ? Sfx.HitHeavy : Sfx.HitMetal, transform.position + Vector3.up * 1.2f,
+                       0.85f, Random.Range(0.92f, 1.08f), 12f, 350f);
+
         if (hp <= 0f) Die();
     }
 
@@ -342,6 +355,10 @@ public class VehicleCombat : MonoBehaviour
     {
         dead = true;
         hp = 0f;
+
+        // 爆炸音效（车体下面要 SetActive(false)，所以声音要单独在世界上放）
+        Sfx.PlayAt(Sfx.Explosion, transform.position + Vector3.up * 1.5f, 1f,
+                   Random.Range(0.92f, 1.06f), 30f, 1200f);
 
         // 爆炸表现：一圈快速膨胀的球 + 火花
         var boom = GameObject.CreatePrimitive(PrimitiveType.Sphere);
