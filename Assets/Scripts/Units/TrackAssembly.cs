@@ -32,8 +32,12 @@ public class TrackAssembly : MonoBehaviour
     public float debugSpeed = 0f;
     [Tooltip("离相机超过这个距离就不逐帧算履带（0 = 一直算）")]
     public float animateDistance = 150f;
-    [Tooltip("GPU 顶点动画（实验：中心线数据传不进 shader，暂时别开）")]
-    public bool useGpuShader = false;
+    [Tooltip("GPU 顶点动画：位移交给 Shader，CPU 每帧只改一个 _Scroll（2026-11-01 验证通过，默认开）")]
+    public bool useGpuShader = true;
+    [Tooltip("清掉 part_split 留下的碎片：static 节点（纯渣子）+ 端部轮子上炸开的尖刺")]
+    public bool trimDebris = true;
+    [Tooltip("端部主动轮/诱导轮被切烂的，换成程序生成的轮盘（默认关：实测远看反而更假，圆盘会突出履带环）")]
+    public bool rebuildEndWheels = false;
     [Tooltip("打印诊断信息")]
     public bool verbose = false;
 
@@ -42,6 +46,9 @@ public class TrackAssembly : MonoBehaviour
         public Transform t;
         public float radius;
         public float side;        // -1 = 左，+1 = 右
+        public float localZ;      // 在履带总成局部空间里的车长方向位置（认端部轮用）
+        public Vector3 localCenter; // 渲染包围盒中心（履带总成局部空间）—— part_split 会把位移烘进网格，transform.position 不可信
+        public float medianR;     // 顶点到轮轴的中位半径（网格局部单位）
     }
 
     class Belt
@@ -79,12 +86,30 @@ public class TrackAssembly : MonoBehaviour
     void Start()
     {
         if (vehicle == null) vehicle = GetComponentInParent<VehiclePhysics>();
+        if (trimDebris) HideDebrisNodes();
+        CollectBelts();                    // 先收履带：端部轮盘要用履带环的半径和端点圆心
         CollectWheels();
-        CollectBelts();
+        if (rebuildEndWheels) RebuildEndWheels();
         _prevYaw = transform.eulerAngles.y;
         _hasPrevYaw = true;
         if (verbose)
             Debug.Log($"[TrackAssembly] {name}: 轮子 {_wheels.Count} 个，履带 {_belts.Count} 条，半轮距 {_halfTrack:F2} m");
+    }
+
+    /// <summary>
+    /// 隐藏 part_split 漏下来的纯碎片节点（名字叫 static，实测主战履带总成里是 6777 个顶点的渣子，
+    /// 渲染出来就是飘在履带周围的一堆尖片）。
+    /// </summary>
+    void HideDebrisNodes()
+    {
+        int n = 0;
+        foreach (var t in GetComponentsInChildren<Transform>(true))
+        {
+            if (t.name.ToLowerInvariant() != "static") continue;
+            var mr = t.GetComponent<MeshRenderer>();
+            if (mr != null && mr.enabled) { mr.enabled = false; n++; }
+        }
+        if (verbose && n > 0) Debug.Log($"[TrackAssembly] 隐藏碎片节点 {n} 个");
     }
 
     void CollectWheels()
@@ -93,14 +118,322 @@ public class TrackAssembly : MonoBehaviour
         {
             if (!t.name.ToLowerInvariant().StartsWith("wheel")) continue;
             var mf = t.GetComponent<MeshFilter>();
+            var mr = t.GetComponent<MeshRenderer>();
             if (mf == null || mf.sharedMesh == null) continue;
+
+            // 端部主动轮/诱导轮被 part_split 切出尖刺：按半径截断，只留轮盘本体
+            float medianR = 0f;
+            if (trimDebris)
+            {
+                var trimmed = TrimRadial(mf.sharedMesh, out medianR);
+                if (trimmed != null) mf.sharedMesh = trimmed;
+            }
+
             // 网格局部空间：X = 车宽（轮轴方向），Y = 车长，Z = 高
             var sz = mf.sharedMesh.bounds.size;
-            float r = Mathf.Min(sz.y, sz.z) * 0.5f * Mathf.Abs(t.lossyScale.y);
-            if (r < 0.02f) r = Mathf.Max(sz.y, sz.z) * 0.5f * Mathf.Abs(t.lossyScale.y);
+            float scaleY = Mathf.Abs(t.lossyScale.y);
+            float r = Mathf.Min(sz.y, sz.z) * 0.5f * scaleY;
+            if (r < 0.02f) r = Mathf.Max(sz.y, sz.z) * 0.5f * scaleY;
+            if (medianR > 0f) r = Mathf.Min(r, medianR * scaleY);
             float x = transform.InverseTransformPoint(t.position).x;
-            _wheels.Add(new Wheel { t = t, radius = Mathf.Max(0.05f, r), side = x < 0f ? -1f : 1f });
+            var local = mr != null ? transform.InverseTransformPoint(mr.bounds.center) : transform.InverseTransformPoint(t.position);
+            _wheels.Add(new Wheel
+            {
+                t = t,
+                radius = Mathf.Max(0.05f, r),
+                side = x < 0f ? -1f : 1f,
+                localZ = local.z,
+                localCenter = local,
+                medianR = medianR
+            });
         }
+    }
+
+    /// <summary>
+    /// 端部的主动轮/诱导轮被 part_split 切成了"碎块团"（不是圆盘），截断也救不回来。
+    ///
+    /// 做法：半径和圆心**不信那个碎块**，改从履带环量 ——
+    /// 取履带中心线两端那一段点做最小二乘圆拟合，圆心/半径就是端部轮该在的位置和大小。
+    /// 把落在车长方向最外 8% 的轮子，换成按这个半径/圆心生成的轮盘。
+    /// </summary>
+    void RebuildEndWheels()
+    {
+        if (_wheels.Count < 4 || _belts.Count == 0) return;
+
+        float zmin = float.MaxValue, zmax = float.MinValue;
+        foreach (var w in _wheels)
+        {
+            if (w.localZ < zmin) zmin = w.localZ;
+            if (w.localZ > zmax) zmax = w.localZ;
+        }
+        float len = zmax - zmin;
+        if (len < 0.01f) return;
+
+        // 履带环两端圆心（车体局部空间）与半径：对中心线两端做圆拟合
+        var ends = new List<Vector3>();
+        var endRs = new List<float>();
+        foreach (var b in _belts)
+        {
+            if (b.mesh == null || b.tf == null || b.cyz == null || b.cyz.Length < 16) continue;
+            var bb = b.mesh.bounds;
+            var toRoot = transform.worldToLocalMatrix * b.tf.localToWorldMatrix;
+            float scale = Mathf.Abs(b.tf.lossyScale.y);
+
+            float ymin = float.MaxValue, ymax = float.MinValue;
+            foreach (var p in b.cyz) { if (p.x < ymin) ymin = p.x; if (p.x > ymax) ymax = p.x; }
+            float span = ymax - ymin;
+            if (span < 1e-5f) continue;
+
+            for (int side = 0; side < 2; side++)
+            {
+                var pts = new List<Vector2>();
+                foreach (var p in b.cyz)
+                {
+                    bool near = side == 0 ? p.x > ymax - span * 0.16f : p.x < ymin + span * 0.16f;
+                    if (near) pts.Add(p);
+                }
+                if (pts.Count < 8) continue;
+                if (!FitCircle(pts, out var c, out float r)) continue;
+                if (r <= 1e-6f || r * scale > 3f) continue;          // 拟合跑飞就丢掉
+
+                var p3 = new Vector3(bb.center.x, c.x, c.y);
+                ends.Add(toRoot.MultiplyPoint3x4(p3));
+                endRs.Add(r * scale);
+            }
+        }
+        if (ends.Count == 0) return;
+
+        int replaced = 0;
+        foreach (var w in _wheels)
+        {
+            float tt = (w.localZ - zmin) / len;
+            if (tt > 0.08f && tt < 0.92f) continue;               // 中间的负重轮不动
+            var mf = w.t.GetComponent<MeshFilter>();
+            if (mf == null || mf.sharedMesh == null) continue;
+
+            // 找最近的履带环端点
+            var wc = w.localCenter;
+            int bestI = 0;
+            float bestD = float.MaxValue;
+            for (int i = 0; i < ends.Count; i++)
+            {
+                float d = (ends[i] - wc).sqrMagnitude;
+                if (d < bestD) { bestD = d; bestI = i; }
+            }
+            float endR = endRs[bestI];
+            Vector3 best = ends[bestI];
+
+            var src = mf.sharedMesh;
+            float sy = Mathf.Abs(w.t.lossyScale.y);
+            float rLocal = endR / Mathf.Max(0.0001f, sy);
+            float widthLocal = Mathf.Max(src.bounds.size.x * 0.9f, rLocal * 0.6f);
+            if (rLocal <= 1e-6f) continue;
+
+            // 圆心换算到轮子自己的网格局部空间
+            var world = transform.TransformPoint(best);
+            var centerLocal = mf.transform.InverseTransformPoint(world);
+
+            mf.sharedMesh = MakeSprocket(rLocal, widthLocal, centerLocal);
+            w.radius = Mathf.Max(0.05f, endR);
+            replaced++;
+        }
+        if (verbose && replaced > 0)
+            Debug.Log($"[TrackAssembly] 端部轮换成程序轮盘 {replaced} 个（拟合半径 {endRs[0]:F2} m）");
+    }
+
+    /// <summary>最小二乘圆拟合（Kåsa 代数法）：x²+y²+Dx+Ey+F=0。点太少或退化返回 false。</summary>
+    static bool FitCircle(List<Vector2> pts, out Vector2 center, out float radius)
+    {
+        center = Vector2.zero;
+        radius = 0f;
+        int n = pts.Count;
+        if (n < 4) return false;
+
+        double Sxx = 0, Sxy = 0, Syy = 0, Sx = 0, Sy = 0, Sxz = 0, Syz = 0, Sz = 0;
+        for (int i = 0; i < n; i++)
+        {
+            double x = pts[i].x, y = pts[i].y, z = x * x + y * y;
+            Sxx += x * x; Sxy += x * y; Syy += y * y;
+            Sx += x; Sy += y;
+            Sxz += x * z; Syz += y * z; Sz += z;
+        }
+
+        double a11 = Sxx, a12 = Sxy, a13 = Sx;
+        double a21 = Sxy, a22 = Syy, a23 = Sy;
+        double a31 = Sx, a32 = Sy, a33 = n;
+        double b1 = -Sxz, b2 = -Syz, b3 = -Sz;
+
+        double det = a11 * (a22 * a33 - a23 * a32) - a12 * (a21 * a33 - a23 * a31) + a13 * (a21 * a32 - a22 * a31);
+        if (System.Math.Abs(det) < 1e-12) return false;
+
+        double dD = b1 * (a22 * a33 - a23 * a32) - a12 * (b2 * a33 - a23 * b3) + a13 * (b2 * a32 - a22 * b3);
+        double dE = a11 * (b2 * a33 - a23 * b3) - b1 * (a21 * a33 - a23 * a31) + a13 * (a21 * b3 - b2 * a31);
+        double dF = a11 * (a22 * b3 - b2 * a32) - a12 * (a21 * b3 - b2 * a31) + b1 * (a21 * a32 - a22 * a31);
+
+        double D = dD / det, E = dE / det, F = dF / det;
+        double cx = -D * 0.5, cy = -E * 0.5;
+        double rr = cx * cx + cy * cy - F;
+        if (rr <= 0) return false;
+
+        center = new Vector2((float)cx, (float)cy);
+        radius = (float)System.Math.Sqrt(rr);
+        return true;
+    }
+
+    /// <summary>生成一个轮盘（轴沿网格局部 X）：外圆筒 + 两侧圆盖。center = 原网格包围盒中心（网格局部）。</summary>
+    static Mesh MakeSprocket(float radius, float width, Vector3 center, int sides = 28)
+    {
+        float hx = width * 0.5f;
+        var verts = new List<Vector3>();
+        var tris = new List<int>();
+        var uvs = new List<Vector2>();
+
+        for (int i = 0; i < sides; i++)
+        {
+            float a0 = (float)i / sides * Mathf.PI * 2f;
+            float a1 = (float)(i + 1) / sides * Mathf.PI * 2f;
+            float c0 = Mathf.Cos(a0), s0 = Mathf.Sin(a0);
+            float c1 = Mathf.Cos(a1), s1 = Mathf.Sin(a1);
+
+            // 外圆筒
+            int b = verts.Count;
+            verts.Add(new Vector3(-hx, c0 * radius, s0 * radius));
+            verts.Add(new Vector3(-hx, c1 * radius, s1 * radius));
+            verts.Add(new Vector3(hx, c1 * radius, s1 * radius));
+            verts.Add(new Vector3(hx, c0 * radius, s0 * radius));
+            uvs.Add(new Vector2((float)i / sides, 0f));
+            uvs.Add(new Vector2((float)(i + 1) / sides, 0f));
+            uvs.Add(new Vector2((float)(i + 1) / sides, 1f));
+            uvs.Add(new Vector2((float)i / sides, 1f));
+            tris.Add(b); tris.Add(b + 1); tris.Add(b + 2);
+            tris.Add(b); tris.Add(b + 2); tris.Add(b + 3);
+
+            // 两侧圆盖
+            int ca = verts.Count;
+            verts.Add(new Vector3(-hx, 0f, 0f));
+            verts.Add(new Vector3(-hx, c0 * radius, s0 * radius));
+            verts.Add(new Vector3(-hx, c1 * radius, s1 * radius));
+            uvs.Add(new Vector2(0.5f, 0.5f));
+            uvs.Add(new Vector2(0.5f + c0 * 0.5f, 0.5f + s0 * 0.5f));
+            uvs.Add(new Vector2(0.5f + c1 * 0.5f, 0.5f + s1 * 0.5f));
+            tris.Add(ca); tris.Add(ca + 2); tris.Add(ca + 1);
+
+            int cb = verts.Count;
+            verts.Add(new Vector3(hx, 0f, 0f));
+            verts.Add(new Vector3(hx, c0 * radius, s0 * radius));
+            verts.Add(new Vector3(hx, c1 * radius, s1 * radius));
+            uvs.Add(new Vector2(0.5f, 0.5f));
+            uvs.Add(new Vector2(0.5f + c0 * 0.5f, 0.5f + s0 * 0.5f));
+            uvs.Add(new Vector2(0.5f + c1 * 0.5f, 0.5f + s1 * 0.5f));
+            tris.Add(cb); tris.Add(cb + 1); tris.Add(cb + 2);
+        }
+
+        var m = new Mesh { name = "Sprocket" };
+        for (int i = 0; i < verts.Count; i++) verts[i] += center;   // 挪回原网格所在位置
+        m.SetVertices(verts);
+        m.SetUVs(0, uvs);
+        m.SetTriangles(tris, 0);
+        m.RecalculateNormals();
+        m.RecalculateBounds();
+        return m;
+    }
+
+    /// <summary>
+    /// 按「离轮轴（网格局部 X 轴）的半径」截断网格：只保留三个顶点半径都不超过中位半径 1.25 倍的三角形，
+    /// 再把顶点压紧。这样轮子上的尖刺没了，轮盘本体的细节全留着。
+    /// 返回 null 表示没切到东西（不用换 mesh）。
+    /// </summary>
+    static Mesh TrimRadial(Mesh src, out float medianR)
+    {
+        medianR = 0f;
+        if (src == null || src.subMeshCount != 1) return null;
+        var pos = src.vertices;
+        if (pos.Length < 32) return null;
+        var tris = src.triangles;
+        if (tris.Length < 12) return null;
+
+        var bb = src.bounds;
+        float cy = bb.center.y, cz = bb.center.z;
+        var r = new float[pos.Length];
+        for (int i = 0; i < pos.Length; i++)
+        {
+            float dy = pos[i].y - cy, dz = pos[i].z - cz;
+            r[i] = Mathf.Sqrt(dy * dy + dz * dz);
+        }
+        var sorted = (float[])r.Clone();
+        System.Array.Sort(sorted);
+        medianR = sorted[sorted.Length / 2];
+        if (medianR <= 1e-6f) return null;
+        float limit = medianR * 1.25f;
+
+        int triCount = tris.Length / 3;
+        var keep = new bool[triCount];
+        int kept = 0;
+        for (int t = 0; t < tris.Length; t += 3)
+        {
+            if (r[tris[t]] <= limit && r[tris[t + 1]] <= limit && r[tris[t + 2]] <= limit)
+            {
+                keep[t / 3] = true;
+                kept++;
+            }
+        }
+        if (kept == 0 || kept == triCount) return null;
+
+        var map = new int[pos.Length];
+        for (int i = 0; i < map.Length; i++) map[i] = -1;
+        var newTris = new int[kept * 3];
+        int nv = 0, k = 0;
+        for (int t = 0; t < tris.Length; t += 3)
+        {
+            if (!keep[t / 3]) continue;
+            for (int j = 0; j < 3; j++)
+            {
+                int oi = tris[t + j];
+                if (map[oi] < 0) map[oi] = nv++;
+                newTris[k++] = map[oi];
+            }
+        }
+
+        var nrm = src.normals;
+        var uv = src.uv;
+        var uv2 = src.uv2;
+        var col = src.colors;
+        var tan = src.tangents;
+        bool hasN = nrm != null && nrm.Length == pos.Length;
+        bool hasUv = uv != null && uv.Length == pos.Length;
+        bool hasUv2 = uv2 != null && uv2.Length == pos.Length;
+        bool hasCol = col != null && col.Length == pos.Length;
+        bool hasTan = tan != null && tan.Length == pos.Length;
+
+        var vpos = new Vector3[nv];
+        var vnrm = new Vector3[nv];
+        var vuv = new Vector2[nv];
+        var vuv2 = new Vector2[nv];
+        var vcol = new Color[nv];
+        var vtan = new Vector4[nv];
+        for (int oi = 0; oi < map.Length; oi++)
+        {
+            int ni = map[oi];
+            if (ni < 0) continue;
+            vpos[ni] = pos[oi];
+            if (hasN) vnrm[ni] = nrm[oi];
+            if (hasUv) vuv[ni] = uv[oi];
+            if (hasUv2) vuv2[ni] = uv2[oi];
+            if (hasCol) vcol[ni] = col[oi];
+            if (hasTan) vtan[ni] = tan[oi];
+        }
+
+        var m = new Mesh { name = src.name + "_trim" };
+        m.indexFormat = nv > 65000 ? UnityEngine.Rendering.IndexFormat.UInt32 : UnityEngine.Rendering.IndexFormat.UInt16;
+        m.vertices = vpos;
+        if (hasN) m.normals = vnrm; else m.RecalculateNormals();
+        if (hasUv) m.uv = vuv;
+        if (hasUv2) m.uv2 = vuv2;
+        if (hasCol) m.colors = vcol;
+        if (hasTan) m.tangents = vtan;
+        m.triangles = newTris;
+        m.RecalculateBounds();
+        return m;
     }
 
     void CollectBelts()
@@ -132,10 +465,10 @@ public class TrackAssembly : MonoBehaviour
             return;
         }
 
-        // UV2.x = 弧长参数（0~1）
+        // UV2.x = 弧长参数（0~1），UV2.y = 是否参与运动（Shader 里靠它跳过碎片顶点）
         int n = b.s.Length;
         var uv2 = new Vector2[n];
-        for (int i = 0; i < n; i++) uv2[i] = new Vector2(b.s[i] / b.length, 0f);
+        for (int i = 0; i < n; i++) uv2[i] = new Vector2(b.s[i] / b.length, b.anim[i] ? 1f : 0f);
         b.mesh.SetUVs(1, uv2);
 
         // 中心线数据：xyz = (0, 中心线 y, 中心线 z)，w = 切线角
