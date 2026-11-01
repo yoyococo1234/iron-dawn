@@ -627,8 +627,6 @@ public class TrackAssembly : MonoBehaviour
         float a0 = ang[0];
         float bandLimit = 0.90f * R;
         var mArr = new float[pos.Length];
-        int nAnim = 0;
-        float maxOff = 0f;
         for (int i = 0; i < pos.Length; i++)
         {
             float a = Mathf.Atan2(pos[i].z - cz, pos[i].y - cy);
@@ -651,6 +649,18 @@ public class TrackAssembly : MonoBehaviour
             mArr[i] = Mathf.Sqrt(b.offY[i] * b.offY[i] + b.offZ[i] * b.offZ[i]);
             b.curPos[i] = pos[i];
             b.curNrm[i] = nrm[i];
+        }
+
+        // ---- 2.5) 自适应带宽 ----
+        //   履带板本身离中心线很近；网格里混着的杂面/内衬会远得多（实测最远 0.77 m）。
+        //   固定用 0.9R 会把它们也当成履带板一起甩 → 履带看起来又抖又撕裂。
+        //   改成取偏移的 p97 当带宽（夹在 0.25R ~ 0.9R 之间）。
+        {
+            var sortedM = (float[])mArr.Clone();
+            System.Array.Sort(sortedM);
+            float p97 = sortedM[Mathf.Clamp((int)(sortedM.Length * 0.97f), 0, sortedM.Length - 1)];
+            bandLimit = Mathf.Clamp(p97 * 1.05f, 0.25f * R, 0.90f * R);
+            if (verbose) Debug.Log($"[TrackAssembly] 履带 {tf.name}: 带宽自适应 p97={p97 * b.unit:F2} m → bandLimit={bandLimit * b.unit:F2} m");
         }
 
         // ---- 3) 排除"混进履带网格里的轮子面片" ----
@@ -684,6 +694,8 @@ public class TrackAssembly : MonoBehaviour
             }
         }
 
+        int nAnim = 0;
+        float maxOff = 0f;
         for (int i = 0; i < pos.Length; i++)
         {
             b.anim[i] = !isWheelFace[i] && mArr[i] <= bandLimit;
@@ -702,7 +714,9 @@ public class TrackAssembly : MonoBehaviour
             for (int t = 0; t + 2 < triAll.Count; t += 3)
             {
                 int i0 = triAll[t], i1 = triAll[t + 1], i2 = triAll[t + 2];
-                if (b.anim[i0] && b.anim[i1] && b.anim[i2])
+                // 只要这个三角形里有任何一个顶点会动，它的三个顶点就都不能压平
+                // （压了会把三角形拉成一条穿过半屏的长刺）
+                if (b.anim[i0] || b.anim[i1] || b.anim[i2])
                     usedByGood[i0] = usedByGood[i1] = usedByGood[i2] = true;
             }
 
@@ -758,14 +772,35 @@ public class TrackAssembly : MonoBehaviour
         float limit = halfW * 2.0f;
 
         int triCount = tris.Length / 3;
+
+        // 先估一个"正常边长"的中位数，用来识别那种横穿整个模型的长条三角形
+        // （part_split 偶尔会留下这种退化面：一条细线横跨半个车体，侧视就是一道长刺）
+        var edgeSample = new float[Mathf.Min(triCount, 4000)];
+        for (int t = 0, si = 0; t < tris.Length && si < edgeSample.Length; t += 3, si++)
+        {
+            Vector3 a = pos[tris[t]], b = pos[tris[t + 1]], c = pos[tris[t + 2]];
+            edgeSample[si] = Mathf.Max((a - b).magnitude, Mathf.Max((b - c).magnitude, (c - a).magnitude));
+        }
+        System.Array.Sort(edgeSample);
+        float medEdge = edgeSample[edgeSample.Length / 2];
+        float longEdge = Mathf.Max(medEdge * 12f, 1e-5f);
+
         var keep = new bool[triCount];
         int kept = 0;
         for (int t = 0; t < tris.Length; t += 3)
         {
-            bool ok = Mathf.Abs(pos[tris[t]].x - cx) <= limit
-                   && Mathf.Abs(pos[tris[t + 1]].x - cx) <= limit
-                   && Mathf.Abs(pos[tris[t + 2]].x - cx) <= limit;
-            if (ok) { keep[t / 3] = true; kept++; }
+            int i0 = tris[t], i1 = tris[t + 1], i2 = tris[t + 2];
+            bool inBand = Mathf.Abs(pos[i0].x - cx) <= limit
+                       && Mathf.Abs(pos[i1].x - cx) <= limit
+                       && Mathf.Abs(pos[i2].x - cx) <= limit;
+            if (!inBand) continue;
+
+            Vector3 a = pos[i0], bb2 = pos[i1], c = pos[i2];
+            float e = Mathf.Max((a - bb2).magnitude, Mathf.Max((bb2 - c).magnitude, (c - a).magnitude));
+            if (e > longEdge) continue;                     // 长条退化面：丢掉
+
+            keep[t / 3] = true;
+            kept++;
         }
         if (kept == 0) return null;
         // 多 submesh 的也一律重建成单 submesh：不然只有第 0 号材质槽会被换掉，
