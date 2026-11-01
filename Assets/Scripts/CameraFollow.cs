@@ -13,7 +13,8 @@ public class CameraFollow : MonoBehaviour
     public float yaw;
     public float pitch = 8f;
     public float minPitch = -20f;
-    public float maxPitch = 72f;
+    [Tooltip("最大抬头角。抬到 85° 才能用机枪打高处的飞机")]
+    public float maxPitch = 85f;
     [Tooltip("鼠标灵敏度")]
     public float sensitivity = 3.2f;
 
@@ -29,7 +30,7 @@ public class CameraFollow : MonoBehaviour
 
     [Header("右键：轻微放大（不换视角）")]
     [Tooltip("按住右键时把视野收窄到这个角度（比 normalFov 小一点即可）")]
-    public float rightZoomFov = 38f;
+    public float rightZoomFov = 30f;
 
     [Header("开镜（Shift 按住 = 炮镜）")]
     public float normalFov = 50f;
@@ -43,6 +44,10 @@ public class CameraFollow : MonoBehaviour
     public KeyCode freeLookKey = KeyCode.C;
     [Tooltip("松开后视角回到炮口方向的速度")]
     public float recenterSpeed = 6f;
+
+    [Header("调试")]
+    [Tooltip("强制处于炮镜状态（截图/验收用，正常游戏别勾）")]
+    public bool forceScopeForTest = false;
 
     /// <summary>当前是否在自由视角（炮塔不跟鼠标）。</summary>
     public bool FreeLook { get; private set; }
@@ -60,6 +65,22 @@ public class CameraFollow : MonoBehaviour
     bool _scoped;
     bool _rightZoom;
     bool _wasFreeLook;
+    Transform _lastTarget;
+
+    /// <summary>按载具实际尺寸调跟车距离（坦克 ~18 m，18 m 长的炮艇 ~30 m）。</summary>
+    void FitDistanceToTarget()
+    {
+        if (target == null) return;
+        var col = target.GetComponent<Collider>();
+        if (col == null) return;
+
+        float len = Mathf.Max(col.bounds.size.x, col.bounds.size.z);
+        float want = Mathf.Clamp(len * 1.7f, 14f, 46f);
+        distance = want;
+        minDistance = Mathf.Max(7f, want * 0.45f);
+        maxDistance = Mathf.Max(minDistance + 10f, want * 2.4f);
+        _dist = want;
+    }
 
     public void Shake(float amount) => _shakeAmount = Mathf.Max(_shakeAmount, amount);
 
@@ -103,6 +124,14 @@ public class CameraFollow : MonoBehaviour
         if (target == null) AutoFindTarget();
         if (target == null) return;
 
+        // 换车（车 → 船 → 飞机）时按载具实际尺寸重设跟车距离：
+        // 18 m 长的炮艇用坦克的 18 m 距离会顶在船尾上，整屏都是船。
+        if (target != _lastTarget)
+        {
+            _lastTarget = target;
+            FitDistanceToTarget();
+        }
+
         // 开飞机时是追尾视角：鼠标用来操控飞机，不能同时转镜头
         var mm = MatchManager.Instance;
         var pl = mm != null ? mm.Player : null;
@@ -138,7 +167,7 @@ public class CameraFollow : MonoBehaviour
         // Shift = 炮镜（圆形镜筒 + 十字分划，HUD 负责画）；右键 = 只是把视野收窄一点。
         // 两者不再叠加（旧版两个一起按会放到更大，手感很怪）。
         bool locked = Cursor.lockState == CursorLockMode.Locked;
-        _scoped = locked && (Input.GetKey(KeyCode.LeftShift) || Input.GetKey(KeyCode.RightShift));
+        _scoped = locked && (Input.GetKey(KeyCode.LeftShift) || Input.GetKey(KeyCode.RightShift)) || forceScopeForTest;
         _rightZoom = locked && Input.GetMouseButton(1) && !_scoped;
         var cam = GetComponent<Camera>();
 
@@ -152,8 +181,13 @@ public class CameraFollow : MonoBehaviour
             // 跟炮管的话，相机→炮塔→相机 会形成反馈，放大后炮塔会自己往左右漂。
             Vector3 lookDir = Quaternion.Euler(pitch, yaw, 0f) * Vector3.forward;
 
+            // 机位基点用**炮塔实际位置**，不是车体中心。
+            // 用中心的话，炮塔靠船头的船会退到驾驶舱里 —— 那正是"放大到脑袋上、看不见前面"的原因。
+            Vector3 turretPivot = target.position + Vector3.up * 2f;
+            if (vp != null && vp.turretBone != null) turretPivot = vp.turretBone.position;
+
             // 机位高度按**炮塔实际包围盒顶**算（重装坦克炮塔又高又大，写死高度会被挡死）
-            float turretTopY = target.position.y + 2f;
+            float turretTopY = turretPivot.y + 1f;
             if (vp != null && vp.turretBone != null)
             {
                 bool any = false;
@@ -163,12 +197,32 @@ public class CameraFollow : MonoBehaviour
                     if (!any || r.bounds.max.y > turretTopY) { turretTopY = r.bounds.max.y; any = true; }
                 }
             }
-            float camY = turretTopY + 0.45f;
 
             Vector3 back = new Vector3(lookDir.x, 0f, lookDir.z);
             back = back.sqrMagnitude > 0.0001f ? back.normalized : target.forward;
 
-            Vector3 camPos = new Vector3(target.position.x, camY, target.position.z) - back * 5.0f;
+            // 后退距离按炮塔实际尺寸走：小船/坦克 1.5~2 m 刚好，18 m 的炮艇退 1.5 m 会贴到枪口上。
+            float turretSpan = 2f;
+            if (vp != null && vp.turretBone != null)
+            {
+                bool anyR = false;
+                Bounds tb = new Bounds(vp.turretBone.position, Vector3.zero);
+                foreach (var r in vp.turretBone.GetComponentsInChildren<Renderer>())
+                {
+                    if (!r.enabled) continue;
+                    if (!anyR) { tb = r.bounds; anyR = true; }
+                    else tb.Encapsulate(r.bounds);
+                }
+                if (anyR) turretSpan = Mathf.Max(1f, Mathf.Max(tb.size.x, tb.size.z));
+            }
+            float backDist = Mathf.Clamp(turretSpan * 0.8f, 1.6f, 3.6f);
+
+            Vector3 camPos = turretPivot - back * backDist;
+            camPos.y = turretTopY + 0.42f;
+
+            // 防穿模：机位如果落在自己车体里，就往上抬；再检查前方 3 m 会不会被自己挡住。
+            camPos = LiftCameraOutOfSelf(camPos, lookDir, target);
+
             Vector3 lookAtS = camPos + lookDir * 300f;
 
             float groundS = Mathf.Max(BattlefieldTerrain.SampleHeight(camPos.x, camPos.z), BattlefieldTerrain.WaterLevel) + 1.2f;
@@ -227,6 +281,39 @@ public class CameraFollow : MonoBehaviour
         if (mm == null) return;
         var p = mm.Player;
         if (p != null) target = p.transform;
+    }
+
+    /// <summary>
+    /// 把炮手机位从自己车体里"抬"出来。
+    /// 船的炮塔在船头、驾驶舱在中部，机位退 5 m 就钻进驾驶舱了 —— 表现就是"放大到脑袋上、看不见前面"。
+    /// 这里做两件事：① 机位落在自身包围盒内就抬到盒顶之上；② 前方 3 m 被自己挡住也抬。
+    /// </summary>
+    Vector3 LiftCameraOutOfSelf(Vector3 camPos, Vector3 lookDir, Transform self)
+    {
+        var col = self.GetComponent<Collider>();
+        if (col == null) return camPos;
+
+        var b = col.bounds;
+        for (int i = 0; i < 14; i++)
+        {
+            bool inside = b.Contains(camPos);
+            bool blocked = false;
+
+            if (!inside)
+            {
+                var hits = Physics.RaycastAll(camPos, lookDir, 3f, ~0, QueryTriggerInteraction.Ignore);
+                foreach (var h in hits)
+                {
+                    if (h.collider == col) { blocked = true; break; }
+                }
+            }
+
+            if (!inside && !blocked) return camPos;
+            camPos += Vector3.up * 0.55f;
+        }
+        // 抬不出去就干脆站到车顶之上
+        camPos.y = Mathf.Max(camPos.y, b.max.y + 0.5f);
+        return camPos;
     }
 
     /// <summary>飞机追尾视角：贴着机尾看，随飞机姿态转。</summary>

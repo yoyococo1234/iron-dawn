@@ -28,6 +28,22 @@ public class WeaponDef : ScriptableObject
     [Tooltip("这把武器属于哪个域（AI 只在本域内选目标）")]
     public Domain mountedDomain = Domain.Land;
 
+    [Header("甲板/车顶机枪")]
+    [Tooltip("独立挂点的机枪：不吃炮塔的俯仰限制，可以抬到 80° 以上打飞机；走瞬时命中（连射不刷 GameObject）")]
+    public bool deckMounted = false;
+    [Tooltip("独立挂点的最大仰角（度）")]
+    public float deckMaxElevation = 85f;
+    [Tooltip("独立挂点的最大俯角（度，负值）")]
+    public float deckMaxDepression = -12f;
+    [Tooltip("独立挂点的抬枪速度（度/秒）")]
+    public float deckPitchSpeed = 140f;
+
+    [Header("鱼雷")]
+    [Tooltip("鱼雷：水下航行（定深直航），只对水面目标有效，速度远低于炮弹")]
+    public bool isTorpedo = false;
+    [Tooltip("鱼雷航行深度（米，水面以下）")]
+    public float torpedoDepth = 1.6f;
+
     public string Describe()
         => $"{displayName}：伤害{baseDamage} 装填{reloadTime}s 射程{range}m，{ammoTypes?.Length ?? 0} 种弹";
 }

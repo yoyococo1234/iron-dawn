@@ -34,7 +34,7 @@ MonoBehaviour:
   terrainAllowed: 3
   weapons:
   - {fileID: 11400000, guid: 16306ff787aa5894e8567f9f8eb1ef73, type: 2}
-  - {fileID: 11400000, guid: cad31bc958dc4ab4b8a311c929be40c4, type: 2}
+  - {fileID: 11400000, guid: 17cb76d48be325641ba4a1b346291595, type: 2}
   modelPrefab: {fileID: 919132149155446097, guid: bb8f50a2825f66e43a8946119b780a55, type: 3}
   modelMaterial: {fileID: 2100000, guid: 4605aa19373b16f4f89d935e97dbadef, type: 2}
   modelTurretPrefab: {fileID: 919132149155446097, guid: 8523657f1dcab424abeddec62441c59e, type: 3}
@@ -43,11 +43,14 @@ MonoBehaviour:
   modelTrackWellRef: {fileID: 0}
   modelTurretMaterial: {fileID: 2100000, guid: f609b091b1f3d154980770c5b925ee08, type: 2}
   modelTracksMaterial: {fileID: 2100000, guid: f4692bdfceca6064d837807a92e8e00b, type: 2}
+  tracksTargetHeight: 0
   modelBarrelPrefab: {fileID: 919132149155446097, guid: 2ace79af1a29c5844ade9690129ef05a, type: 3}
   modelBarrelPivot: {x: 0.0684, y: 1.1981, z: 1.5496}
   modelTurretPivot: {x: 0.0042, y: 2.7564, z: 0.1568}
   modelTurretMeshOrigin: {x: 0.0042, y: 2.7564, z: 0.1568}
   autoTurretWellPatch: 0
+  autoTurretSkirt: 1
+  modelDeckGunPivot: {x: 0, y: 0, z: 0}
   turretBoneName: Turret
   muzzleBoneName: Muzzle
   modelYawOffset: 0

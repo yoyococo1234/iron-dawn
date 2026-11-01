@@ -30,6 +30,14 @@ public class MatchManager : MonoBehaviour
     [Tooltip("每队人数")]
     public int teamSize = 5;
 
+    [Header("测试开关")]
+    [Tooltip("不限命数：玩家可以无限次换车，对局也不会因为你没命而结束（调参/验收时用）")]
+    public bool unlimitedLives = true;
+    [Tooltip("无限金币：玩家金币恒定，随便换车（调参/验收时用）")]
+    public bool unlimitedGold = true;
+    [Tooltip("无限金币时的金币数")]
+    public int debugGold = 999999;
+
     [Header("运行时状态（只读，给 HUD 用）")]
     public float timeLeft;
     public bool matchOver;
@@ -93,10 +101,14 @@ public class MatchManager : MonoBehaviour
 
     public bool CanAfford(VehicleDef def)
     {
-        if (def == null || _human == null || _human.lives <= 0) return false;
+        if (def == null || _human == null) return false;
+        if (!unlimitedLives && _human.lives <= 0) return false;
         if (_human.gold >= def.price) return true;
         return _human.gold < CheapestPrice && def.price == CheapestPrice;   // 一穷二白时最低价免费
     }
+
+    /// <summary>命数显示文案（不限命数时显示 ∞）。</summary>
+    public string LivesText => unlimitedLives ? "∞" : LivesLeft.ToString();
 
     // ---------------- 生命周期 ----------------
 
@@ -200,6 +212,9 @@ public class MatchManager : MonoBehaviour
         UpdateIncome(Time.deltaTime);
         UpdateRespawns();
         CheckTeamWipe();
+
+        // 无限金币（测试用）：每帧顶满，换车扣了也立刻补回来
+        if (unlimitedGold && _human != null) _human.gold = debugGold;
     }
 
     void RefreshCache()
@@ -255,18 +270,28 @@ public class MatchManager : MonoBehaviour
     /// <summary>开局：进车库选第一台车。</summary>
     public void OpenGarageFirst()
     {
-        OpenGarage("选择你的载具", $"还剩 {LivesLeft} 次部署 · 你的金币 {Gold}");
+        OpenGarage("选择你的载具", $"命数 {LivesText} · 你的金币 {Gold}");
     }
 
     void OpenGarageForRespawn()
     {
         if (matchOver) return;
-        if (LivesLeft <= 0)
+        if (!unlimitedLives && LivesLeft <= 0)
         {
             EndMatch(1, "你的 3 条命用完了");
             return;
         }
-        OpenGarage("载具被击毁 —— 重新选择", $"还剩 {LivesLeft} 次部署 · 你的金币 {Gold}");
+        OpenGarage("载具被击毁 —— 重新选择", $"还剩 {LivesText} 次部署 · 你的金币 {Gold}");
+    }
+
+    /// <summary>测试用：按 G 随时回车库换车，不用等阵亡。</summary>
+    public void OpenGarageForSwap()
+    {
+        if (matchOver) return;
+        var g = GarageScreen.Instance;
+        if (g == null) return;
+        if (g.IsOpen) return;                      // 已经在车库里就别重复开
+        OpenGarage("换载具", $"金币 {Gold} · 随时按 G 换车 · 命数 {LivesText}");
     }
 
     void OpenGarage(string title, string subtitle)
@@ -284,7 +309,7 @@ public class MatchManager : MonoBehaviour
 
         int cost = _human.gold >= def.price ? def.price : 0;
         _human.gold -= cost;
-        _human.lives--;
+        if (!unlimitedLives) _human.lives--;
 
         if (_human.vehicle != null)
         {
@@ -469,8 +494,8 @@ public class MatchManager : MonoBehaviour
         if (matchOver) return;
         if (TeamLives(1) <= 0 && TeamAlive(1) == 0) { EndMatch(0, "敌方全部出局"); return; }
         if (TeamLives(0) <= 0 && TeamAlive(0) == 0) { EndMatch(1, "我方全部出局"); return; }
-        if (_human != null && _human.lives <= 0 && _human.vehicle == null)
-            EndMatch(TeamLives(0) > 0 ? 1 : 1, "你的 3 条命用完了");
+        if (!unlimitedLives && _human != null && _human.lives <= 0 && _human.vehicle == null)
+            EndMatch(1, "你的 3 条命用完了");
     }
 
     void EndByLives(string reason)

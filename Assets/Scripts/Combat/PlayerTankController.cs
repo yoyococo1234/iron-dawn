@@ -61,6 +61,11 @@ public class PlayerTankController : MonoBehaviour
             float wantYawWorld = camFollow.yaw;
             float wantPitch = -(camFollow.pitch - 8f);   // 镜头默认俯角 8° 当水平
             _combat.Physics.AimDirect(wantYawWorld, wantPitch, turn);
+
+            // 切到车顶机枪时，机枪有自己的一套俯仰（能抬到 85° 打飞机），不受炮管 20° 的限制
+            var cw = _combat.Weapon;
+            if (cw != null && cw.deckMounted && _combat.Physics.HasDeckGun)
+                _combat.Physics.SetDeckGunPitch(wantPitch, cw.deckMaxElevation, cw.deckMaxDepression, cw.deckPitchSpeed);
         }
 
         // 开火
@@ -70,6 +75,13 @@ public class PlayerTankController : MonoBehaviour
         // Q 切换武器（右键留给开镜）
         if (Input.GetKeyDown(KeyCode.Q))
             _combat.CycleWeapon();
+
+        // G = 随时换载具（测试用：不用等阵亡，直接回车库重选）
+        if (Input.GetKeyDown(KeyCode.G))
+        {
+            var mm = MatchManager.Instance;
+            if (mm != null) mm.OpenGarageForSwap();
+        }
 
         // 切弹药
         var w = _combat.Weapon;

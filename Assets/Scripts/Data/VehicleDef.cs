@@ -76,6 +76,22 @@ public class VehicleDef : ScriptableObject
     [Tooltip("履带总成的目标高度（米）。0 = 自动按车体高度的 88% 算。" +
              "用来把履带塞进侧裙后面，避免「履带比车体还高」")]
     public float tracksTargetHeight = 0f;
+
+    [Header("程序化履带（Lux3D 履带网格烂掉时用）")]
+    [Tooltip("勾上 = 不加载 Lux3D 那套履带网格，直接按下面的尺寸生成履带（环带+主动轮+诱导轮+负重轮+托带轮）")]
+    public bool proceduralTracks = false;
+    [Tooltip("履带中心线到车体中线的横向距离（米）")]
+    public float trackHalfSpan = 0f;
+    [Tooltip("履带板宽度（米）")]
+    public float trackBandWidth = 0f;
+    [Tooltip("履带环外廓总长（车长方向，米）")]
+    public float trackLoopLength = 0f;
+    [Tooltip("履带环外廓总高（米）")]
+    public float trackLoopHeight = 0f;
+    [Tooltip("负重轮半径（米）")]
+    public float trackRoadWheelR = 0f;
+    [Tooltip("每侧负重轮个数")]
+    public int trackRoadWheelCount = 0;
     [Tooltip("炮管模型（从炮塔上切出来的，单独做俯仰）。留空 = 炮塔整体不会抬炮")]
     public GameObject modelBarrelPrefab;
     [Tooltip("炮管转轴在炮塔局部坐标下的位置（炮盾中心）")]
@@ -86,6 +102,11 @@ public class VehicleDef : ScriptableObject
     public Vector3 modelTurretMeshOrigin;
     [Tooltip("要不要自动给车体上被炮塔切开的洞补一块甲板（按车体网格实测洞口）")]
     public bool autoTurretWellPatch = true;
+    [Tooltip("拆件炮塔时自动补「炮塔封底盘 + 甲板炮座板」。炮塔是从船体/车体里挖出来的，" +
+             "底部本来没有面，不补的话一转就看见内部、甲板上还会露切口")]
+    public bool autoTurretSkirt = true;
+    [Tooltip("甲板/车顶机枪挂点（车体局部坐标）。零向量 = 自动放在炮塔顶后部")]
+    public Vector3 modelDeckGunPivot = Vector3.zero;
     [Tooltip("炮塔节点名（模型里的子物体名），炮塔要能转就靠它")]
     public string turretBoneName = "Turret";
     [Tooltip("炮口节点名（开火时子弹从这里出）")]

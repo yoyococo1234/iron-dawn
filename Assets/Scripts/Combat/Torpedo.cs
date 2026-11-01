@@ -1,0 +1,297 @@
+using UnityEngine;
+
+/// <summary>
+/// 鱼雷：**水下**定深直航的慢速弹（40 m/s，炮弹是 800 m/s）。
+///
+/// 和 Projectile 的区别：
+///   · 不吃重力 —— 入水后保持固定深度水平直航，不会掉到海床上
+///   · 有水面航迹 —— 白色气泡尾迹 + 水面泡沫条，远远能看见一条线冲过来
+///   · 只打水里的东西 —— 撞到岸/浅滩就自毁
+///
+/// 由 VehicleCombat.FireWeapon 在 WeaponDef.isTorpedo = true 时创建。
+/// </summary>
+public class Torpedo : MonoBehaviour
+{
+    /// <summary>入水后下潜到目标深度要多久（秒）。太长会先在水面滑一段，看起来像炮弹。</summary>
+    public float diveTime = 0.35f;
+    /// <summary>命中判定半径（米）。</summary>
+    public float hitRadius = 0.9f;
+
+    Vector3 _dir;
+    float _speed;
+    float _damage;
+    float _range;
+    float _depth;
+    float _waterLevel;
+    float _travelled;
+    float _life;
+    float _t;
+    float _startY;
+    float _foamTimer;
+    float _lastTime = -1f;
+
+    AmmoDef _ammo;
+    VehicleCombat _owner;
+
+    TrailRenderer _trail;
+
+    /// <summary>调试用：最后一枚鱼雷是怎么没的（life / beached / hit / miss）。</summary>
+    public static string LastKillReason = "";
+
+    public void Launch(Vector3 origin, Vector3 dir, float speed, float damage, AmmoDef ammo,
+                       VehicleCombat owner, float range, float depth, float waterLevel)
+    {
+        _dir = dir.normalized;
+        _dir.y = 0f;                       // 鱼雷只走水平方向（不跟着炮管仰角飞）
+        if (_dir.sqrMagnitude < 0.01f) _dir = owner != null ? owner.transform.forward : Vector3.forward;
+        _dir.Normalize();
+
+        _speed = Mathf.Max(1f, speed);
+        _damage = damage;
+        _ammo = ammo;
+        _owner = owner;
+        _range = Mathf.Max(1f, range);
+        _waterLevel = waterLevel;
+        // 定深要跟实际水深走：近岸只有 2~3 m 深，硬压 1.6 m 会贴着海床一路"蹭"，
+        // 稍微一波动就被判成搁浅。这里最多吃掉水深的一半。
+        float seabed = BattlefieldTerrain.SampleHeight(origin.x, origin.z);
+        float depthAvail = Mathf.Max(0.4f, waterLevel - seabed);
+        _depth = Mathf.Clamp(depth, 0.4f, Mathf.Max(0.5f, depthAvail * 0.5f));
+
+        _startY = origin.y;
+        // 射程兜底：武器定义里的 range 万一没配好（0 或几十米），鱼雷会在出管两秒内自己没了。
+        // 这里给个下限，保证至少跑 200 m 才可能耗尽。
+        _range = Mathf.Max(200f, _range);
+        _life = _range / _speed + 3f;
+
+        transform.position = origin;
+        transform.rotation = Quaternion.LookRotation(_dir);
+
+        // 水下气泡尾迹：细而半透明，远处看是一道淡淡的白色水痕（太粗会像一块白板）
+        _trail = gameObject.AddComponent<TrailRenderer>();
+        _trail.time = 2.2f;
+        _trail.startWidth = 0.20f;
+        _trail.endWidth = 0.02f;
+        _trail.material = new Material(Shader.Find("Sprites/Default"));
+        _trail.startColor = new Color(0.90f, 0.96f, 1f, 0.42f);
+        _trail.endColor = new Color(0.78f, 0.92f, 1f, 0f);
+        _trail.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+        _trail.receiveShadows = false;
+        _trail.minVertexDistance = 0.4f;
+
+        // 鱼雷本体：细长圆柱，水下能看见一个影子
+        var vis = GameObject.CreatePrimitive(PrimitiveType.Capsule);
+        vis.name = "TorpedoBody";
+        vis.transform.SetParent(transform, false);
+        vis.transform.localScale = new Vector3(0.16f, 0.5f, 0.16f);
+        vis.transform.localRotation = Quaternion.Euler(90f, 0f, 0f);
+        // 必须**先禁用**再销毁：Destroy 是延迟到帧末的，这一帧的 SphereCast 会先撞上它自己
+        var vcol = vis.GetComponent<Collider>();
+        if (vcol != null) { vcol.enabled = false; Object.Destroy(vcol); }
+        var mat = new Material(Shader.Find("Standard")) { color = new Color(0.25f, 0.28f, 0.30f) };
+        vis.GetComponent<Renderer>().sharedMaterial = mat;
+    }
+
+    void Update()
+    {
+        // 步长用 Time.deltaTime（受 timeScale 控制，慢动作/暂停时跟着走），但夹住上限：
+        // 编辑器卡一帧时 Time.deltaTime 可能报到十几秒，step = 40 * 15 = 600 m，
+        // 鱼雷会在一帧里"瞬移"完整个射程，看起来就是刚发射就没了。
+        float dt = Mathf.Clamp(Time.deltaTime, 0.0005f, 0.05f);
+
+        _life -= dt;
+        if (_life <= 0f) { LastKillReason = "life"; Destroy(gameObject); return; }
+
+        _t += dt;
+
+        // ---------- 高度：先下潜到定深，之后锁死 ----------
+        float targetY = _waterLevel - _depth;
+        if (_t < diveTime)
+        {
+            float k = Mathf.Clamp01(_t / diveTime);
+            float y = Mathf.Lerp(_startY, targetY, k * k);      // 二次曲线：入水快、后面稳
+            transform.position = new Vector3(transform.position.x, y, transform.position.z);
+        }
+        else
+        {
+            transform.position = new Vector3(transform.position.x, targetY, transform.position.z);
+        }
+
+        // ---------- 前进 + 扫掠命中 ----------
+        Vector3 stepVec = _dir * _speed * dt;
+        float step = Mathf.Min(stepVec.magnitude, 3f);      // 硬上限：任何情况下单帧不超过 3 m
+        stepVec = _dir * step;
+
+        var hits = Physics.SphereCastAll(transform.position, hitRadius, _dir, step + 0.4f, ~0, QueryTriggerInteraction.Ignore);
+        if (hits != null && hits.Length > 0)
+        {
+            System.Array.Sort(hits, (a, b) => a.distance.CompareTo(b.distance));
+            foreach (var h in hits)
+            {
+                if (h.collider == null) continue;
+                // 海床不算障碍 —— 鱼雷本来就在水下，贴着海床走是正常的
+                if (h.collider is TerrainCollider) continue;
+                // 自己身上的东西（船体/鱼雷本体）不算
+                if (h.collider.transform.IsChildOf(transform)) continue;
+
+                var target = h.collider.GetComponentInParent<VehicleCombat>();
+                if (target == _owner) continue;
+                if (target != null && target.Alive)
+                {
+                    LastKillReason = "hit:" + target.name;
+                    target.TakeDamage(_damage, _ammo, transform.position, _owner);
+                    VehicleCombat.ShotsHit++;
+                    Explode(true);
+                    return;
+                }
+                // 撞到别的东西（建筑/残骸）也算终止
+                LastKillReason = "miss:" + h.collider.name + "@" + h.collider.GetType().Name;
+                Explode(false);
+                return;
+            }
+        }
+
+        transform.position += stepVec;
+        _travelled += step;
+
+        // ---------- 水面泡沫航迹（每 0.12 秒留一个白点，慢慢淡掉）----------
+        _foamTimer -= dt;
+        if (_foamTimer <= 0f && _t > diveTime)
+        {
+            _foamTimer = 0.12f;
+            SpawnFoam();
+        }
+
+        // 打上岸才叫搁浅。
+        // 注意：地图边缘的分块地形可能没有数据，SampleHeight 会返回 0（远高于水面），
+        // 用它做判定会让鱼雷一进边界就自爆 —— 所以只认「水深数据明确为 0 且地形确实高于水面」。
+        float depthHere = BattlefieldTerrain.WaterDepth(transform.position.x, transform.position.z);
+        if (_t > 1.2f && depthHere < 0.05f)
+        {
+            float ground = BattlefieldTerrain.SampleHeight(transform.position.x, transform.position.z);
+            if (ground > _waterLevel - 0.05f) { Beached(); return; }
+        }
+
+        if (_travelled >= _range)
+        {
+            LastKillReason = $"range({_travelled:F0}/{_range:F0})";
+            Explode(false);
+            return;
+        }
+    }
+
+    void SpawnFoam()
+    {
+        var go = new GameObject("TorpedoFoam");
+        go.transform.position = new Vector3(transform.position.x, _waterLevel + 0.05f, transform.position.z);
+        go.transform.rotation = Quaternion.Euler(90f, 0f, 0f);
+        var mf = go.AddComponent<MeshFilter>();
+        mf.sharedMesh = FoamDisc();
+        var mr = go.AddComponent<MeshRenderer>();
+        var mat = new Material(Shader.Find("Sprites/Default"));
+        mat.color = new Color(1f, 1f, 1f, 0.32f);
+        mr.sharedMaterial = mat;
+        mr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+        var fx = go.AddComponent<FoamFade>();
+        fx.life = 2.6f;
+        fx.size = 0.85f;
+    }
+
+    static Mesh _foamMesh;
+
+    /// <summary>圆形泡沫片（16 边扇形）。用四边形会看成一块白方块。</summary>
+    static Mesh FoamDisc()
+    {
+        if (_foamMesh != null) return _foamMesh;
+        const int seg = 16;
+        var verts = new Vector3[seg + 1];
+        var uvs = new Vector2[seg + 1];
+        var tris = new int[seg * 3];
+        verts[0] = Vector3.zero;
+        uvs[0] = new Vector2(0.5f, 0.5f);
+        for (int i = 0; i < seg; i++)
+        {
+            float a = 2f * Mathf.PI * i / seg;
+            verts[i + 1] = new Vector3(Mathf.Cos(a) * 0.5f, Mathf.Sin(a) * 0.5f, 0f);
+            uvs[i + 1] = new Vector2(0.5f + Mathf.Cos(a) * 0.5f, 0.5f + Mathf.Sin(a) * 0.5f);
+        }
+        for (int i = 0; i < seg; i++)
+        {
+            tris[i * 3] = 0;
+            tris[i * 3 + 1] = 1 + (i + 1) % seg;
+            tris[i * 3 + 2] = 1 + i;
+        }
+        var m = new Mesh { name = "FoamDisc" };
+        m.vertices = verts;
+        m.uv = uvs;
+        m.triangles = tris;
+        m.RecalculateNormals();
+        _foamMesh = m;
+        return m;
+    }
+
+    /// <summary>搁浅（撞岸/浅滩）：冒个白花就没了。</summary>
+    void Beached()
+    {
+        LastKillReason = "beached";
+        Explode(false);
+    }
+
+    void Explode(bool hit)
+    {
+        if (string.IsNullOrEmpty(LastKillReason)) LastKillReason = hit ? "hit" : "miss";
+        float r = hit ? 7f : 3.5f;
+        var boom = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+        boom.name = "TorpedoBurst";
+        boom.transform.position = new Vector3(transform.position.x, _waterLevel + 0.4f, transform.position.z);
+        boom.transform.localScale = Vector3.one * 0.6f;
+        Object.Destroy(boom.GetComponent<Collider>());
+
+        var mat = new Material(Shader.Find("Standard"));
+        mat.color = new Color(1f, 0.85f, 0.6f, 0.75f);
+        mat.SetColor("_EmissionColor", new Color(1f, 0.7f, 0.35f));
+        mat.EnableKeyword("_EMISSION");
+        boom.GetComponent<Renderer>().sharedMaterial = mat;
+
+        var l = boom.AddComponent<Light>();
+        l.type = LightType.Point;
+        l.range = r * 4f;
+        l.intensity = hit ? 8f : 4f;
+        l.color = new Color(1f, 0.8f, 0.5f);
+
+        var fx = boom.AddComponent<ExplosionFx>();
+        fx.duration = 0.7f;
+        fx.maxScale = r;
+
+        Sfx.PlayAt(Sfx.Explosion, transform.position, hit ? 0.9f : 0.6f,
+                   Random.Range(0.9f, 1.05f), 25f, 900f);
+
+        Destroy(gameObject);
+    }
+}
+
+/// <summary>水面泡沫点：放大 + 淡出，播完自销毁。</summary>
+public class FoamFade : MonoBehaviour
+{
+    public float life = 2.2f;
+    public float size = 1.1f;
+    float _t;
+    Renderer _r;
+
+    void Start() => _r = GetComponent<Renderer>();
+
+    void Update()
+    {
+        _t += Time.deltaTime;
+        float k = Mathf.Clamp01(_t / life);
+        transform.localScale = Vector3.one * Mathf.Lerp(size * 0.5f, size * 1.8f, k);
+        if (_r != null)
+        {
+            var m = _r.material;
+            var c = m.color;
+            c.a = Mathf.Lerp(0.55f, 0f, k);
+            m.color = c;
+        }
+        if (k >= 1f) Destroy(gameObject);
+    }
+}
