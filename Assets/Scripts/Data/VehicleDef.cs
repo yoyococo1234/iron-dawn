@@ -73,6 +73,9 @@ public class VehicleDef : ScriptableObject
     public Material modelTurretMaterial;
     [Tooltip("履带总成自己的材质（Lux3D 履带模型的 baseColor 贴图）。留空 = 用 modelMaterial")]
     public Material modelTracksMaterial;
+    [Tooltip("履带总成的目标高度（米）。0 = 自动按车体高度的 88% 算。" +
+             "用来把履带塞进侧裙后面，避免「履带比车体还高」")]
+    public float tracksTargetHeight = 0f;
     [Tooltip("炮管模型（从炮塔上切出来的，单独做俯仰）。留空 = 炮塔整体不会抬炮")]
     public GameObject modelBarrelPrefab;
     [Tooltip("炮管转轴在炮塔局部坐标下的位置（炮盾中心）")]
