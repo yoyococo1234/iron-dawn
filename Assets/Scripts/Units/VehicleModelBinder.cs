@@ -81,6 +81,12 @@ public static class VehicleModelBinder
             StripColliders(tracks);
             if (def.modelMaterial != null || def.modelTracksMaterial != null)
                 ApplyMaterial(tracks, def.modelTracksMaterial != null ? def.modelTracksMaterial : def.modelMaterial);
+
+            // 履带对齐：Lux3D 每批生成的履带总成高度都不一样，直接塞进履带槽会出现
+            // 「履带比车体还高、从侧裙上面冒出来」或者「悬空」。这里按 VehicleDef 给的目标高度
+            // 等比缩放，再让底面贴到车体底部。
+            AlignTracks(tracks.transform, model.transform, def);
+
             // 拆件版履带总成（belt + wheel_*）用 TrackAssembly；老的整体履带用 TrackScroller
             bool isAssembly = false;
             foreach (var t in tracks.GetComponentsInChildren<Transform>(true))
@@ -178,6 +184,58 @@ public static class VehicleModelBinder
         muzzle = lm;
         DropToGround(root, model.transform, null, lt, vp);
         return true;
+    }
+
+    /// <summary>
+    /// 把履带总成对进履带槽：等比缩放到目标高度，再让底面贴到车体底部。
+    /// Lux3D 每批生成的履带高度都不一样（实测重坦那批 3.02 m，比整个车体 2.79 m 还高，
+    /// 会从侧裙上面冒出来），所以在接车的时候统一校正一次。
+    /// </summary>
+    static void AlignTracks(Transform tracks, Transform hull, VehicleDef def)
+    {
+        if (tracks == null || def == null) return;
+        var rs = tracks.GetComponentsInChildren<Renderer>(true);
+        if (rs.Length == 0) return;
+
+        Bounds tb = rs[0].bounds;
+        foreach (var r in rs) tb.Encapsulate(r.bounds);
+        if (tb.size.y < 0.01f) return;
+
+        float targetH = def.tracksTargetHeight;
+        if (targetH <= 0.01f && hull != null)
+        {
+            var hr = hull.GetComponentsInChildren<Renderer>(true);
+            if (hr.Length > 0)
+            {
+                var hb = hr[0].bounds;
+                foreach (var r in hr) hb.Encapsulate(r.bounds);
+                targetH = hb.size.y * 0.88f;
+            }
+        }
+
+        if (targetH > 0.01f)
+        {
+            float k = targetH / tb.size.y;
+            if (Mathf.Abs(k - 1f) > 0.02f)
+            {
+                tracks.localScale *= k;
+                tb = rs[0].bounds;
+                foreach (var r in rs) tb.Encapsulate(r.bounds);
+            }
+        }
+
+        // 底面贴到车体底部
+        if (hull != null)
+        {
+            var hr = hull.GetComponentsInChildren<Renderer>(true);
+            if (hr.Length > 0)
+            {
+                var hb = hr[0].bounds;
+                foreach (var r in hr) hb.Encapsulate(r.bounds);
+                float dy = hb.min.y - tb.min.y;
+                if (Mathf.Abs(dy) > 0.005f) tracks.position += new Vector3(0f, dy, 0f);
+            }
+        }
     }
 
     /// <summary>
