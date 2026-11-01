@@ -225,23 +225,32 @@ public class TrackAssembly : MonoBehaviour
 
             var src = mf.sharedMesh;
             float sy = Mathf.Abs(w.t.lossyScale.y);
-            float rLocal = endR / Mathf.Max(0.0001f, sy);
             float blobR = Mathf.Min(src.bounds.size.y, src.bounds.size.z) * 0.5f;
-            // 拟合半径离谱时退回"碎块自己的尺寸"：碎块虽然形状乱，但外廓大致还是那个轮子
-            if (blobR > 1e-6f && (rLocal > blobR * 1.25f || rLocal < blobR * 0.6f)) rLocal = blobR;
-            float widthLocal = Mathf.Max(src.bounds.size.x * 0.9f, rLocal * 0.6f);
+            var ownCenter = src.bounds.center;
+            float fittedR = endR / Mathf.Max(0.0001f, sy);
+
+            // 拟合的圆心/半径只有和「这个轮子自己的尺寸」对得上时才敢用。
+            // 对不上就退回轮子自己的包围盒（碎块形状虽然乱，外廓位置还是准的）——
+            // 混用「拟合的圆心 + 碎块的半径」会让圆盘跑到履带环外面去（2026-11-01 实测踩到）。
+            bool fitOk = blobR <= 1e-6f ||
+                         (fittedR >= blobR * 0.75f && fittedR <= blobR * 1.30f);
+
+            float rLocal = fitOk ? fittedR : blobR;
             if (rLocal <= 1e-6f) continue;
+            float widthLocal = Mathf.Max(src.bounds.size.x * 0.9f, rLocal * 0.6f);
 
             // 圆心换算到轮子自己的网格局部空间
-            var world = transform.TransformPoint(best);
+            var world = fitOk
+                ? transform.TransformPoint(best)
+                : mf.transform.TransformPoint(ownCenter);
             var centerLocal = mf.transform.InverseTransformPoint(world);
 
-            // 一致性检查：拟合出来的圆心必须离这个轮子自己的中心不太远，
-            // 否则说明拟合跑到别的端点去了（重坦新模型上就出现过），这种就别换，保留原模型。
-            var ownCenter = src.bounds.center;
-            if ((centerLocal - ownCenter).magnitude > rLocal * 1.2f) continue;
-
-            mf.sharedMesh = MakeSprocket(rLocal, widthLocal, centerLocal);
+            // 网格建在原点 + 把轮子的 Transform 挪到圆心。
+            // 关键：TrackAssembly 是让 Transform 自转（Rotate 绕自身原点），
+            // 如果网格带偏移、Transform 原点却在别处，轮盘就会"绕着履带环公转"、拖出履带。
+            mf.sharedMesh = MakeSprocket(rLocal, widthLocal, Vector3.zero);
+            w.t.position = world;
+            w.localCenter = transform.InverseTransformPoint(world);
             w.radius = Mathf.Max(0.05f, rLocal * sy);
             replaced++;
         }
@@ -528,7 +537,14 @@ public class TrackAssembly : MonoBehaviour
         m.SetFloat("_PathN", b.N);
         m.SetVectorArray("_PathArr", arr);
         m.SetFloat("_Scroll", 0f);
-        mr.sharedMaterial = m;
+
+        // 所有材质槽都换成 GPU 履带材质。
+        // 只设 sharedMaterial（= 第 0 槽）的话，网格里若还有别的 submesh，
+        // 那几块仍然用原材质 → 那部分履带板永远不动（实测 belt_R 有 4 个 submesh 就中招了）。
+        int slots = Mathf.Max(1, mr.sharedMaterials.Length);
+        var mats = new Material[slots];
+        for (int i = 0; i < slots; i++) mats[i] = m;
+        mr.sharedMaterials = mats;
 
         b.mat = m;
         b.gpu = true;
@@ -730,7 +746,10 @@ public class TrackAssembly : MonoBehaviour
                    && Mathf.Abs(pos[tris[t + 2]].x - cx) <= limit;
             if (ok) { keep[t / 3] = true; kept++; }
         }
-        if (kept == 0 || kept == triCount) return null;
+        if (kept == 0) return null;
+        // 多 submesh 的也一律重建成单 submesh：不然只有第 0 号材质槽会被换掉，
+        // 其它 submesh 还挂在旧材质上，那部分履带板就不会跟着动。
+        if (kept == triCount && src.subMeshCount == 1) return null;
 
         // ---- 压紧顶点 ----
         var map = new int[pos.Length];
