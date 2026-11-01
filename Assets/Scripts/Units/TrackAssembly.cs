@@ -13,7 +13,7 @@ using UnityEngine;
 ///      每帧把 s 推到 s + 走过的距离，位置 = 中心线(s+Δ) + 偏移（跟着切线转），法线同样转。
 ///      这样履带板是真的在往前走，和轮子线速度一致（ω·R = v）。
 /// </summary>
-public class TrackAssembly : MonoBehaviour
+public partial class TrackAssembly : MonoBehaviour
 {
     [Tooltip("载具物理（取车速）。留空自动往上找")]
     public VehiclePhysics vehicle;
@@ -36,8 +36,14 @@ public class TrackAssembly : MonoBehaviour
     public bool useGpuShader = true;
     [Tooltip("清掉 part_split 留下的碎片：static 节点（纯渣子）+ 端部轮子上炸开的尖刺")]
     public bool trimDebris = true;
-    [Tooltip("端部主动轮/诱导轮被 part_split 切烂的，换成程序生成的轮盘（半径/圆心从履带环拟合，默认开）")]
-    public bool rebuildEndWheels = true;
+    [Tooltip("端部主动轮/诱导轮被 part_split 切烂的，换成程序生成的轮盘（半径/圆心从履带环拟合）。\n" +
+             "2026-11-01 深夜默认关：判据是「轮子列表里 z 最外 8%」，但轻坦真正的主动轮在 static_clean 里、\n" +
+             "根本不在列表里 —— 结果把最前面两个负重轮换成了大圆盘（外观更差）。")]
+    public bool rebuildEndWheels = false;
+    [Tooltip("按半径截断轮子上的尖刺（中位半径 × 1.25）。\n" +
+             "2026-11-01 深夜默认关：轮盘顶点是往圆心密集分布的，中位半径只有外径的 0.78，\n" +
+             "乘 1.25 仍然切在轮缘里面 —— 实测把 0.43 m 的负重轮切成 0.35 m，轮子缩了一圈。")]
+    public bool trimWheelSpikes = false;
     [Tooltip("打印诊断信息")]
     public bool verbose = false;
 
@@ -73,6 +79,10 @@ public class TrackAssembly : MonoBehaviour
         public Material mat;      // 走 GPU 顶点动画时，这条履带自己的材质实例
         public bool gpu;          // true = 位移交给 Shader（CPU 每帧只改一个 _Scroll）
         public float side;        // -1 = 左，+1 = 右
+        // 诊断用：偏移分位数（p50/p75/p90/p97/p99，网格局部单位）和最终带宽上限
+        public float[] dbgPct;
+        public float dbgBand;
+        public int[] dbgHist;   // 偏移直方图：每 2 cm 一格，共 40 格
     }
 
     readonly List<Wheel> _wheels = new List<Wheel>();
@@ -86,6 +96,17 @@ public class TrackAssembly : MonoBehaviour
     void Start()
     {
         if (vehicle == null) vehicle = GetComponentInParent<VehiclePhysics>();
+
+        // 程序化履带：不读 Lux3D 那套网格，直接按尺寸生成（见 TrackAssembly.Procedural.cs）
+        if (vehicle != null && vehicle.def != null && vehicle.def.proceduralTracks)
+        {
+            BuildProcedural();
+            _prevYaw = transform.eulerAngles.y;
+            _hasPrevYaw = true;
+            return;
+        }
+
+        if (!CheckMeshesReadable()) return;   // 网格不可读 = 整套履带功能静默失效，必须当场吼出来
         if (trimDebris) HideDebrisNodes();
         CollectWheels();                   // 先收轮子：履带网格里混着的轮子面片要靠轮轴位置排除
         CollectBelts();
@@ -94,6 +115,29 @@ public class TrackAssembly : MonoBehaviour
         _hasPrevYaw = true;
         if (verbose)
             Debug.Log($"[TrackAssembly] {name}: 轮子 {_wheels.Count} 个，履带 {_belts.Count} 条，半轮距 {_halfTrack:F2} m");
+    }
+
+    /// <summary>
+    /// 2026-11-01 深夜加：履带网格**必须**在 FBX 导入设置里勾 Read/Write Enabled。
+    ///
+    /// 为什么非加不可：`light_tracks3_clean.fbx` 是 Blender 重新导出的，导入设置没勾这一项，
+    /// 于是 `mesh.vertices` 每次调用都抛 "Not allowed to access vertices"，
+    /// 结果 CollectBelts / TrimRadial / ShiftMesh 全部静默失效 —— 履带不转、碎片不清理、端部轮不重建，
+    /// 而画面看上去只是"履带有点怪"，很难联想到是导入设置。这次就是这样被坑了一整天。
+    /// </summary>
+    bool CheckMeshesReadable()
+    {
+        var bad = new List<string>();
+        foreach (var mf in GetComponentsInChildren<MeshFilter>(true))
+        {
+            var m = mf.sharedMesh;
+            if (m != null && !m.isReadable) bad.Add(mf.name);
+        }
+        if (bad.Count == 0) return true;
+
+        Debug.LogError($"[TrackAssembly] {name}：这些网格没开 Read/Write Enabled，履带顶点动画/碎片清理/轮轴纠正全部会失效。" +
+                       $"去 FBX 导入设置勾上 Read/Write Enabled 再重导。网格：{string.Join(", ", bad.ToArray())}");
+        return false;
     }
 
     /// <summary>
@@ -151,7 +195,7 @@ public class TrackAssembly : MonoBehaviour
 
             // 端部主动轮/诱导轮被 part_split 切出尖刺：按半径截断，只留轮盘本体
             float medianR = 0f;
-            if (trimDebris)
+            if (trimWheelSpikes)
             {
                 var trimmed = TrimRadial(mf.sharedMesh, out medianR);
                 if (trimmed != null) mf.sharedMesh = trimmed;
@@ -546,10 +590,15 @@ public class TrackAssembly : MonoBehaviour
         b.mesh.SetUVs(1, uv2);
 
         // 中心线数据：xyz = (0, 中心线 y, 中心线 z)，w = 切线角
-        var arr = new Vector4[256];
-        for (int j = 0; j < 256; j++)
+        // 只能用 255 个：Material.SetVectorArray 上限是 1023 个 float，
+        // 256 个 Vector4 = 1024 个 float 会**静默失败**，顶点着色器读到垃圾 → 履带板炸开。
+        const int PATH_N = 255;
+        var arr = new Vector4[PATH_N];
+        for (int j = 0; j < PATH_N; j++)
         {
-            int k = Mathf.Min(j, b.N - 1);
+            // 把 PATH_N 个点均匀重采样到原始 N 个采样点上（N 可能不是 255）
+            float t = j / (float)PATH_N;
+            int k = Mathf.Clamp(Mathf.RoundToInt(t * (b.N - 1)), 0, b.N - 1);
             arr[j] = new Vector4(0f, b.cyz[k].x, b.cyz[k].y, b.ang[k]);
         }
 
@@ -562,7 +611,7 @@ public class TrackAssembly : MonoBehaviour
             if (src.HasProperty("_Glossiness")) m.SetFloat("_Glossiness", src.GetFloat("_Glossiness"));
             if (src.HasProperty("_Metallic")) m.SetFloat("_Metallic", src.GetFloat("_Metallic"));
         }
-        m.SetFloat("_PathN", b.N);
+        m.SetFloat("_PathN", PATH_N);
         m.SetVectorArray("_PathArr", arr);
         m.SetFloat("_Scroll", 0f);
 
@@ -686,10 +735,34 @@ public class TrackAssembly : MonoBehaviour
         {
             var sortedM = (float[])mArr.Clone();
             System.Array.Sort(sortedM);
+            float p50 = sortedM[sortedM.Length / 2];
             float p97 = sortedM[Mathf.Clamp((int)(sortedM.Length * 0.97f), 0, sortedM.Length - 1)];
-            // 上限 0.9R：履带板厚度远小于环半径；压太紧会把相邻履带板切成"一动一不动"看起来像融化
-            bandLimit = Mathf.Clamp(p97 * 1.05f, 0.25f * R, 0.90f * R);
-            if (verbose) Debug.Log($"[TrackAssembly] 履带 {tf.name}: 带宽自适应 p97={p97 * b.unit:F2} m → bandLimit={bandLimit * b.unit:F2} m");
+            // 2026-11-01 深夜改：用**中位数**当"履带板厚度"的尺度，不再用 p97。
+            // 原因：轻坦这条履带的内侧挂着一大团碎面（占顶点三成以上），p97 落在碎面里，
+            // 算出来的带宽把整团碎面都包进去了 → 碎面跟着履带一起走，看着就是"履带在掉渣"。
+            // 履带板本身是一条薄带，绝大多数顶点贴着中心线，中位数才是它。
+            bandLimit = Mathf.Clamp(p50 * 2.6f, 0.06f * R, 0.90f * R);
+            b.dbgPct = new float[]
+            {
+                p50,
+                sortedM[Mathf.Clamp((int)(sortedM.Length * 0.75f), 0, sortedM.Length - 1)],
+                sortedM[Mathf.Clamp((int)(sortedM.Length * 0.90f), 0, sortedM.Length - 1)],
+                p97,
+                sortedM[Mathf.Clamp((int)(sortedM.Length * 0.99f), 0, sortedM.Length - 1)],
+            };
+            b.dbgBand = bandLimit;
+            {
+                b.dbgHist = new int[40];
+                float binW = 0.02f * b.unit;          // 2 cm 一格（网格局部单位）
+                for (int i = 0; i < mArr.Length; i++)
+                {
+                    int k = (int)(mArr[i] / binW);
+                    if (k < 0) k = 0;
+                    if (k >= b.dbgHist.Length) k = b.dbgHist.Length - 1;
+                    b.dbgHist[k]++;
+                }
+            }
+            if (verbose) Debug.Log($"[TrackAssembly] 履带 {tf.name}: 带宽 p50={p50 * b.unit:F3} m p97={p97 * b.unit:F3} m → bandLimit={bandLimit * b.unit:F3} m");
         }
 
         // ---- 3) 排除"混进履带网格里的轮子面片" ----
@@ -754,7 +827,9 @@ public class TrackAssembly : MonoBehaviour
             for (int i = 0; i < pos.Length; i++)
             {
                 if (b.anim[i] || usedByGood[i]) continue;
-                if (mArr[i] < 0.35f * R) continue;                  // 贴着履带板的零碎先留着
+                // 2026-11-01 深夜：门槛从「0.35R」改成「1.35 倍带宽」。
+                // 0.35R 是拍脑袋的绝对量，轻坦那团碎面贴在履带内侧（0.1~0.3R），全部漏网。
+                if (mArr[i] < bandLimit * 1.35f) continue;
                 Vector2 cc = Sample(b, b.s[i], out _);
                 vpos[i] = new Vector3(vpos[i].x, cc.x, cc.y);        // 压到中心线 → 退化
                 hidden++;

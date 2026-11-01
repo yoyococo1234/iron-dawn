@@ -85,7 +85,7 @@ public class MatchHUD : MonoBehaviour
     {
         Panel(new Rect(16f, 12f, 250f, 78f));
         Text(new Rect(28f, 16f, 226f, 40f), $"<b>￥{mm.Gold}</b>", _s32, CGold, TextAnchor.MiddleLeft);
-        Text(new Rect(28f, 56f, 226f, 22f), $"我的命 {mm.LivesLeft} · 占点全队产金", _s18, new Color(1f, 1f, 1f, 0.5f), TextAnchor.MiddleLeft);
+        Text(new Rect(28f, 56f, 226f, 22f), $"我的命 {mm.LivesText} · 占点全队产金", _s18, new Color(1f, 1f, 1f, 0.5f), TextAnchor.MiddleLeft);
     }
 
     // ---------------- 左侧：资源点 ----------------
@@ -129,7 +129,7 @@ public class MatchHUD : MonoBehaviour
             Panel(new Rect(x, y, w, h));
             Text(new Rect(x, y + 20f, w, 36f), "载具已损失", _s32, CEnemy, TextAnchor.MiddleCenter);
             Text(new Rect(x, y + 62f, w, 26f),
-                mm.LivesLeft > 0 ? "正在返回车库…" : "没有剩余部署机会",
+                mm.unlimitedLives ? "按 G 回车库换车" : (mm.LivesLeft > 0 ? "正在返回车库…" : "没有剩余部署机会"),
                 _s20, Color.white, TextAnchor.MiddleCenter);
             return;
         }

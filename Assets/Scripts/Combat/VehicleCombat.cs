@@ -162,7 +162,9 @@ public class VehicleCombat : MonoBehaviour
         if (hasTurret)
         {
             _phys.AimTurretAt(worldPoint, maxTurnDegPerSec);
-            if (_phys.TurretAngleError(worldPoint) > 4f) return false;   // 还没对准
+            // 机枪跟着炮塔转但枪口更灵活，容差放宽一点，否则扫射时经常被"没对准"卡住
+            float tol = (Weapon != null && Weapon.deckMounted) ? 10f : 4f;
+            if (_phys.TurretAngleError(worldPoint) > tol) return false;   // 还没对准
         }
         return Fire(worldPoint);
     }
@@ -179,6 +181,12 @@ public class VehicleCombat : MonoBehaviour
         if (w == null || ammo == null || !CanFire) return false;
 
         _nextFireTime = Time.time + w.reloadTime;
+
+        // ---------- 鱼雷：水下定深直航，不吃重力 ----------
+        if (w.isTorpedo) return FireTorpedo(w, ammo, aimPoint);
+
+        // ---------- 甲板/车顶机枪：独立挂点，仰角不受炮塔限制，瞬时命中 ----------
+        if (w.deckMounted && _phys != null && _phys.HasDeckGun) return FireDeckGun(w, ammo, aimPoint);
 
         Vector3 origin = _phys.GetMuzzlePosition();
         // 炮塔只能水平转，没有俯仰机构 —— 方向按"炮口 → 瞄准点"算，并且走抛物线
@@ -225,6 +233,114 @@ public class VehicleCombat : MonoBehaviour
         Object.Destroy(light, 0.08f);
 
         return true;
+    }
+
+    /// <summary>鱼雷发射：从水线附近出管，之后由 Torpedo 负责水下直航。</summary>
+    bool FireTorpedo(WeaponDef w, AmmoDef ammo, Vector3? aimPoint)
+    {
+        if (_phys == null) return false;
+
+        Vector3 origin = _phys.GetMuzzlePosition();
+        Vector3 dir;
+        if (aimPoint.HasValue)
+        {
+            Vector3 to = aimPoint.Value - origin;
+            to.y = 0f;
+            dir = to.sqrMagnitude > 0.04f ? to.normalized : transform.forward;
+        }
+        else dir = transform.forward;
+
+        // 鱼雷管在水线附近：压到水面下一点，别从炮塔顶上飞出去
+        float water = _phys.WaterLevel;
+        origin = new Vector3(origin.x, Mathf.Min(origin.y, water - 0.4f), origin.z);
+        origin += dir * 2.5f;
+
+        ShotsFired++;
+        var go = new GameObject($"Torpedo_{def.id}");
+        var torp = go.AddComponent<Torpedo>();
+        torp.Launch(origin, dir, w.projectileSpeed, w.baseDamage, ammo, this,
+                    w.range, w.torpedoDepth, water);
+
+        // 出管：低沉的水下闷响
+        Sfx.PlayAt(Sfx.CannonFire, origin, 0.7f, Random.Range(0.72f, 0.82f), 18f, 500f);
+        ShakeCamera(0.35f);
+        return true;
+    }
+
+    /// <summary>
+    /// 甲板/车顶机枪：从独立挂点射出，瞬时命中（连射 0.12 秒一发，用抛射物会刷一堆 GameObject），
+    /// 画一条曳光 + 命中火花。
+    /// </summary>
+    bool FireDeckGun(WeaponDef w, AmmoDef ammo, Vector3? aimPoint)
+    {
+        Vector3 origin = _phys.GetDeckGunMuzzle();
+        Vector3 dir = aimPoint.HasValue
+            ? (aimPoint.Value - origin).normalized
+            : _phys.GetDeckGunForward();
+        if (dir.sqrMagnitude < 0.001f) dir = _phys.GetDeckGunForward();
+
+        ShotsFired++;
+        float maxRange = Mathf.Max(10f, w.range);
+        Vector3 endPoint = origin + dir * maxRange;
+
+        var hits = UnityEngine.Physics.RaycastAll(origin, dir, maxRange, ~0, QueryTriggerInteraction.Ignore);
+        if (hits != null && hits.Length > 0)
+        {
+            System.Array.Sort(hits, (a, b) => a.distance.CompareTo(b.distance));
+            foreach (var h in hits)
+            {
+                if (h.collider == null) continue;
+                var t = h.collider.GetComponentInParent<VehicleCombat>();
+                if (t == this) continue;                       // 不打自己
+                endPoint = h.point;
+                if (t != null && t.Alive)
+                {
+                    t.TakeDamage(w.baseDamage, ammo, origin, this);
+                    ShotsHit++;
+                }
+                SpawnImpactSpark(h.point);
+                break;
+            }
+        }
+
+        SpawnTracer(origin, endPoint);
+
+        // 机枪连射：短促、音高随机，不抖镜头（否则连射没法瞄）
+        Sfx.PlayAt(Sfx.MgFire, origin, 0.5f, Random.Range(0.88f, 1.14f), 8f, 300f);
+        return true;
+    }
+
+    /// <summary>曳光弹：一条很快消失的亮线。</summary>
+    void SpawnTracer(Vector3 a, Vector3 b)
+    {
+        var go = new GameObject("Tracer");
+        var lr = go.AddComponent<LineRenderer>();
+        lr.positionCount = 2;
+        lr.SetPosition(0, a);
+        lr.SetPosition(1, b);
+        lr.startWidth = 0.09f;
+        lr.endWidth = 0.03f;
+        lr.material = new Material(Shader.Find("Sprites/Default"));
+        lr.startColor = new Color(1f, 0.92f, 0.6f, 0.95f);
+        lr.endColor = new Color(1f, 0.7f, 0.3f, 0.15f);
+        lr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+        Object.Destroy(go, 0.06f);
+    }
+
+    /// <summary>命中火花：一个很小的亮点，一闪就没。</summary>
+    void SpawnImpactSpark(Vector3 p)
+    {
+        var go = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+        go.name = "ImpactSpark";
+        go.transform.position = p;
+        go.transform.localScale = Vector3.one * 0.22f;
+        Object.Destroy(go.GetComponent<Collider>());
+        var mat = new Material(Shader.Find("Standard"));
+        mat.color = new Color(1f, 0.85f, 0.5f);
+        mat.SetColor("_EmissionColor", new Color(1f, 0.7f, 0.3f));
+        mat.EnableKeyword("_EMISSION");
+        go.GetComponent<Renderer>().sharedMaterial = mat;
+        Object.Destroy(go, 0.09f);
     }
 
     /// <summary>瞬时命中（弹速 0 的武器用）：沿射线找第一个不是自己的目标。</summary>

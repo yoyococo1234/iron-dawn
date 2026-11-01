@@ -91,6 +91,14 @@ Shader "铁皮黎明/Water"
                 float3 V = normalize(_WorldSpaceCameraPos - i.worldPos);
                 float3 N = WaveNormal(i.worldPos.xz, _Time.y * _WaveSpeed);
 
+                // 远处的法线高频采样不够，会出规则条带（摩尔纹）——按距离把波浪淡回平面，
+                // 远海变成整片反光的镜子，近处才看得到涟漪。
+                // 380 m 是有意的：再远就已经是"一像素一个波"，留着只会变成横条。
+                float camDist = distance(_WorldSpaceCameraPos, i.worldPos);
+                float waveFade = saturate(1.0 - camDist / 380.0);
+                waveFade *= waveFade;
+                N = normalize(lerp(float3(0.0, 1.0, 0.0), N, waveFade));
+
                 // 水有多深：场景深度 - 水面深度
                 float2 uv = i.screenPos.xy / i.screenPos.w;
                 float sceneZ = LinearEyeDepth(tex2D(_CameraDepthTexture, uv).r);
@@ -98,6 +106,11 @@ Shader "铁皮黎明/Water"
 
                 float deepT = saturate(depth / _DepthFade);
                 float3 waterCol = lerp(_ShallowColor.rgb, _DeepColor.rgb, deepT);
+
+                // 远处深度纹理精度不够（2 km 图 + 8 km 远裁剪面时，几十米外深度值就开始跳），
+                // 表现为一条条横向亮带。远处干脆不吃深度，统一压成深水色。
+                float farMix = saturate((camDist - 90.0) / 260.0);
+                waterCol = lerp(waterCol, _DeepColor.rgb, farMix * 0.9);
 
                 // 菲涅尔：视线越平越像镜子（反天空）
                 float fres = pow(1.0 - saturate(dot(N, V)), 4.0);

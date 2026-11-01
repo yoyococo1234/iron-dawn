@@ -96,7 +96,7 @@ public class GameStartScreen : MonoBehaviour
             "右键按住　 开镜",
             "Q　　　　　切换武器",
             "1 / 2 / 3　切换弹药",
-            "R　　　　　结算后重开",
+            "G　　　　　换载具（测试）",
         };
         for (int i = 0; i < left.Length; i++)
         {

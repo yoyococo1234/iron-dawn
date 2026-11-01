@@ -105,6 +105,18 @@ public class VehiclePhysics : MonoBehaviour
     public float pitchSpeed = 25f;
     [System.NonSerialized] public Transform barrelBone;
     [System.NonSerialized] public float barrelPitch;
+
+    [Header("甲板/车顶机枪（独立俯仰，能打飞机）")]
+    [Tooltip("机枪挂点（由 VehicleModelBinder 生成，挂在炮塔顶上）")]
+    [System.NonSerialized] public Transform mgBone;
+    [Tooltip("机枪当前仰角（度，正 = 抬高）")]
+    [System.NonSerialized] public float mgPitch;
+    [Tooltip("机枪最大仰角（度）")]
+    public float mgMaxElevation = 85f;
+    [Tooltip("机枪最大俯角（度，负值）")]
+    public float mgMaxDepression = -12f;
+    [Tooltip("机枪抬/压速度（度/秒）")]
+    public float mgPitchSpeed = 140f;
     /// <summary>模型底部已经贴到车体原点（精细模型会这样），离地间隙就用很小的值。</summary>
     [System.NonSerialized] public bool modelSitsOnGround;
 
@@ -471,6 +483,49 @@ public class VehiclePhysics : MonoBehaviour
     {
         if (muzzleBone != null) return muzzleBone.forward;
         return turretBone != null ? turretBone.forward : transform.forward;
+    }
+
+    // ==================== 甲板/车顶机枪 ====================
+
+    /// <summary>有没有独立机枪挂点。</summary>
+    public bool HasDeckGun => mgBone != null;
+
+    /// <summary>机枪当前仰角（度）。</summary>
+    public float DeckGunPitch => mgPitch;
+
+    /// <summary>直接设机枪仰角（正 = 抬高）。玩家用鼠标上下控的就是这个。</summary>
+    public void SetDeckGunPitch(float deg, float maxElev, float maxDepress, float degPerSec, bool smooth = true)
+    {
+        if (mgBone == null) return;
+        float want = Mathf.Clamp(deg, maxDepress, maxElev);
+        if (smooth) mgPitch = Mathf.MoveTowards(mgPitch, want, Mathf.Max(1f, degPerSec) * Time.deltaTime);
+        else mgPitch = want;
+        // 和炮管同一套符号约定：局部 -X 旋转 = 抬高
+        mgBone.localRotation = Quaternion.Euler(-mgPitch, 0f, 0f);
+    }
+
+    /// <summary>按世界坐标点算机枪仰角（AI 用）。</summary>
+    public void AimDeckGunAt(Vector3 worldPoint, float maxElev, float maxDepress, float degPerSec)
+    {
+        if (mgBone == null) return;
+        Vector3 to = worldPoint - mgBone.position;
+        float horiz = new Vector2(to.x, to.z).magnitude;
+        float want = Mathf.Atan2(to.y, Mathf.Max(0.2f, horiz)) * Mathf.Rad2Deg;
+        SetDeckGunPitch(want, maxElev, maxDepress, degPerSec);
+    }
+
+    /// <summary>机枪枪口世界坐标（开火起点）。</summary>
+    public Vector3 GetDeckGunMuzzle()
+    {
+        if (mgBone == null) return GetMuzzlePosition();
+        return mgBone.position + mgBone.forward * 1.15f;
+    }
+
+    /// <summary>机枪枪管朝向（含仰角）。</summary>
+    public Vector3 GetDeckGunForward()
+    {
+        if (mgBone == null) return GetMuzzleForward();
+        return mgBone.forward;
     }
 
     // ==================== 公共 ====================

@@ -87,6 +87,11 @@ public static class VehicleModelBinder
             // 等比缩放，再让底面贴到车体底部。
             AlignTracks(tracks.transform, model.transform, def);
 
+            // 注意：**不要**整体关掉履带总成里的 "static" 网格。
+            // 它虽然混着一些离群碎面，但主动轮/诱导轮也在里面 —— 一刀切关掉之后，
+            // 履带前端会变成空壳（只剩履带板环，没有轮子）。
+            // 碎面已经在 Blender 里清理过（work/clean_track_static.py → light_tracks3_clean.fbx）。
+
             // 拆件版履带总成（belt + wheel_*）用 TrackAssembly；老的整体履带用 TrackScroller
             bool isAssembly = false;
             foreach (var t in tracks.GetComponentsInChildren<Transform>(true))
@@ -175,6 +180,10 @@ public static class VehicleModelBinder
 
             // 让模型底部正好落在车体原点（= 地面高度），否则整台车会悬空
             DropToGround(root, model.transform, tracksRoot, tp.transform, vp);
+
+            // 炮塔是从车体/船体里「挖」出来的：底部没有面、甲板上留了个切口。
+            // 不补的话炮塔一转就看见内部。这里补封底盘 + 炮座板，再挂上车顶机枪。
+            AddTurretExtras(root.transform, tp.transform, def, vp);
             return true;
         }
 
@@ -201,30 +210,15 @@ public static class VehicleModelBinder
         foreach (var r in rs) tb.Encapsulate(r.bounds);
         if (tb.size.y < 0.01f) return;
 
-        float targetH = def.tracksTargetHeight;
-        if (targetH <= 0.01f && hull != null)
-        {
-            var hr = hull.GetComponentsInChildren<Renderer>(true);
-            if (hr.Length > 0)
-            {
-                var hb = hr[0].bounds;
-                foreach (var r in hr) hb.Encapsulate(r.bounds);
-                targetH = hb.size.y * 0.88f;
-            }
-        }
-
-        if (targetH > 0.01f)
-        {
-            float k = targetH / tb.size.y;
-            if (Mathf.Abs(k - 1f) > 0.02f)
-            {
-                tracks.localScale *= k;
-                tb = rs[0].bounds;
-                foreach (var r in rs) tb.Encapsulate(r.bounds);
-            }
-        }
-
-        // 底面贴到车体底部
+        // ---- 按车体的「长 / 宽 / 高」分别对齐 ----
+        // 以前是「按车体高度 × 88% 等比缩放」：轻坦履带本来 7.02 m 长、和车体 7.10 m 正好，
+        // 被等比放大 27% 后变成 8.96 m，前后都戳出车体；宽度又只有 2.66 m（车体 4.01 m），
+        // 看起来就是一条细铁丝绕在轮子上。
+        //
+        // 分开缩放才对：
+        //   X（宽）—— 拉伸到车体宽，履带板变厚实，而且 X 方向拉伸**不会**把轮子压扁
+        //   Z（长）—— 对齐车体长，但夹住范围，避免把负重轮拉成椭圆
+        //   Y（高）—— 轻微调整
         if (hull != null)
         {
             var hr = hull.GetComponentsInChildren<Renderer>(true);
@@ -232,8 +226,39 @@ public static class VehicleModelBinder
             {
                 var hb = hr[0].bounds;
                 foreach (var r in hr) hb.Encapsulate(r.bounds);
+
+                float kx = Mathf.Clamp(hb.size.x * 0.98f / Mathf.Max(0.01f, tb.size.x), 0.60f, 2.20f);
+                float kz = Mathf.Clamp(hb.size.z * 0.98f / Mathf.Max(0.01f, tb.size.z), 0.85f, 1.20f);
+                // Y 只允许**缩小**，绝不放大：轻坦履带本来 1.42 m，放大 15% 后顶到 1.63 m，
+                // 直接高出侧裙上缘，看起来就是"履带把整个车体包起来了"。
+                float ky = def.tracksTargetHeight > 0.01f
+                    ? Mathf.Clamp(def.tracksTargetHeight / Mathf.Max(0.01f, tb.size.y), 0.75f, 1.00f)
+                    : Mathf.Clamp(hb.size.y * 0.72f / Mathf.Max(0.01f, tb.size.y), 0.75f, 1.00f);
+
+                if (Mathf.Abs(kx - 1f) > 0.02f || Mathf.Abs(ky - 1f) > 0.02f || Mathf.Abs(kz - 1f) > 0.02f)
+                {
+                    tracks.localScale = Vector3.Scale(tracks.localScale, new Vector3(kx, ky, kz));
+                    tb = rs[0].bounds;
+                    foreach (var r in rs) tb.Encapsulate(r.bounds);
+                }
+            }
+        }
+
+        // 底面贴到车体底部 + 前后居中（长度对齐后可能整体偏前/偏后）
+        if (hull != null)
+        {
+            var hr = hull.GetComponentsInChildren<Renderer>(true);
+            if (hr.Length > 0)
+            {
+                var hb = hr[0].bounds;
+                foreach (var r in hr) hb.Encapsulate(r.bounds);
+
                 float dy = hb.min.y - tb.min.y;
-                if (Mathf.Abs(dy) > 0.005f) tracks.position += new Vector3(0f, dy, 0f);
+                float dz = hb.center.z - tb.center.z;
+                var shift = Vector3.zero;
+                if (Mathf.Abs(dy) > 0.005f) shift.y = dy;
+                if (Mathf.Abs(dz) > 0.02f) shift.z = dz;
+                if (shift != Vector3.zero) tracks.position += shift;
             }
         }
     }
@@ -317,6 +342,276 @@ public static class VehicleModelBinder
 
     /// <summary>清掉炮塔井修补的缓存（改了模型/转轴后调用）。</summary>
     public static void ClearWellPatchCache() => WellFixup.Clear();
+
+    // ==================== 拆件炮塔的补充件 ====================
+
+    /// <summary>
+    /// 拆件炮塔的收尾工作：
+    ///   1. 炮塔封底盘 —— 炮塔是从车体里挖出来的，底部本来贴在甲板上、没有面，一转就看见内部
+    ///   2. 甲板炮座板 —— 盖住车体上被挖走的那个圆口，炮塔转到任何角度都不露洞
+    ///   3. 车顶/甲板机枪 —— 独立俯仰，能抬到 85° 打飞机
+    /// </summary>
+    static void AddTurretExtras(Transform root, Transform turret, VehicleDef def, VehiclePhysics vp)
+    {
+        if (root == null || turret == null || def == null) return;
+
+        var rs = turret.GetComponentsInChildren<Renderer>();
+        if (rs.Length == 0) return;
+
+        // 炮管也在炮塔下面（一起转），但量炮塔座圈尺寸时不能把它算进去 ——
+        // 炮管往前伸 3 m，算出来的"半对角线"会变成 3 m 以上，座板直接盖到履带上。
+        Bounds wb = default;
+        bool any = false;
+        foreach (var r in rs)
+        {
+            if (IsUnderBarrel(r.transform, turret)) continue;
+            if (!any) { wb = r.bounds; any = true; }
+            else wb.Encapsulate(r.bounds);
+        }
+        if (!any) return;
+
+        Vector3 center = turret.InverseTransformPoint(wb.center);
+        Vector3 size = turret.InverseTransformVector(wb.size);
+        size = new Vector3(Mathf.Abs(size.x), Mathf.Abs(size.y), Mathf.Abs(size.z));
+
+        float halfDiag = Mathf.Sqrt(size.x * size.x + size.z * size.z) * 0.5f;
+        float bottom = center.y - size.y * 0.5f;
+        float top = center.y + size.y * 0.5f;
+
+        var turMat = def.modelTurretMaterial != null ? def.modelTurretMaterial : def.modelMaterial;
+        var hullMat = def.modelMaterial;
+
+        if (def.autoTurretSkirt && halfDiag > 0.25f)
+        {
+            // 封底盘：贴着炮塔底面（用短边的一半，不是对角线）。
+            // 用对角线的话，重坦那种又长又窄的炮塔底下会伸出一圈大裙边，像个盘子。
+            float capR = Mathf.Min(size.x, size.z) * 0.55f;
+            var cap = MakeDisc("TurretBaseCap", capR, 0.08f, 32, turMat);
+            cap.transform.SetParent(turret, false);
+            cap.transform.localPosition = new Vector3(center.x, bottom + 0.03f, center.z);
+
+            // 炮塔井盖：炮塔是从车体里"挖"走的，车体上留下一个**方形坑**（坑壁就是原来炮塔的侧面）。
+            // 圆盘只能盖住外接圆、盖不住四角，所以用和坑同尺寸的方形板把坑口封平。
+            // UV 全取 (0.5,0.5)：采样到车体贴图上的同一个色，才不会出现一块"不同色的补丁"。
+            var plate = MakePlate("TurretWellPlate", size.x * 1.0f, size.z * 1.0f, 0.12f, hullMat);
+            plate.transform.SetParent(root, false);
+            // 顶面和车体顶面齐平（板厚 0.12，中心下沉 0.06）
+            plate.transform.localPosition = new Vector3(
+                turret.localPosition.x, turret.localPosition.y - 0.06f, turret.localPosition.z);
+        }
+
+        BuildDeckGun(turret, def, vp, center, size, top);
+    }
+
+    /// <summary>一块方板（六面体），UV 全取贴图中心色 —— 用来补炮塔井，颜色和车体同族，不会像块补丁。</summary>
+    static GameObject MakePlate(string name, float width, float depth, float height, Material mat)
+    {
+        var go = new GameObject(name);
+        var mf = go.AddComponent<MeshFilter>();
+        mf.sharedMesh = PlateMesh(width, height, depth);
+        var mr = go.AddComponent<MeshRenderer>();
+        mr.sharedMaterial = mat != null ? mat : DarkMat();
+        mr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+        mr.receiveShadows = true;
+        return go;
+    }
+
+    static readonly Dictionary<string, Mesh> _plateCache = new Dictionary<string, Mesh>();
+
+    static Mesh PlateMesh(float width, float height, float depth)
+    {
+        string key = $"{width:F2}_{height:F2}_{depth:F2}";
+        if (_plateCache.TryGetValue(key, out var cached) && cached != null) return cached;
+
+        float x = Mathf.Max(0.01f, width) * 0.5f;
+        float y = Mathf.Max(0.01f, height) * 0.5f;
+        float z = Mathf.Max(0.01f, depth) * 0.5f;
+
+        var verts = new List<Vector3>();
+        var uvs = new List<Vector2>();
+        var tris = new List<int>();
+
+        void Quad(Vector3 a, Vector3 b, Vector3 c, Vector3 d)
+        {
+            int i = verts.Count;
+            verts.Add(a); verts.Add(b); verts.Add(c); verts.Add(d);
+            for (int k = 0; k < 4; k++) uvs.Add(new Vector2(0.5f, 0.5f));
+            tris.Add(i); tris.Add(i + 1); tris.Add(i + 2);
+            tris.Add(i); tris.Add(i + 2); tris.Add(i + 3);
+        }
+
+        Vector3 p000 = new Vector3(-x, -y, -z), p100 = new Vector3(x, -y, -z);
+        Vector3 p110 = new Vector3(x, y, -z), p010 = new Vector3(-x, y, -z);
+        Vector3 p001 = new Vector3(-x, -y, z), p101 = new Vector3(x, -y, z);
+        Vector3 p111 = new Vector3(x, y, z), p011 = new Vector3(-x, y, z);
+
+        Quad(p010, p110, p111, p011);   // 顶
+        Quad(p000, p001, p101, p100);   // 底
+        Quad(p000, p010, p011, p001);   // 左
+        Quad(p100, p101, p111, p110);   // 右
+        Quad(p000, p100, p110, p010);   // 前
+        Quad(p001, p011, p111, p101);   // 后
+
+        var m = new Mesh { name = "Plate" };
+        m.SetVertices(verts);
+        m.SetUVs(0, uvs);
+        m.SetTriangles(tris, 0);
+        m.RecalculateNormals();
+        m.RecalculateBounds();
+        _plateCache[key] = m;
+        return m;
+    }
+
+    /// <summary>这个节点是不是挂在 Barrel 底下（炮管单独俯仰，不算炮塔主体尺寸）。</summary>
+    static bool IsUnderBarrel(Transform t, Transform turret)
+    {
+        while (t != null && t != turret)
+        {
+            if (t.name == "Barrel") return true;
+            t = t.parent;
+        }
+        return false;
+    }
+
+    /// <summary>车顶/甲板机枪：支架 + 枪身 + 枪管 + 弹箱，挂在炮塔顶上（跟着炮塔转，自己只做俯仰）。</summary>
+    static void BuildDeckGun(Transform turret, VehicleDef def, VehiclePhysics vp,
+                             Vector3 center, Vector3 size, float top)
+    {
+        if (vp == null) return;
+
+        var mg = new GameObject("DeckGun");
+        mg.transform.SetParent(turret, false);
+        mg.transform.localPosition = def.modelDeckGunPivot != Vector3.zero
+            ? def.modelDeckGunPivot
+            : new Vector3(center.x, top - 0.04f, center.z - size.z * 0.20f);
+
+        vp.mgBone = mg.transform;
+        vp.mgMaxElevation = 85f;
+        vp.mgMaxDepression = -12f;
+
+        var dark = new Material(Shader.Find("Standard"))
+        {
+            color = new Color(0.13f, 0.14f, 0.15f)
+        };
+        dark.SetFloat("_Glossiness", 0.45f);
+        dark.SetFloat("_Metallic", 0.65f);
+
+        AddPart(mg.transform, "MG_Post", PrimitiveType.Cylinder,
+                new Vector3(0.09f, 0.19f, 0.09f), new Vector3(0f, 0.19f, 0f), Vector3.zero, dark);
+
+        AddPart(mg.transform, "MG_Body", PrimitiveType.Cube,
+                new Vector3(0.17f, 0.19f, 0.62f), new Vector3(0f, 0.46f, 0.06f), Vector3.zero, dark);
+
+        AddPart(mg.transform, "MG_Barrel", PrimitiveType.Cylinder,
+                new Vector3(0.05f, 0.46f, 0.05f), new Vector3(0f, 0.47f, 0.72f), new Vector3(90f, 0f, 0f), dark);
+
+        AddPart(mg.transform, "MG_Ammo", PrimitiveType.Cube,
+                new Vector3(0.13f, 0.2f, 0.26f), new Vector3(0.17f, 0.4f, 0.02f), Vector3.zero, dark);
+    }
+
+    static void AddPart(Transform parent, string name, PrimitiveType type,
+                        Vector3 scale, Vector3 pos, Vector3 euler, Material mat)
+    {
+        var go = GameObject.CreatePrimitive(type);
+        go.name = name;
+        go.transform.SetParent(parent, false);
+        go.transform.localScale = scale;
+        go.transform.localPosition = pos;
+        go.transform.localRotation = Quaternion.Euler(euler);
+        var col = go.GetComponent<Collider>();
+        if (col != null) Object.Destroy(col);
+        var r = go.GetComponent<Renderer>();
+        if (r != null)
+        {
+            r.sharedMaterial = mat != null ? mat : DarkMat();
+            r.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.On;
+        }
+    }
+
+    /// <summary>一个扁圆盘（圆柱）—— 炮塔封底盘 / 炮座板用。</summary>
+    static GameObject MakeDisc(string name, float radius, float height, int segments, Material mat)
+    {
+        var go = new GameObject(name);
+        var mf = go.AddComponent<MeshFilter>();
+        mf.sharedMesh = DiscMesh(radius, height, segments);
+        var mr = go.AddComponent<MeshRenderer>();
+        mr.sharedMaterial = mat != null ? mat : DarkMat();
+        mr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+        mr.receiveShadows = true;
+        return go;
+    }
+
+    static readonly Dictionary<string, Mesh> _discCache = new Dictionary<string, Mesh>();
+
+    /// <summary>圆盘网格：上下两个圆面 + 一圈侧面。UV 全给 (0.5,0.5)，采样到贴图上同一个色，颜色和车体同族。</summary>
+    static Mesh DiscMesh(float radius, float height, int segments)
+    {
+        string key = $"{radius:F3}_{height:F3}_{segments}";
+        if (_discCache.TryGetValue(key, out var cached) && cached != null) return cached;
+
+        int seg = Mathf.Clamp(segments, 8, 96);
+        float h = Mathf.Max(0.01f, height) * 0.5f;
+
+        var verts = new List<Vector3>();
+        var uvs = new List<Vector2>();
+        var tris = new List<int>();
+
+        // 顶面中心 + 边缘
+        verts.Add(new Vector3(0f, h, 0f)); uvs.Add(new Vector2(0.5f, 0.5f));
+        for (int i = 0; i < seg; i++)
+        {
+            float a = 2f * Mathf.PI * i / seg;
+            verts.Add(new Vector3(Mathf.Cos(a) * radius, h, Mathf.Sin(a) * radius));
+            uvs.Add(new Vector2(0.5f, 0.5f));
+        }
+        for (int i = 0; i < seg; i++)
+        {
+            int a = 1 + i, b = 1 + (i + 1) % seg;
+            tris.Add(0); tris.Add(b); tris.Add(a);
+        }
+
+        // 底面中心 + 边缘
+        int bottomCenter = verts.Count;
+        verts.Add(new Vector3(0f, -h, 0f)); uvs.Add(new Vector2(0.5f, 0.5f));
+        for (int i = 0; i < seg; i++)
+        {
+            float a = 2f * Mathf.PI * i / seg;
+            verts.Add(new Vector3(Mathf.Cos(a) * radius, -h, Mathf.Sin(a) * radius));
+            uvs.Add(new Vector2(0.5f, 0.5f));
+        }
+        for (int i = 0; i < seg; i++)
+        {
+            int a = bottomCenter + 1 + i, b = bottomCenter + 1 + (i + 1) % seg;
+            tris.Add(bottomCenter); tris.Add(a); tris.Add(b);
+        }
+
+        // 侧面
+        int sideStart = verts.Count;
+        for (int i = 0; i < seg; i++)
+        {
+            float a = 2f * Mathf.PI * i / seg;
+            float x = Mathf.Cos(a) * radius, z = Mathf.Sin(a) * radius;
+            verts.Add(new Vector3(x, h, z)); uvs.Add(new Vector2(0.5f, 0.5f));
+            verts.Add(new Vector3(x, -h, z)); uvs.Add(new Vector2(0.5f, 0.5f));
+        }
+        for (int i = 0; i < seg; i++)
+        {
+            int n = (i + 1) % seg;
+            int t0 = sideStart + i * 2, b0 = sideStart + i * 2 + 1;
+            int t1 = sideStart + n * 2, b1 = sideStart + n * 2 + 1;
+            tris.Add(t0); tris.Add(b0); tris.Add(t1);
+            tris.Add(t1); tris.Add(b0); tris.Add(b1);
+        }
+
+        var m = new Mesh { name = $"Disc_{seg}" };
+        m.SetVertices(verts);
+        m.SetUVs(0, uvs);
+        m.SetTriangles(tris, 0);
+        m.RecalculateNormals();
+        m.RecalculateBounds();
+        _discCache[key] = m;
+        return m;
+    }
 
     // ---------------- 工具 ----------------
 

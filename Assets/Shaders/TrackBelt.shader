@@ -37,7 +37,10 @@ Shader "Tank/TrackBelt"
         half _Metallic;
         float _Scroll;
         float _PathN;
-        float4 _PathArr[256];
+        // 注意：必须是 255 而不是 256。
+        // Material.SetVectorArray 的上限是 1023 个 float，256 个 Vector4 = 1024 个 float，
+        // 正好超一个 → 整个数组静默设置失败 → 顶点着色器读到未初始化数据 → 履带板甩得满车都是。
+        float4 _PathArr[255];
 
         struct Input
         {

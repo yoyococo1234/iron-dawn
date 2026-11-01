@@ -15,15 +15,15 @@ RenderSettings:
   m_ObjectHideFlags: 0
   serializedVersion: 10
   m_Fog: 1
-  m_FogColor: {r: 0.62, g: 0.7, b: 0.78, a: 1}
+  m_FogColor: {r: 0.66, g: 0.72, b: 0.78, a: 1}
   m_FogMode: 1
   m_FogDensity: 0.01
-  m_LinearFogStart: 1400
-  m_LinearFogEnd: 4000
-  m_AmbientSkyColor: {r: 0.52, g: 0.6, b: 0.7, a: 1}
-  m_AmbientEquatorColor: {r: 0.4, g: 0.42, b: 0.42, a: 1}
-  m_AmbientGroundColor: {r: 0.24, g: 0.23, b: 0.2, a: 1}
-  m_AmbientIntensity: 1
+  m_LinearFogStart: 620
+  m_LinearFogEnd: 3000
+  m_AmbientSkyColor: {r: 0.55, g: 0.63, b: 0.74, a: 1}
+  m_AmbientEquatorColor: {r: 0.46, g: 0.49, b: 0.52, a: 1}
+  m_AmbientGroundColor: {r: 0.28, g: 0.28, b: 0.26, a: 1}
+  m_AmbientIntensity: 1.05
   m_AmbientMode: 1
   m_SubtractiveShadowColor: {r: 0.42, g: 0.478, b: 0.627, a: 1}
   m_SkyboxMaterial: {fileID: 10304, guid: 0000000000000000f000000000000000, type: 0}
@@ -90989,6 +90989,7 @@ GameObject:
   - component: {fileID: 960803340}
   - component: {fileID: 960803339}
   - component: {fileID: 960803342}
+  - component: {fileID: 960803343}
   m_Layer: 0
   m_Name: Main Camera
   m_TagString: MainCamera
@@ -91036,7 +91037,7 @@ Camera:
     width: 1
     height: 1
   near clip plane: 0.3
-  far clip plane: 8000
+  far clip plane: 3500
   field of view: 50
   orthographic: 0
   orthographic size: 5
@@ -91094,10 +91095,37 @@ MonoBehaviour:
   zoomSpeed: 45
   followLerp: 10
   lookHeight: 2.2
+  rightZoomFov: 38
   normalFov: 50
   zoomFov: 14
   scopeSpeed: 12
   zoomSensitivity: 0.3
+  freeLookKey: 99
+  recenterSpeed: 6
+  forceScopeForTest: 0
+--- !u!114 &960803343
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 960803338}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: dbc90ea09dce24f429c3b714b8915e76, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::PostFX
+  enablePostFX: 1
+  threshold: 1.05
+  softKnee: 0.5
+  bloomIntensity: 0.42
+  blurIterations: 2
+  exposure: 1.06
+  contrast: 1.07
+  saturation: 1.12
+  lift: 0.018
+  tint: {r: 1.04, g: 1, b: 0.955, a: 1}
+  vignette: 0.28
 --- !u!1001 &960888508
 PrefabInstance:
   m_ObjectHideFlags: 0

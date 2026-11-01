@@ -388,6 +388,9 @@ public class VehicleAI : MonoBehaviour
         if (Target == null || !Target.Alive) return;
         if (_self.Weapon == null || _phys == null) return;
 
+        // 打天上的目标 → 切车顶机枪（主炮最多抬 20°，根本够不着飞机）
+        EnsureWeaponForTarget();
+
         Vector3 aim = LeadAimPoint(Target);
         float dist = Vector3.Distance(transform.position, Target.transform.position);
 
@@ -398,6 +401,11 @@ public class VehicleAI : MonoBehaviour
             _phys.AimTurretAt(aim, _self.Def.turretTurnSpeed);
             if (_phys.TurretAngleError(aim) >= 4f) return;      // 还没对准
         }
+
+        // 当前是机枪：额外把机枪仰角抬到目标（机枪有自己的 85° 上限）
+        var cw = _self.Weapon;
+        if (cw != null && cw.deckMounted && _phys.HasDeckGun)
+            _phys.AimDeckGunAt(aim, cw.deckMaxElevation, cw.deckMaxDepression, cw.deckPitchSpeed);
 
         if (!HasLineOfSight(_phys.GetMuzzlePosition(), aim, Target)) return;   // 被地形挡住
 
@@ -418,5 +426,57 @@ public class VehicleAI : MonoBehaviour
         if (VehicleCombat.AmmoMultiplierVs(primAmmo, Target.Def) < 0.3f) return;
 
         _self.Fire(aim);
+    }
+
+    /// <summary>
+    /// 按目标换武器：空中目标用车顶机枪 + 防空弹，地面/海面目标用主炮。
+    /// 机枪是 deckMounted 的那把（载具定义里排在主炮后面）。
+    /// </summary>
+    void EnsureWeaponForTarget()
+    {
+        var def = _self.Def;
+        if (def == null || def.weapons == null || def.weapons.Length < 2) return;
+
+        bool air = Target != null && Target.Def != null && Target.Def.domain == Domain.Air;
+
+        int want = -1;
+        if (air)
+        {
+            for (int i = 0; i < def.weapons.Length; i++)
+                if (def.weapons[i] != null && def.weapons[i].deckMounted) { want = i; break; }
+        }
+        if (want < 0)
+        {
+            // 常规目标：第一把不是机枪、也不是鱼雷的（主炮）
+            for (int i = 0; i < def.weapons.Length; i++)
+            {
+                var w = def.weapons[i];
+                if (w != null && !w.deckMounted && !w.isTorpedo) { want = i; break; }
+            }
+        }
+        if (want < 0) return;
+
+        if (_self.weaponIndex != want)
+        {
+            _self.weaponIndex = want;
+            _self.ammoIndex = 0;
+        }
+
+        // 空中目标自动挑对空最好的弹（防空弹 vsAir 1.5，穿甲弹只有 0.1）
+        if (air)
+        {
+            var w = _self.Weapon;
+            if (w != null && w.ammoTypes != null && w.ammoTypes.Length > 1)
+            {
+                int best = 0;
+                float bestMul = float.MinValue;
+                for (int i = 0; i < w.ammoTypes.Length; i++)
+                {
+                    float m = VehicleCombat.AmmoMultiplierVs(w.ammoTypes[i], Target.Def);
+                    if (m > bestMul) { bestMul = m; best = i; }
+                }
+                _self.ammoIndex = best;
+            }
+        }
     }
 }
