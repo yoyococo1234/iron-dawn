@@ -36,8 +36,8 @@ public class TrackAssembly : MonoBehaviour
     public bool useGpuShader = true;
     [Tooltip("清掉 part_split 留下的碎片：static 节点（纯渣子）+ 端部轮子上炸开的尖刺")]
     public bool trimDebris = true;
-    [Tooltip("端部主动轮/诱导轮被切烂的，换成程序生成的轮盘（默认关：实测远看反而更假，圆盘会突出履带环）")]
-    public bool rebuildEndWheels = false;
+    [Tooltip("端部主动轮/诱导轮被 part_split 切烂的，换成程序生成的轮盘（半径/圆心从履带环拟合，默认开）")]
+    public bool rebuildEndWheels = true;
     [Tooltip("打印诊断信息")]
     public bool verbose = false;
 
@@ -193,7 +193,7 @@ public class TrackAssembly : MonoBehaviour
                     if (near) pts.Add(p);
                 }
                 if (pts.Count < 8) continue;
-                if (!FitCircle(pts, out var c, out float r)) continue;
+                if (!FitCircleRefined(pts, out var c, out float r)) continue;
                 if (r <= 1e-6f || r * scale > 3f) continue;          // 拟合跑飞就丢掉
 
                 var p3 = new Vector3(bb.center.x, c.x, c.y);
@@ -226,6 +226,9 @@ public class TrackAssembly : MonoBehaviour
             var src = mf.sharedMesh;
             float sy = Mathf.Abs(w.t.lossyScale.y);
             float rLocal = endR / Mathf.Max(0.0001f, sy);
+            float blobR = Mathf.Min(src.bounds.size.y, src.bounds.size.z) * 0.5f;
+            // 拟合半径离谱时退回"碎块自己的尺寸"：碎块虽然形状乱，但外廓大致还是那个轮子
+            if (blobR > 1e-6f && (rLocal > blobR * 1.25f || rLocal < blobR * 0.6f)) rLocal = blobR;
             float widthLocal = Mathf.Max(src.bounds.size.x * 0.9f, rLocal * 0.6f);
             if (rLocal <= 1e-6f) continue;
 
@@ -233,8 +236,13 @@ public class TrackAssembly : MonoBehaviour
             var world = transform.TransformPoint(best);
             var centerLocal = mf.transform.InverseTransformPoint(world);
 
+            // 一致性检查：拟合出来的圆心必须离这个轮子自己的中心不太远，
+            // 否则说明拟合跑到别的端点去了（重坦新模型上就出现过），这种就别换，保留原模型。
+            var ownCenter = src.bounds.center;
+            if ((centerLocal - ownCenter).magnitude > rLocal * 1.2f) continue;
+
             mf.sharedMesh = MakeSprocket(rLocal, widthLocal, centerLocal);
-            w.radius = Mathf.Max(0.05f, endR);
+            w.radius = Mathf.Max(0.05f, rLocal * sy);
             replaced++;
         }
         if (verbose && replaced > 0)
@@ -283,50 +291,57 @@ public class TrackAssembly : MonoBehaviour
     /// <summary>生成一个轮盘（轴沿网格局部 X）：外圆筒 + 两侧圆盖。center = 原网格包围盒中心（网格局部）。</summary>
     static Mesh MakeSprocket(float radius, float width, Vector3 center, int sides = 28)
     {
-        float hx = width * 0.5f;
         var verts = new List<Vector3>();
         var tris = new List<int>();
         var uvs = new List<Vector2>();
 
-        for (int i = 0; i < sides; i++)
+        // 局部函数：加一个圆筒（轴沿网格局部 X）
+        System.Action<float, float> addCyl = (r, w) =>
         {
-            float a0 = (float)i / sides * Mathf.PI * 2f;
-            float a1 = (float)(i + 1) / sides * Mathf.PI * 2f;
-            float c0 = Mathf.Cos(a0), s0 = Mathf.Sin(a0);
-            float c1 = Mathf.Cos(a1), s1 = Mathf.Sin(a1);
+            float hx = w * 0.5f;
+            for (int i = 0; i < sides; i++)
+            {
+                float a0 = (float)i / sides * Mathf.PI * 2f;
+                float a1 = (float)(i + 1) / sides * Mathf.PI * 2f;
+                float c0 = Mathf.Cos(a0), s0 = Mathf.Sin(a0);
+                float c1 = Mathf.Cos(a1), s1 = Mathf.Sin(a1);
 
-            // 外圆筒
-            int b = verts.Count;
-            verts.Add(new Vector3(-hx, c0 * radius, s0 * radius));
-            verts.Add(new Vector3(-hx, c1 * radius, s1 * radius));
-            verts.Add(new Vector3(hx, c1 * radius, s1 * radius));
-            verts.Add(new Vector3(hx, c0 * radius, s0 * radius));
-            uvs.Add(new Vector2((float)i / sides, 0f));
-            uvs.Add(new Vector2((float)(i + 1) / sides, 0f));
-            uvs.Add(new Vector2((float)(i + 1) / sides, 1f));
-            uvs.Add(new Vector2((float)i / sides, 1f));
-            tris.Add(b); tris.Add(b + 1); tris.Add(b + 2);
-            tris.Add(b); tris.Add(b + 2); tris.Add(b + 3);
+                // 外圆筒
+                int b = verts.Count;
+                verts.Add(new Vector3(-hx, c0 * r, s0 * r));
+                verts.Add(new Vector3(-hx, c1 * r, s1 * r));
+                verts.Add(new Vector3(hx, c1 * r, s1 * r));
+                verts.Add(new Vector3(hx, c0 * r, s0 * r));
+                uvs.Add(new Vector2((float)i / sides, 0f));
+                uvs.Add(new Vector2((float)(i + 1) / sides, 0f));
+                uvs.Add(new Vector2((float)(i + 1) / sides, 1f));
+                uvs.Add(new Vector2((float)i / sides, 1f));
+                tris.Add(b); tris.Add(b + 1); tris.Add(b + 2);
+                tris.Add(b); tris.Add(b + 2); tris.Add(b + 3);
 
-            // 两侧圆盖
-            int ca = verts.Count;
-            verts.Add(new Vector3(-hx, 0f, 0f));
-            verts.Add(new Vector3(-hx, c0 * radius, s0 * radius));
-            verts.Add(new Vector3(-hx, c1 * radius, s1 * radius));
-            uvs.Add(new Vector2(0.5f, 0.5f));
-            uvs.Add(new Vector2(0.5f + c0 * 0.5f, 0.5f + s0 * 0.5f));
-            uvs.Add(new Vector2(0.5f + c1 * 0.5f, 0.5f + s1 * 0.5f));
-            tris.Add(ca); tris.Add(ca + 2); tris.Add(ca + 1);
+                // 两侧圆盖
+                int ca = verts.Count;
+                verts.Add(new Vector3(-hx, 0f, 0f));
+                verts.Add(new Vector3(-hx, c0 * r, s0 * r));
+                verts.Add(new Vector3(-hx, c1 * r, s1 * r));
+                uvs.Add(new Vector2(0.5f, 0.5f));
+                uvs.Add(new Vector2(0.5f + c0 * 0.5f, 0.5f + s0 * 0.5f));
+                uvs.Add(new Vector2(0.5f + c1 * 0.5f, 0.5f + s1 * 0.5f));
+                tris.Add(ca); tris.Add(ca + 2); tris.Add(ca + 1);
 
-            int cb = verts.Count;
-            verts.Add(new Vector3(hx, 0f, 0f));
-            verts.Add(new Vector3(hx, c0 * radius, s0 * radius));
-            verts.Add(new Vector3(hx, c1 * radius, s1 * radius));
-            uvs.Add(new Vector2(0.5f, 0.5f));
-            uvs.Add(new Vector2(0.5f + c0 * 0.5f, 0.5f + s0 * 0.5f));
-            uvs.Add(new Vector2(0.5f + c1 * 0.5f, 0.5f + s1 * 0.5f));
-            tris.Add(cb); tris.Add(cb + 1); tris.Add(cb + 2);
-        }
+                int cb = verts.Count;
+                verts.Add(new Vector3(hx, 0f, 0f));
+                verts.Add(new Vector3(hx, c0 * r, s0 * r));
+                verts.Add(new Vector3(hx, c1 * r, s1 * r));
+                uvs.Add(new Vector2(0.5f, 0.5f));
+                uvs.Add(new Vector2(0.5f + c0 * 0.5f, 0.5f + s0 * 0.5f));
+                uvs.Add(new Vector2(0.5f + c1 * 0.5f, 0.5f + s1 * 0.5f));
+                tris.Add(cb); tris.Add(cb + 1); tris.Add(cb + 2);
+            }
+        };
+
+        addCyl(radius, width);                        // 轮缘
+        addCyl(radius * 0.42f, width * 1.18f);        // 轮毂（两侧各凸出一点，像真轮子）
 
         var m = new Mesh { name = "Sprocket" };
         for (int i = 0; i < verts.Count; i++) verts[i] += center;   // 挪回原网格所在位置
@@ -336,6 +351,28 @@ public class TrackAssembly : MonoBehaviour
         m.RecalculateNormals();
         m.RecalculateBounds();
         return m;
+    }
+
+    /// <summary>先拟合一次，再剔掉离圆太远的点重拟合（端部窗口里常混进直线段的点，会把半径撑大）。</summary>
+    static bool FitCircleRefined(List<Vector2> pts, out Vector2 center, out float radius)
+    {
+        center = Vector2.zero;
+        radius = 0f;
+        if (!FitCircle(pts, out center, out radius)) return false;
+        for (int pass = 0; pass < 3; pass++)
+        {
+            float tol = Mathf.Max(radius * 0.06f, 1e-6f);
+            var keep = new List<Vector2>(pts.Count);
+            foreach (var p in pts)
+                if (Mathf.Abs((p - center).magnitude - radius) <= tol) keep.Add(p);
+            if (keep.Count < 6) break;
+            if (!FitCircle(keep, out var c2, out float r2)) break;
+            bool converged = Mathf.Abs(r2 - radius) < radius * 0.01f;
+            center = c2;
+            radius = r2;
+            if (converged) break;
+        }
+        return true;
     }
 
     /// <summary>
@@ -503,6 +540,16 @@ public class TrackAssembly : MonoBehaviour
     {
         Mesh mesh = Object.Instantiate(src);
         mesh.name = src.name + "_runtime";
+
+        // 有些履带网格里混进了跨到车体另一侧的面片（实测重坦履带里有一批 x≈1.9 m 的顶点，
+        // 而履带本体只有 ±0.61 m 宽）——这些顶点会被算成"离中心线 2 m"，一推进就炸开。
+        // 先按 X 带把它们连面片一起裁掉。
+        var bandTrimmed = TrimToXBand(mesh);
+        if (bandTrimmed != null)
+        {
+            if (Application.isPlaying) Object.Destroy(mesh); else Object.DestroyImmediate(mesh);
+            mesh = bandTrimmed;
+        }
         tf.GetComponent<MeshFilter>().sharedMesh = mesh;
 
         var pos = mesh.vertices;
@@ -520,117 +567,35 @@ public class TrackAssembly : MonoBehaviour
         }
         float R = (zmax - zmin) * 0.5f;
         if (R < 1e-6f) return null;
-        float zc = (zmin + zmax) * 0.5f;
-        float yc = (ymin + ymax) * 0.5f;
-        float hs = Mathf.Max(0.02f, (ymax - ymin) * 0.5f - R);
 
-        // ---- 1) 用包围盒跑道形粗筛：只留「大概率属于履带板本体」的顶点 ----
-        //      （粘进来的碎片、零件残渣离环很远，不能参与求中心线）
-        var rough = new bool[pos.Length];
-        float roughLimit = 0.55f * R;
-        for (int i = 0; i < pos.Length; i++)
-        {
-            float s0 = ParamStadium(yc, zc, R, hs, pos[i].y, pos[i].z);
-            Vector2 c0 = StadiumPoint(yc, zc, R, hs, s0, out _);
-            float dy = pos[i].y - c0.x, dz = pos[i].z - c0.y;
-            rough[i] = dy * dy + dz * dz <= roughLimit * roughLimit;
-        }
+        // ---- 1) 中心线：两遍 ----
+        //   第一遍：全部顶点参与（碎片已经在 static 节点里被分走了）。
+        //   第二遍：只留离第一遍中心线近的顶点，把个别残留杂物排除掉。
+        //   旧版用「包围盒跑道形」粗筛，对不是标准跑道的履带环（比如托带轮把上沿顶得更高的
+        //   重坦）会误杀大量真实顶点，中心线算歪 → 履带一推进就散架。2026-11-01 改掉。
+        var maskAll = new bool[pos.Length];
+        for (int i = 0; i < maskAll.Length; i++) maskAll[i] = true;
 
-        // ---- 2) 质心 + 按角度分箱取均值 → 环的中心线（环是凸的，角度对弧长单调）----
-        double sy = 0, sz = 0;
-        int nRough = 0;
-        for (int i = 0; i < pos.Length; i++)
-            if (rough[i]) { sy += pos[i].y; sz += pos[i].z; nRough++; }
-        if (nRough < 100) return null;
-        float cy = (float)(sy / nRough), cz = (float)(sz / nRough);
+        if (!ComputeRing(pos, maskAll, out float cy, out float cz,
+                         out Vector2[] cyz, out Vector2[] cdir, out float[] ang, out float len))
+            return null;
 
-        const int NB = 128;
-        var by = new float[NB];
-        var bz = new float[NB];
-        var bc = new int[NB];
+        float nearLimit = 0.45f * R;
+        var near = new bool[pos.Length];
+        int nNear = 0;
         for (int i = 0; i < pos.Length; i++)
+            if (DistanceToRing(pos[i], cyz) <= nearLimit) { near[i] = true; nNear++; }
+
+        if (nNear > 256 && nNear < pos.Length)
         {
-            if (!rough[i]) continue;
-            float a = Mathf.Atan2(pos[i].z - cz, pos[i].y - cy);
-            int k = Mathf.Clamp((int)((a + Mathf.PI) / (2f * Mathf.PI) * NB), 0, NB - 1);
-            by[k] += pos[i].y;
-            bz[k] += pos[i].z;
-            bc[k]++;
-        }
-        // 空箱用左右邻插值补上
-        var py = new float[NB];
-        var pz = new float[NB];
-        for (int k = 0; k < NB; k++)
-        {
-            if (bc[k] > 0) { py[k] = by[k] / bc[k]; pz[k] = bz[k] / bc[k]; }
-            else { py[k] = float.NaN; pz[k] = float.NaN; }
-        }
-        for (int k = 0; k < NB; k++)
-        {
-            if (!float.IsNaN(py[k])) continue;
-            int ia = k, ib = k;
-            for (int t = 1; t <= NB; t++) { ia = (k - t + NB) % NB; if (!float.IsNaN(py[ia])) break; }
-            for (int t = 1; t <= NB; t++) { ib = (k + t) % NB; if (!float.IsNaN(py[ib])) break; }
-            int da = (k - ia + NB) % NB, db = (ib - k + NB) % NB;
-            float f = da + db > 0 ? da / (float)(da + db) : 0.5f;
-            py[k] = Mathf.Lerp(py[ia], py[ib], f);
-            pz[k] = Mathf.Lerp(pz[ia], pz[ib], f);
-        }
-        // 轻微平滑
-        for (int pass = 0; pass < 2; pass++)
-        {
-            var qy = new float[NB];
-            var qz = new float[NB];
-            for (int k = 0; k < NB; k++)
+            if (ComputeRing(pos, near, out float cy2, out float cz2,
+                            out Vector2[] cyz2, out Vector2[] cdir2, out float[] ang2, out float len2))
             {
-                qy[k] = (py[(k + NB - 1) % NB] + py[k] * 2f + py[(k + 1) % NB]) * 0.25f;
-                qz[k] = (pz[(k + NB - 1) % NB] + pz[k] * 2f + pz[(k + 1) % NB]) * 0.25f;
+                cy = cy2; cz = cz2; cyz = cyz2; cdir = cdir2; ang = ang2; len = len2;
             }
-            py = qy;
-            pz = qz;
         }
-
-        // ---- 3) 按弧长均匀重采样 ----
-        var cum = new float[NB + 1];
-        for (int k = 0; k < NB; k++)
-        {
-            int k2 = (k + 1) % NB;
-            cum[k + 1] = cum[k] + Mathf.Sqrt((py[k2] - py[k]) * (py[k2] - py[k]) + (pz[k2] - pz[k]) * (pz[k2] - pz[k]));
-        }
-        float len = cum[NB];
-        if (len < 1e-4f) return null;
 
         const int N = 256;
-        var cyz = new Vector2[N];
-        var cdir = new Vector2[N];
-        var ang = new float[N];          // 展开后的角度，单调递增
-        for (int j = 0; j < N; j++)
-        {
-            float target = (float)j / N * len;
-            int seg = 0;
-            while (seg < NB - 1 && cum[seg + 1] < target) seg++;
-            float segLen = cum[seg + 1] - cum[seg];
-            float f = segLen > 1e-9f ? (target - cum[seg]) / segLen : 0f;
-            int ia = seg, ib = (seg + 1) % NB;
-            cyz[j] = new Vector2(Mathf.Lerp(py[ia], py[ib], f), Mathf.Lerp(pz[ia], pz[ib], f));
-        }
-        for (int j = 0; j < N; j++)
-        {
-            Vector2 d = cyz[(j + 1) % N] - cyz[(j + N - 1) % N];
-            cdir[j] = d.sqrMagnitude > 1e-12f ? d.normalized : Vector2.right;
-            float a = Mathf.Atan2(cyz[j].y - cz, cyz[j].x - cy);
-            if (j == 0) ang[0] = a;
-            else
-            {
-                float prev = ang[j - 1];
-                float d2 = Mathf.Repeat(a - prev, 2f * Mathf.PI);
-                ang[j] = prev + d2;
-            }
-        }
-        // 保证 ang 严格递增（个别点重合时）
-        for (int j = 1; j < N; j++)
-            if (ang[j] <= ang[j - 1]) ang[j] = ang[j - 1] + 1e-5f;
-
         var b = new Belt
         {
             mesh = mesh, tf = tf,
@@ -642,9 +607,10 @@ public class TrackAssembly : MonoBehaviour
             N = N, cyz = cyz, cdir = cdir, ang = ang
         };
 
-        // ---- 4) 每个顶点：角度 → 弧长参数 → 偏移 ----
+        // ---- 2) 每个顶点：角度 → 弧长参数 → 偏移 ----
         float a0 = ang[0];
         float bandLimit = 0.90f * R;
+        var mArr = new float[pos.Length];
         int nAnim = 0;
         float maxOff = 0f;
         for (int i = 0; i < pos.Length; i++)
@@ -666,17 +632,263 @@ public class TrackAssembly : MonoBehaviour
             b.offY[i] = pos[i].y - c.x;
             b.offZ[i] = pos[i].z - c.y;
             b.th0[i] = th;
-            float m = Mathf.Sqrt(b.offY[i] * b.offY[i] + b.offZ[i] * b.offZ[i]);
-            b.anim[i] = m <= bandLimit;
-            if (b.anim[i]) { nAnim++; if (m > maxOff) maxOff = m; }
+            mArr[i] = Mathf.Sqrt(b.offY[i] * b.offY[i] + b.offZ[i] * b.offZ[i]);
             b.curPos[i] = pos[i];
             b.curNrm[i] = nrm[i];
+        }
+
+        // ---- 3) 连通块判定「是不是履带环本体」----
+        //   实测重坦的 belt 网格里混着一堆负重轮（离中心线 0.5~2 m），跟着走就会炸开。
+        //   但履带本体自己是「一块块履带板」——很多小连通块，所以不能用"最大块"来判，
+        //   改成看每块的**中位偏移**：贴着中心线的块是履带，离得远的块是混进来的轮子。
+        var isBeltComp = new bool[pos.Length];
+        {
+            var parent = new int[pos.Length];
+            for (int i = 0; i < parent.Length; i++) parent[i] = i;
+
+            int Find(int x)
+            {
+                while (parent[x] != x) { parent[x] = parent[parent[x]]; x = parent[x]; }
+                return x;
+            }
+
+            var triAll = new List<int>();
+            for (int sIdx = 0; sIdx < mesh.subMeshCount; sIdx++) triAll.AddRange(mesh.GetTriangles(sIdx));
+            for (int t = 0; t + 2 < triAll.Count; t += 3)
+            {
+                int a = Find(triAll[t]), b2 = Find(triAll[t + 1]), c2 = Find(triAll[t + 2]);
+                if (a != b2) parent[b2] = a;
+                if (a != c2) parent[c2] = Find(a);
+            }
+
+            var compM = new Dictionary<int, List<float>>();
+            for (int i = 0; i < pos.Length; i++)
+            {
+                int r2 = Find(i);
+                if (!compM.TryGetValue(r2, out var list)) { list = new List<float>(64); compM[r2] = list; }
+                list.Add(mArr[i]);
+            }
+
+            float compLimit = 0.30f * R;
+            var good = new HashSet<int>();
+            foreach (var kv in compM)
+            {
+                kv.Value.Sort();
+                // 用 p90 而不是中位数：履带板自己的顶点全贴着中心线；
+                // 而"焊在履带板上的轮子"有一半顶点靠近履带、另一半伸进环里，中位数会漏判。
+                int idx = Mathf.Clamp((int)(kv.Value.Count * 0.90f), 0, kv.Value.Count - 1);
+                if (kv.Value[idx] <= compLimit) good.Add(kv.Key);
+            }
+            for (int i = 0; i < pos.Length; i++) isBeltComp[i] = good.Contains(Find(i));
+        }
+
+        for (int i = 0; i < pos.Length; i++)
+        {
+            b.anim[i] = isBeltComp[i] && mArr[i] <= bandLimit;
+            if (b.anim[i]) { nAnim++; if (mArr[i] > maxOff) maxOff = mArr[i]; }
         }
 
         if (verbose)
             Debug.Log($"[TrackAssembly] 履带 {tf.name}: 顶点 {pos.Length}（参与运动 {nAnim}），" +
                       $"环长 {len * b.unit:F2} m，最大偏移 {maxOff * b.unit:F3} m");
         return b;
+    }
+
+    /// <summary>
+    /// 只保留「落在履带自己那条 X 带里」的三角形（离履带中心超过 1.6 倍半宽的面片全部丢掉），
+    /// 顶点压紧。用来清掉混进履带网格的跨侧面片。没裁到东西返回 null。
+    /// </summary>
+    static Mesh TrimToXBand(Mesh src)
+    {
+        if (src == null || src.subMeshCount < 1) return null;
+        var pos = src.vertices;
+        if (pos.Length < 64) return null;
+
+        // 履带网格可能有多个 submesh（导出时按材质拆的），全部并成一份三角形再筛
+        var triList = new List<int>();
+        for (int s = 0; s < src.subMeshCount; s++) triList.AddRange(src.GetTriangles(s));
+        if (triList.Count < 12) return null;
+        var tris = triList.ToArray();
+
+        // 包围盒会被这些离群顶点带偏（center 跟着跑），所以用分位数估计「履带本体」的横向中心与半宽
+        var xs = new float[pos.Length];
+        for (int i = 0; i < pos.Length; i++) xs[i] = pos[i].x;
+        System.Array.Sort(xs);
+        float cx = xs[pos.Length / 2];
+        float lo = xs[Mathf.Clamp((int)(pos.Length * 0.05f), 0, pos.Length - 1)];
+        float hi = xs[Mathf.Clamp((int)(pos.Length * 0.95f), 0, pos.Length - 1)];
+        float halfW = Mathf.Max((hi - lo) * 0.5f, 1e-5f);
+        float limit = halfW * 2.0f;
+
+        int triCount = tris.Length / 3;
+        var keep = new bool[triCount];
+        int kept = 0;
+        for (int t = 0; t < tris.Length; t += 3)
+        {
+            bool ok = Mathf.Abs(pos[tris[t]].x - cx) <= limit
+                   && Mathf.Abs(pos[tris[t + 1]].x - cx) <= limit
+                   && Mathf.Abs(pos[tris[t + 2]].x - cx) <= limit;
+            if (ok) { keep[t / 3] = true; kept++; }
+        }
+        if (kept == 0 || kept == triCount) return null;
+
+        // ---- 压紧顶点 ----
+        var map = new int[pos.Length];
+        for (int i = 0; i < map.Length; i++) map[i] = -1;
+        var newTris = new int[kept * 3];
+        int nv = 0, k = 0;
+        for (int t = 0; t < tris.Length; t += 3)
+        {
+            if (!keep[t / 3]) continue;
+            for (int j = 0; j < 3; j++)
+            {
+                int oi = tris[t + j];
+                if (map[oi] < 0) map[oi] = nv++;
+                newTris[k++] = map[oi];
+            }
+        }
+
+        var nrm = src.normals;
+        var uv = src.uv;
+        var uv2 = src.uv2;
+        bool hasN = nrm != null && nrm.Length == pos.Length;
+        bool hasUv = uv != null && uv.Length == pos.Length;
+        bool hasUv2 = uv2 != null && uv2.Length == pos.Length;
+
+        var vpos = new Vector3[nv];
+        var vnrm = new Vector3[nv];
+        var vuv = new Vector2[nv];
+        var vuv2 = new Vector2[nv];
+        for (int oi = 0; oi < map.Length; oi++)
+        {
+            int ni = map[oi];
+            if (ni < 0) continue;
+            vpos[ni] = pos[oi];
+            if (hasN) vnrm[ni] = nrm[oi];
+            if (hasUv) vuv[ni] = uv[oi];
+            if (hasUv2) vuv2[ni] = uv2[oi];
+        }
+
+        var m = new Mesh { name = src.name + "_xband" };
+        m.indexFormat = nv > 65000 ? UnityEngine.Rendering.IndexFormat.UInt32 : UnityEngine.Rendering.IndexFormat.UInt16;
+        m.vertices = vpos;
+        if (hasN) m.normals = vnrm; else m.RecalculateNormals();
+        if (hasUv) m.uv = vuv;
+        if (hasUv2) m.uv2 = vuv2;
+        m.triangles = newTris;
+        m.RecalculateBounds();
+        return m;
+    }
+
+    /// <summary>
+    /// 从一组顶点里反推履带环中心线：质心 → 按角度分箱取均值 → 空箱插值 → 平滑 →
+    /// 按弧长均匀重采样成 256 个点，并算好切线方向和展开后的角度（单调递增）。
+    /// </summary>
+    static bool ComputeRing(Vector3[] pos, bool[] mask, out float cy, out float cz,
+        out Vector2[] cyz, out Vector2[] cdir, out float[] ang, out float len)
+    {
+        const int NB = 128;
+        const int N = 256;
+        cy = 0f; cz = 0f; cyz = null; cdir = null; ang = null; len = 0f;
+
+        double sy = 0, sz = 0;
+        int n = 0;
+        for (int i = 0; i < pos.Length; i++)
+            if (mask[i]) { sy += pos[i].y; sz += pos[i].z; n++; }
+        if (n < 100) return false;
+        cy = (float)(sy / n);
+        cz = (float)(sz / n);
+
+        var by = new float[NB];
+        var bz = new float[NB];
+        var bc = new int[NB];
+        for (int i = 0; i < pos.Length; i++)
+        {
+            if (!mask[i]) continue;
+            float a = Mathf.Atan2(pos[i].z - cz, pos[i].y - cy);
+            int k = Mathf.Clamp((int)((a + Mathf.PI) / (2f * Mathf.PI) * NB), 0, NB - 1);
+            by[k] += pos[i].y;
+            bz[k] += pos[i].z;
+            bc[k]++;
+        }
+        var py = new float[NB];
+        var pz = new float[NB];
+        for (int k = 0; k < NB; k++)
+        {
+            if (bc[k] > 0) { py[k] = by[k] / bc[k]; pz[k] = bz[k] / bc[k]; }
+            else { py[k] = float.NaN; pz[k] = float.NaN; }
+        }
+        for (int k = 0; k < NB; k++)
+        {
+            if (!float.IsNaN(py[k])) continue;
+            int ia = k, ib = k;
+            for (int t = 1; t <= NB; t++) { ia = (k - t + NB) % NB; if (!float.IsNaN(py[ia])) break; }
+            for (int t = 1; t <= NB; t++) { ib = (k + t) % NB; if (!float.IsNaN(py[ib])) break; }
+            int da = (k - ia + NB) % NB, db = (ib - k + NB) % NB;
+            float f = da + db > 0 ? da / (float)(da + db) : 0.5f;
+            py[k] = Mathf.Lerp(py[ia], py[ib], f);
+            pz[k] = Mathf.Lerp(pz[ia], pz[ib], f);
+        }
+        for (int pass = 0; pass < 2; pass++)
+        {
+            var qy = new float[NB];
+            var qz = new float[NB];
+            for (int k = 0; k < NB; k++)
+            {
+                qy[k] = (py[(k + NB - 1) % NB] + py[k] * 2f + py[(k + 1) % NB]) * 0.25f;
+                qz[k] = (pz[(k + NB - 1) % NB] + pz[k] * 2f + pz[(k + 1) % NB]) * 0.25f;
+            }
+            py = qy;
+            pz = qz;
+        }
+
+        var cum = new float[NB + 1];
+        for (int k = 0; k < NB; k++)
+        {
+            int k2 = (k + 1) % NB;
+            float dy = py[k2] - py[k], dz = pz[k2] - pz[k];
+            cum[k + 1] = cum[k] + Mathf.Sqrt(dy * dy + dz * dz);
+        }
+        len = cum[NB];
+        if (len < 1e-4f) return false;
+
+        cyz = new Vector2[N];
+        cdir = new Vector2[N];
+        ang = new float[N];
+        for (int j = 0; j < N; j++)
+        {
+            float target = (float)j / N * len;
+            int seg = 0;
+            while (seg < NB - 1 && cum[seg + 1] < target) seg++;
+            float segLen = cum[seg + 1] - cum[seg];
+            float f = segLen > 1e-9f ? (target - cum[seg]) / segLen : 0f;
+            int ia = seg, ib = (seg + 1) % NB;
+            cyz[j] = new Vector2(Mathf.Lerp(py[ia], py[ib], f), Mathf.Lerp(pz[ia], pz[ib], f));
+        }
+        for (int j = 0; j < N; j++)
+        {
+            Vector2 d = cyz[(j + 1) % N] - cyz[(j + N - 1) % N];
+            cdir[j] = d.sqrMagnitude > 1e-12f ? d.normalized : Vector2.right;
+            float a = Mathf.Atan2(cyz[j].y - cz, cyz[j].x - cy);
+            if (j == 0) ang[0] = a;
+            else ang[j] = ang[j - 1] + Mathf.Repeat(a - ang[j - 1], 2f * Mathf.PI);
+        }
+        for (int j = 1; j < N; j++)
+            if (ang[j] <= ang[j - 1]) ang[j] = ang[j - 1] + 1e-5f;
+        return true;
+    }
+
+    /// <summary>顶点到中心线的最短距离（只看 YZ 平面）。</summary>
+    static float DistanceToRing(Vector3 p, Vector2[] ring)
+    {
+        float best = float.MaxValue;
+        for (int j = 0; j < ring.Length; j++)
+        {
+            float dy = p.y - ring[j].x, dz = p.z - ring[j].y;
+            float d = dy * dy + dz * dz;
+            if (d < best) best = d;
+        }
+        return Mathf.Sqrt(best);
     }
 
     /// <summary>按弧长参数取中心线点和切线角。</summary>
