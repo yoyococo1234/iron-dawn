@@ -3,8 +3,13 @@
 //
 // 数据来源：
 //   · 顶点 UV2.x = 该顶点的弧长参数（0~1，绕一圈）
+//   · 顶点 UV2.y = 1 表示这个顶点跟着履带走，0 表示不动（粘进来的碎片）
 //   · _PathArr  = 中心线采样数组：xyz = (0, 中心线 y, 中心线 z)，w = 该处切线角（弧度）
 //   位置 = 中心线(s + scroll) + 把「相对中心线的偏移」按切线角差旋转
+//
+// 2026-11-01 实测：Unity 6.3 Built-in 下 surface shader 的顶点阶段，
+// material.SetVectorArray 和 material.SetTexture 都能正确读到数据
+// （最小复现结果 (0.40,0.60,0.70) 与期望一致）。之前"读出来是 0"是代码问题，不是绑定限制。
 Shader "Tank/TrackBelt"
 {
     Properties
@@ -24,7 +29,7 @@ Shader "Tank/TrackBelt"
 
         CGPROGRAM
         #pragma surface surf Standard vertex:vert addshadow
-        #pragma target 3.0
+        #pragma target 3.5
 
         sampler2D _MainTex;
         fixed4 _Color;
@@ -57,19 +62,16 @@ Shader "Tank/TrackBelt"
 
         void vert(inout appdata_full v)
         {
-            float s = v.texcoord1.x;              // 0~1 弧长参数
-            float4 c0 = PathAt(s);
-            float4 c1 = PathAt(s + _Scroll);
+            float2 p = v.texcoord1;              // x = 弧长参数(0~1)，y = 是否参与运动
+            if (p.y < 0.5) return;               // 不动的顶点原样输出
+
+            float4 c0 = PathAt(p.x);
+            float4 c1 = PathAt(p.x + _Scroll);
 
             float dth = c1.w - c0.w;
             dth = dth - 6.28318530718 * floor(dth / 6.28318530718 + 0.5);   // 最短角差
 
             float sn, cs;
-            sincos(dth, sn, cs);
-
-            // DEBUG5: uv2 与数组绑定检查（验证完删掉）
-            v.vertex.y += v.texcoord1.x * 1.0;
-            v.vertex.x += _PathArr[3].y * 30.0;
             sincos(dth, sn, cs);
 
             // 网格局部：X = 车宽，Y = 车长，Z = 高；履带环在 YZ 平面
