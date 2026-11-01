@@ -87,8 +87,8 @@ public class TrackAssembly : MonoBehaviour
     {
         if (vehicle == null) vehicle = GetComponentInParent<VehiclePhysics>();
         if (trimDebris) HideDebrisNodes();
-        CollectBelts();                    // 先收履带：端部轮盘要用履带环的半径和端点圆心
-        CollectWheels();
+        CollectWheels();                   // 先收轮子：履带网格里混着的轮子面片要靠轮轴位置排除
+        CollectBelts();
         if (rebuildEndWheels) RebuildEndWheels();
         _prevYaw = transform.eulerAngles.y;
         _hasPrevYaw = true;
@@ -653,59 +653,80 @@ public class TrackAssembly : MonoBehaviour
             b.curNrm[i] = nrm[i];
         }
 
-        // ---- 3) 连通块判定「是不是履带环本体」----
+        // ---- 3) 排除"混进履带网格里的轮子面片" ----
         //   实测重坦的 belt 网格里混着一堆负重轮（离中心线 0.5~2 m），跟着走就会炸开。
-        //   但履带本体自己是「一块块履带板」——很多小连通块，所以不能用"最大块"来判，
-        //   改成看每块的**中位偏移**：贴着中心线的块是履带，离得远的块是混进来的轮子。
-        var isBeltComp = new bool[pos.Length];
+        //   这里不能按连通块判：Lux3D 的网格是三角面汤（每个三角形都是独立一块，实测 1790 块 / 每块 3 顶点），
+        //   连通块信息等于没有。改用**轮轴位置**判：顶点落在某个轮子的圆盘里，就是轮子面片，不参与履带运动。
+        var isWheelFace = new bool[pos.Length];
+        int nWheelFace = 0;
+        if (_wheels.Count > 0)
         {
-            var parent = new int[pos.Length];
-            for (int i = 0; i < parent.Length; i++) parent[i] = i;
-
-            int Find(int x)
+            var wheelY = new float[_wheels.Count];
+            var wheelZ = new float[_wheels.Count];
+            var wheelR = new float[_wheels.Count];
+            for (int k = 0; k < _wheels.Count; k++)
             {
-                while (parent[x] != x) { parent[x] = parent[parent[x]]; x = parent[x]; }
-                return x;
+                var w = _wheels[k];
+                // 轮心（履带总成局部）→ 世界 → 这条履带自己的网格局部
+                Vector3 world = transform.TransformPoint(w.localCenter);
+                Vector3 lp = tf.InverseTransformPoint(world);
+                wheelY[k] = lp.y;
+                wheelZ[k] = lp.z;
+                wheelR[k] = w.radius / Mathf.Max(0.0001f, Mathf.Abs(tf.lossyScale.y)) * 1.15f;
             }
-
-            var triAll = new List<int>();
-            for (int sIdx = 0; sIdx < mesh.subMeshCount; sIdx++) triAll.AddRange(mesh.GetTriangles(sIdx));
-            for (int t = 0; t + 2 < triAll.Count; t += 3)
-            {
-                int a = Find(triAll[t]), b2 = Find(triAll[t + 1]), c2 = Find(triAll[t + 2]);
-                if (a != b2) parent[b2] = a;
-                if (a != c2) parent[c2] = Find(a);
-            }
-
-            var compM = new Dictionary<int, List<float>>();
             for (int i = 0; i < pos.Length; i++)
             {
-                int r2 = Find(i);
-                if (!compM.TryGetValue(r2, out var list)) { list = new List<float>(64); compM[r2] = list; }
-                list.Add(mArr[i]);
+                for (int k = 0; k < wheelY.Length; k++)
+                {
+                    float dy = pos[i].y - wheelY[k], dz = pos[i].z - wheelZ[k];
+                    if (dy * dy + dz * dz <= wheelR[k] * wheelR[k]) { isWheelFace[i] = true; nWheelFace++; break; }
+                }
             }
-
-            float compLimit = 0.30f * R;
-            var good = new HashSet<int>();
-            foreach (var kv in compM)
-            {
-                kv.Value.Sort();
-                // 用 p90 而不是中位数：履带板自己的顶点全贴着中心线；
-                // 而"焊在履带板上的轮子"有一半顶点靠近履带、另一半伸进环里，中位数会漏判。
-                int idx = Mathf.Clamp((int)(kv.Value.Count * 0.90f), 0, kv.Value.Count - 1);
-                if (kv.Value[idx] <= compLimit) good.Add(kv.Key);
-            }
-            for (int i = 0; i < pos.Length; i++) isBeltComp[i] = good.Contains(Find(i));
         }
 
         for (int i = 0; i < pos.Length; i++)
         {
-            b.anim[i] = isBeltComp[i] && mArr[i] <= bandLimit;
+            b.anim[i] = !isWheelFace[i] && mArr[i] <= bandLimit;
             if (b.anim[i]) { nAnim++; if (mArr[i] > maxOff) maxOff = mArr[i]; }
         }
 
+        // ---- 4) 把"挂着不动的碎片"藏掉 ----
+        //   履带网格里还混着一些零碎面片（不跟着动，就挂在那儿，远看是一道道毛刺）。
+        //   做法：只被"整块都不动"的三角形使用的顶点，压到中心线上 → 三角形退化成线，不渲染。
+        //   被真实履带板共用的顶点一律不动，避免把履带板撕开。
+        if (trimDebris)
+        {
+            var triAll = new List<int>();
+            for (int sIdx = 0; sIdx < mesh.subMeshCount; sIdx++) triAll.AddRange(mesh.GetTriangles(sIdx));
+            var usedByGood = new bool[pos.Length];
+            for (int t = 0; t + 2 < triAll.Count; t += 3)
+            {
+                int i0 = triAll[t], i1 = triAll[t + 1], i2 = triAll[t + 2];
+                if (b.anim[i0] && b.anim[i1] && b.anim[i2])
+                    usedByGood[i0] = usedByGood[i1] = usedByGood[i2] = true;
+            }
+
+            int hidden = 0;
+            var vpos = mesh.vertices;
+            for (int i = 0; i < pos.Length; i++)
+            {
+                if (b.anim[i] || usedByGood[i]) continue;
+                if (mArr[i] < 0.35f * R) continue;                  // 贴着履带板的零碎先留着
+                Vector2 cc = Sample(b, b.s[i], out _);
+                vpos[i] = new Vector3(vpos[i].x, cc.x, cc.y);        // 压到中心线 → 退化
+                hidden++;
+            }
+            if (hidden > 0)
+            {
+                mesh.SetVertices(vpos);
+                pos = vpos;
+                b.basePos = pos;
+            }
+            if (verbose && hidden > 0) Debug.Log($"[TrackAssembly] 履带 {tf.name}: 藏掉挂着的碎片顶点 {hidden} 个");
+        }
+
         if (verbose)
-            Debug.Log($"[TrackAssembly] 履带 {tf.name}: 顶点 {pos.Length}（参与运动 {nAnim}），" +
+            Debug.Log($"[TrackAssembly] 履带 {tf.name}: 顶点 {pos.Length}（参与运动 {nAnim}，按轮轴排除 {nWheelFace}），" +
                       $"环长 {len * b.unit:F2} m，最大偏移 {maxOff * b.unit:F3} m");
         return b;
     }
