@@ -60,9 +60,23 @@ public class VehicleAudio : MonoBehaviour
             // 每台车随机一点，避免集群时完全同相
             _engine.time = Random.Range(0f, 1.5f);
         }
+
+        // 履带循环音只给陆战车（飞机/炮艇没有履带）
+        if (def == null || def.domain == Domain.Land)
+        {
+            _track = Sfx.CreateLoop(Sfx.TrackLoop, transform, 0f, 0.8f, 8f, 320f);
+            if (_track != null)
+            {
+                _track.volume = 0f;
+                _track.time = Random.Range(0f, 3f);
+            }
+        }
+
         _fullPitch = topPitch;
         _fullRange = Mathf.Max(1f, range);
     }
+
+    AudioSource _track;
 
     float _fullPitch = 1.45f;
     float _fullRange = 14f;
@@ -82,5 +96,18 @@ public class VehicleAudio : MonoBehaviour
 
         _engine.pitch = _pitch;
         _engine.volume = Mathf.Clamp01(_vol * Sfx.MasterVolume);
+
+        // 履带：静止时几乎没声，越跑越响、音高越高（履带板滚过的节奏跟着变速）
+        if (_track != null)
+        {
+            float tv = Mathf.Clamp01(v / Mathf.Max(0.5f, _fullRange * 0.75f));
+            _trackVol = Mathf.Lerp(_trackVol, tv * 0.55f, Time.deltaTime * 3.5f);
+            _trackPitch = Mathf.Lerp(_trackPitch, Mathf.Lerp(0.72f, 1.35f, tv), Time.deltaTime * 3.5f);
+            _track.volume = Mathf.Clamp01(_trackVol * Sfx.MasterVolume);
+            _track.pitch = _trackPitch;
+        }
     }
+
+    float _trackVol;
+    float _trackPitch = 1f;
 }

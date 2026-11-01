@@ -11,6 +11,7 @@ CC-BY 的条目**必须在报告书/游戏内标注作者**，下面这份就是
 | `Resources/Audio/mg_fire.wav` | Light Machine Gun | KuraiWolf | **CC-BY 4.0** | https://opengameart.org/content/light-machine-gun |
 | `Resources/Audio/hit_metal.wav` | clank1（Mechanical Sounds） | BMacZero | CC0 | https://opengameart.org/content/mechanical-sounds |
 | `Resources/Audio/hit_heavy.wav` | Cannon hit | Thimras | CC0 | https://opengameart.org/content/cannon-hit |
+| `Resources/Audio/track_loop.wav` | **从视频音轨抠取**：M-1 Tank: Close up of Treads Rolling（22.5–27.5 s） | YouTube 上传者 | ⚠ **非 CC 授权，风险项** | https://www.youtube.com/watch?v=_bSJpWYUg-s |
 
 ## 加工说明
 
@@ -23,8 +24,12 @@ CC-BY 的条目**必须在报告书/游戏内标注作者**，下面这份就是
 
 ## 待补
 
-- **坦克履带"哗啦"循环音**还没找到合适的 CC0 素材：OpenGameArt 上没有专门的履带循环，
-  ZapSplat 有但需要账号登录，Freesound 的 CC0 版本（qubodup《Tank Engine Loop》）下载同样要登录。
-  目前履带行进由发动机音承担。要补的话，可选路径：
-  1. 用户提供 ZapSplat / Freesound 账号，下 2–3 条履带循环；
-  2. 用 `work/gen_sfx.py` 里的 `gen_track()` 程序化生成一条当底层（已写好，未启用）。
+- **坦克履带"哗啦"循环音**：已用真实录像音轨补上（`track_loop.wav`），但**授权是风险项**：
+  - ZapSplat 上那套 "Steady rattling tracks of a driving tank"（快/中/慢三条）**全部是付费内容**
+    （页面标注 Access Premium Content，免费账号下不到，2026-11-01 实测确认）
+  - OpenGameArt 没有专门的履带循环；Freesound 的 CC0 版本下载需要登录
+  - 所以从 YouTube 视频音轨里抠了 5 秒（`work/gen_track_from_video.py`，earshot 选出最佳窗口）
+  - **提交前要么换成可商用素材，要么在报告书里明确标注这是 demo 用途**
+  - 备选：`work/gen_sfx.py` 里的 `gen_track()`（纯合成）、
+    `work/gen_track_from_samples.py`（用 CC0 金属撞击录音编排，已跑通，产物被覆盖了）
+

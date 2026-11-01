@@ -12,6 +12,7 @@ public static class Sfx
 {
     // 片段名（对应 Assets/Resources/Audio/<name>.wav）
     public const string EngineLoop = "engine_loop";
+    public const string TrackLoop = "track_loop";
     public const string CannonFire = "cannon_fire";
     public const string MgFire = "mg_fire";
     public const string Explosion = "explosion";
