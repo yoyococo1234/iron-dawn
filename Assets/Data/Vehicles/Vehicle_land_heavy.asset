@@ -42,7 +42,7 @@ MonoBehaviour:
   modelTracksPrefab: {fileID: 919132149155446097, guid: df9f97766c8921541a8036089b1b8c66, type: 3}
   modelTrackWellRef: {fileID: 0}
   modelTurretMaterial: {fileID: 2100000, guid: f609b091b1f3d154980770c5b925ee08, type: 2}
-  modelTracksMaterial: {fileID: 2100000, guid: e8dfe2c82d18f734889eefd1fa6cdbbe, type: 2}
+  modelTracksMaterial: {fileID: 2100000, guid: f4692bdfceca6064d837807a92e8e00b, type: 2}
   modelBarrelPrefab: {fileID: 919132149155446097, guid: 2ace79af1a29c5844ade9690129ef05a, type: 3}
   modelBarrelPivot: {x: 0.0684, y: 1.1981, z: 1.5496}
   modelTurretPivot: {x: 0.0042, y: 2.7564, z: 0.1568}
