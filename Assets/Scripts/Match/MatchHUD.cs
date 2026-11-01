@@ -50,6 +50,7 @@ public class MatchHUD : MonoBehaviour
         var oldMatrix = GUI.matrix;
         GUI.matrix = Matrix4x4.Scale(new Vector3(_scale, _scale, 1f));
 
+        DrawScope(mm);            // 先画镜筒（盖住画面），HUD 再画在上面
         DrawTopBar(mm);
         DrawGold(mm);
         DrawZones(mm);
@@ -186,6 +187,7 @@ public class MatchHUD : MonoBehaviour
     void DrawCrosshair(MatchManager mm)
     {
         if (Cursor.lockState != CursorLockMode.Locked) return;   // 光标放开时不画准星
+        if (IsScoped()) return;                                   // 开镜时用炮镜分划，不画这个
 
         var p = mm.Player;
         bool air = p != null && p.Def != null && p.Def.domain == Domain.Air;
@@ -214,6 +216,98 @@ public class MatchHUD : MonoBehaviour
         Fill(new Rect(x - 16f, y - 1.5f, 32f, 3f), w);
         Fill(new Rect(x - 1.5f, y - 16f, 3f, 32f), w);
         Fill(new Rect(x - 2f, y - 2f, 4f, 4f), new Color(1f, 0.32f, 0.26f, 0.95f));
+    }
+
+    // ---------------- 炮镜（Shift 按住，战雷那套圆形镜筒 + 十字分划） ----------------
+
+    static Texture2D _scopeMask;
+
+    static bool IsScoped()
+    {
+        var cam = Camera.main;
+        if (cam == null) return false;
+        var cf = cam.GetComponent<CameraFollow>();
+        return cf != null && cf.IsScoped;
+    }
+
+    /// <summary>圆形镜筒遮罩：圆内透明、圆外纯黑（方形四角也被压黑）。只生成一次。</summary>
+    static Texture2D ScopeMask()
+    {
+        if (_scopeMask != null) return _scopeMask;
+        const int S = 512;
+        var t = new Texture2D(S, S, TextureFormat.RGBA32, false) { wrapMode = TextureWrapMode.Clamp };
+        var px = new Color32[S * S];
+        float c = S * 0.5f, r = S * 0.5f - 1f;
+        for (int y = 0; y < S; y++)
+        {
+            for (int x = 0; x < S; x++)
+            {
+                float dx = x + 0.5f - c, dy = y + 0.5f - c;
+                float d = Mathf.Sqrt(dx * dx + dy * dy) / r;
+                float a = Mathf.Clamp01((d - 0.955f) / 0.045f);   // 0 = 圆内（透明），1 = 圆外（黑）
+                px[y * S + x] = new Color32(0, 0, 0, (byte)(a * 255));
+            }
+        }
+        t.SetPixels32(px);
+        t.Apply();
+        _scopeMask = t;
+        return t;
+    }
+
+    void DrawScope(MatchManager mm)
+    {
+        if (!IsScoped()) return;
+        if (Cursor.lockState != CursorLockMode.Locked) return;
+
+        float cx = _vw * 0.5f, cy = VH * 0.5f;
+        float R = Mathf.Min(_vw, VH) * 0.34f;
+        var black = new Color(0f, 0f, 0f, 1f);
+
+        // 圆外压黑：四个矩形 + 方形四角
+        Fill(new Rect(0f, 0f, _vw, cy - R), black);
+        Fill(new Rect(0f, cy + R, _vw, VH - (cy + R)), black);
+        Fill(new Rect(0f, cy - R, cx - R, R * 2f), black);
+        Fill(new Rect(cx + R, cy - R, _vw - (cx + R), R * 2f), black);
+        GUI.DrawTexture(new Rect(cx - R, cy - R, R * 2f, R * 2f), ScopeMask(), ScaleMode.StretchToFill, true);
+
+        // 镜筒内圈（一圈小方块近似，够圆）
+        var ring = new Color(0.06f, 0.06f, 0.06f, 0.85f);
+        for (int i = 0; i < 96; i++)
+        {
+            float a = i / 96f * Mathf.PI * 2f;
+            float x = cx + Mathf.Cos(a) * (R - 2f);
+            float y = cy + Mathf.Sin(a) * (R - 2f);
+            Fill(new Rect(x - 3f, y - 3f, 6f, 6f), ring);
+        }
+
+        // ---- 十字分划 ----
+        var ret = new Color(0.95f, 0.92f, 0.78f, 0.9f);
+        float gap = 10f, thick = 2f;
+        Fill(new Rect(cx - R * 0.92f, cy - thick * 0.5f, R * 0.92f - gap, thick), ret);   // 左横
+        Fill(new Rect(cx + gap, cy - thick * 0.5f, R * 0.92f - gap, thick), ret);         // 右横
+        Fill(new Rect(cx - thick * 0.5f, cy - R * 0.55f, thick, R * 0.55f - gap), ret);   // 上竖
+        Fill(new Rect(cx - thick * 0.5f, cy + gap, thick, R * 0.85f - gap), ret);         // 下竖
+        Fill(new Rect(cx - 2.5f, cy - 2.5f, 5f, 5f), new Color(1f, 0.3f, 0.25f, 1f));     // 中心红点
+
+        // 横向密位刻度
+        for (int i = 1; i <= 6; i++)
+        {
+            float d = i * R * 0.13f;
+            float h = (i % 2 == 0) ? 11f : 6f;
+            Fill(new Rect(cx - d - 1f, cy - h * 0.5f, 2f, h), ret);
+            Fill(new Rect(cx + d - 1f, cy - h * 0.5f, 2f, h), ret);
+        }
+        // 纵向测距刻度
+        for (int i = 1; i <= 5; i++)
+        {
+            float d = i * R * 0.16f;
+            float w = (i % 2 == 0) ? 11f : 6f;
+            Fill(new Rect(cx - w * 0.5f, cy + d - 1f, w, 2f), ret);
+        }
+
+        // 镜筒下方提示
+        Text(new Rect(0f, cy + R + 8f, _vw, 26f), "炮镜　·　松开 Shift 退出", _s20,
+             new Color(1f, 1f, 1f, 0.55f), TextAnchor.MiddleCenter);
     }
 
     // ---------------- 结算 ----------------

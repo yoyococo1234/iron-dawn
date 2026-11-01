@@ -27,9 +27,13 @@ public class CameraFollow : MonoBehaviour
     public float followLerp = 10f;
     public float lookHeight = 2.2f;
 
-    [Header("开镜（右键按住）")]
+    [Header("右键：轻微放大（不换视角）")]
+    [Tooltip("按住右键时把视野收窄到这个角度（比 normalFov 小一点即可）")]
+    public float rightZoomFov = 38f;
+
+    [Header("开镜（Shift 按住 = 炮镜）")]
     public float normalFov = 50f;
-    public float zoomFov = 14f;
+    public float zoomFov = 10f;
     public float scopeSpeed = 12f;
     [Tooltip("开镜时的鼠标灵敏度倍率")]
     public float zoomSensitivity = 0.3f;
@@ -43,11 +47,18 @@ public class CameraFollow : MonoBehaviour
     /// <summary>当前是否在自由视角（炮塔不跟鼠标）。</summary>
     public bool FreeLook { get; private set; }
 
+    /// <summary>当前是否在炮镜（Shift）。HUD 用它画圆形镜筒和十字分划。</summary>
+    public bool IsScoped => _scoped;
+
+    /// <summary>当前是否按着右键（轻微放大）。</summary>
+    public bool IsRightZoom => _rightZoom;
+
     Vector3 _shake;
     float _shakeAmount;
     float _dist = 16f;
     float _curYaw;
     bool _scoped;
+    bool _rightZoom;
     bool _wasFreeLook;
 
     public void Shake(float amount) => _shakeAmount = Mathf.Max(_shakeAmount, amount);
@@ -124,8 +135,11 @@ public class CameraFollow : MonoBehaviour
         }
         _wasFreeLook = freeLook;
 
-        _scoped = Cursor.lockState == CursorLockMode.Locked
-                  && (Input.GetMouseButton(1) || Input.GetKey(KeyCode.LeftShift) || Input.GetKey(KeyCode.RightShift));
+        // Shift = 炮镜（圆形镜筒 + 十字分划，HUD 负责画）；右键 = 只是把视野收窄一点。
+        // 两者不再叠加（旧版两个一起按会放到更大，手感很怪）。
+        bool locked = Cursor.lockState == CursorLockMode.Locked;
+        _scoped = locked && (Input.GetKey(KeyCode.LeftShift) || Input.GetKey(KeyCode.RightShift));
+        _rightZoom = locked && Input.GetMouseButton(1) && !_scoped;
         var cam = GetComponent<Camera>();
 
         // ---------- 炮手视角（右键按住）：相机贴到炮塔上方，炮管就在画面下缘 ----------
@@ -164,11 +178,8 @@ public class CameraFollow : MonoBehaviour
             transform.rotation = Quaternion.Slerp(transform.rotation,
                 Quaternion.LookRotation(lookAtS - transform.position), 16f * Time.unscaledDeltaTime);
 
-            // 两个放大档：单按右键/Shift 是一档，两个一起按再拉近一档
-            bool extraZoom = (Input.GetMouseButton(1))
-                             && (Input.GetKey(KeyCode.LeftShift) || Input.GetKey(KeyCode.RightShift));
-            float wantFovS = extraZoom ? zoomFov * 0.55f : zoomFov * 1.6f;
-            cam.fieldOfView = Mathf.Lerp(cam.fieldOfView, wantFovS, scopeSpeed * Time.unscaledDeltaTime);
+            // 炮镜：固定拉到 zoomFov（不再有"两键叠加再放大"）
+            cam.fieldOfView = Mathf.Lerp(cam.fieldOfView, zoomFov, scopeSpeed * Time.unscaledDeltaTime);
 
             if (_shakeAmount > 0.001f)
             {
@@ -179,7 +190,12 @@ public class CameraFollow : MonoBehaviour
             return;
         }
 
-        if (cam != null) cam.fieldOfView = Mathf.Lerp(cam.fieldOfView, normalFov, scopeSpeed * Time.unscaledDeltaTime);
+        if (cam != null)
+        {
+            // 右键：只把视野从 normalFov 收到 rightZoomFov（视角还是第三人称，不换机位）
+            float wantFov = _rightZoom ? rightZoomFov : normalFov;
+            cam.fieldOfView = Mathf.Lerp(cam.fieldOfView, wantFov, scopeSpeed * Time.unscaledDeltaTime);
+        }
 
         float scroll = Input.GetAxis("Mouse ScrollWheel");
         if (Mathf.Abs(scroll) > 0.0001f)
