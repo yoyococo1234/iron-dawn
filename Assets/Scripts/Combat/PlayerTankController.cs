@@ -55,8 +55,11 @@ public class PlayerTankController : MonoBehaviour
         // ---------- 直接瞄准（战雷那套）----------
         // 鼠标直接控「炮塔偏航 + 炮管俯仰」，两个轴各自限速、同时运动，可以斜着走。
         // 不再靠"屏幕中心射线打点再反推"——那样相机和炮塔会互相追，放大时就会往左右漂。
+        //
+        // 注意：按住 C 自由视角时**整段都要跳过**。以前这里没判 freeLook，于是上面虽然
+        // 保住了 aimPoint，炮塔还是被 camFollow.yaw 拖着一起转 —— 用户反馈"环绕查看时炮塔跟着转"。
         var camFollow = _cam.GetComponent<CameraFollow>();
-        if (camFollow != null && _combat.Physics != null && _combat.Physics.turretBone != null)
+        if (!freeLook && camFollow != null && _combat.Physics != null && _combat.Physics.turretBone != null)
         {
             float wantYawWorld = camFollow.yaw;
             float wantPitch = -(camFollow.pitch - 8f);   // 镜头默认俯角 8° 当水平
