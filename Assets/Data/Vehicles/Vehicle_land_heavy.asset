@@ -52,6 +52,7 @@ MonoBehaviour:
   trackRoadWheelR: 0.5
   trackRoadWheelCount: 6
   trackGroundLift: 0.14
+  bakedTurretWell: 1
   modelBarrelPrefab: {fileID: 919132149155446097, guid: 2ace79af1a29c5844ade9690129ef05a, type: 3}
   modelBarrelPivot: {x: 0.0684, y: 1.1981, z: 1.5496}
   modelTurretPivot: {x: 0.0042, y: 2.7564, z: 0.1568}

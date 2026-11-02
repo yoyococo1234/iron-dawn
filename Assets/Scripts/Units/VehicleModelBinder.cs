@@ -1,4 +1,4 @@
-﻿using System.Collections.Generic;
+using System.Collections.Generic;
 using UnityEngine;
 
 /// <summary>
@@ -432,6 +432,10 @@ public static class VehicleModelBinder
                     else col.sharedMesh = null;
                 }
             }
+            // 车体模型里已经用 Blender 焊了一块圆形补板的话，这里就不再加方板 ——
+            // 方板的四个角会伸到甲板外面，两层补丁叠在一起反而更难看。
+            if (!def.bakedTurretWell)
+            {
             // 板比炮塔足迹放大 25%：车体被切开时边缘会留下毛刺三角，板小一点就露在外面。
             // 顶面再抬高 5 cm 把这些毛刺压到板下面。
             const float plateH = 0.60f;
@@ -439,6 +443,7 @@ public static class VehicleModelBinder
             plate.transform.SetParent(root, false);
             plate.transform.localPosition = new Vector3(
                 turret.localPosition.x, deckY + 0.05f - plateH * 0.5f, turret.localPosition.z);
+            }
         }
 
         BuildDeckGun(turret, def, vp, center, size, top);
