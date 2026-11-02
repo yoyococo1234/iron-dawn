@@ -35,7 +35,7 @@ MonoBehaviour:
   weapons:
   - {fileID: 11400000, guid: cdbdcba4a80e9d342ac2582baa4a06ec, type: 2}
   - {fileID: 11400000, guid: 994961b82f93b944ca77677cbb09227e, type: 2}
-  modelPrefab: {fileID: 919132149155446097, guid: 54739f74e0a965d4897d35b66cccd43c, type: 3}
+  modelPrefab: {fileID: 919132149155446097, guid: 1d5a822e16f8a754fa22f592bb7cc2c6, type: 3}
   modelMaterial: {fileID: 2100000, guid: 826a548583a238840a12d7e09202cede, type: 2}
   modelTurretPrefab: {fileID: 0}
   modelTurretPivot: {x: 0, y: 0, z: 0}
