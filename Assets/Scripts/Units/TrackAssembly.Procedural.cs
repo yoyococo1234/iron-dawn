@@ -65,14 +65,15 @@ public partial class TrackAssembly
             foreach (var r in GetComponentsInChildren<Renderer>(true)) r.enabled = false;
 
         var baseMat = MakeSteelMat();
-        var wheelMat = MakeSteelMat(0.30f, 0.45f, 0.22f);   // 轮子比履带浅一点，侧视才分得开
+        var wheelMat = MakeSteelMat(0.40f, 0.30f, 0.22f);   // 轮体：中灰（太黑会显得"轮子上一块黑一块白"）
         // 辐条/螺栓用**无光照**材质：只靠颜色区分，不受法线/阴影影响（之前用 Standard 会在轮面糊出黑三角）
-        var markMat = MakeFlatMat(new Color(0.62f, 0.63f, 0.64f, 1f));
+        var markMat = MakeFlatMat(new Color(0.94f, 0.94f, 0.95f, 1f));   // 标记：纯白
+        var starMat = MakeFlatMat(new Color(0.72f, 0.10f, 0.10f, 1f));   // 轮心五角星：红
 
         for (int s = 0; s < 2; s++)
         {
             float side = s == 0 ? -1f : 1f;
-            BuildOneSide(side, side * spanX, bandW, loopLen, loopH, wheelR, wheelN, baseMat, wheelMat, markMat);
+            BuildOneSide(side, side * spanX, bandW, loopLen, loopH, wheelR, wheelN, baseMat, wheelMat, markMat, starMat);
         }
 
         _halfTrack = spanX;
@@ -84,7 +85,7 @@ public partial class TrackAssembly
     static float Pick(float v, float fallback) => v > 0.01f ? v : fallback;
 
     void BuildOneSide(float side, float x, float bandW, float loopLen, float loopH,
-                      float wheelR, int wheelN, Material baseMat, Material wheelMat, Material markMat)
+                      float wheelR, int wheelN, Material baseMat, Material wheelMat, Material markMat, Material starMat)
     {
         const float t = 0.150f;                 // 履带板厚（侧影就靠它，太薄会像一根铁丝）
         const float ridge = 0.028f;             // 履带板凸起（做出"一节一节"的轮廓）
@@ -253,14 +254,14 @@ public partial class TrackAssembly
             float f = wheelN == 1 ? 0.5f : (float)i / (wheelN - 1);
             float z = Mathf.Lerp(-spanZ, spanZ, f);
             AddWheel($"wheelProc_{sideTag(side)}_{i}", side, x, wheelY, z,
-                     wheelR, axleW, 24, wheelR * 0.42f, wheelMat, 0, markMat);
+                     wheelR, axleW, 24, wheelR * 0.42f, wheelMat, 0, markMat, starMat);
         }
 
         float sprocketR = R * 0.96f;
         AddWheel($"sprocketProc_{sideTag(side)}", side, x, zc, hs + 0.02f,
-                 sprocketR, axleW * 1.12f, 20, sprocketR * 0.34f, wheelMat, 12, markMat);
+                 sprocketR, axleW * 1.12f, 20, sprocketR * 0.34f, wheelMat, 12, markMat, starMat);
         AddWheel($"idlerProc_{sideTag(side)}", side, x, zc, -(hs + 0.02f),
-                 sprocketR * 0.94f, axleW * 1.02f, 20, sprocketR * 0.32f, wheelMat, 0, markMat);
+                 sprocketR * 0.94f, axleW * 1.02f, 20, sprocketR * 0.32f, wheelMat, 0, markMat, starMat);
 
         // 托带轮：撑着上面那段履带（不然顶上悬空一大截）
         float rollerR = Mathf.Clamp((zc + R - (wheelY + wheelR)) * 0.55f, 0.07f, 0.13f);
@@ -316,7 +317,7 @@ public partial class TrackAssembly
 
     void AddWheel(string name, float side, float x, float y, float z,
                   float radius, float width, int sides, float hubR, Material mat, int teeth,
-                  Material markMat = null)
+                  Material markMat = null, Material starMat = null)
     {
         var go = new GameObject(name);
         go.transform.SetParent(transform, false);
@@ -324,12 +325,14 @@ public partial class TrackAssembly
         go.transform.localRotation = Quaternion.identity;
 
         var marks = new List<int>();
-        var m = MakeWheelMesh(radius, width, sides, hubR, teeth, marks);
+        var star = new List<int>();
+        var m = MakeWheelMesh(radius, width, sides, hubR, teeth, marks, star);
         m.name = name;
         go.AddComponent<MeshFilter>().sharedMesh = m;
         var mr = go.AddComponent<MeshRenderer>();
-        // 第 0 槽 = 轮体，第 1 槽 = 辐条/螺栓（浅色，转动才看得出来）
-        if (marks.Count > 0 && markMat != null) mr.sharedMaterials = new[] { mat, markMat };
+        // 槽位：0 = 轮体，1 = 辐条/螺栓（白），2 = 轮心五角星（红）
+        if (star.Count > 0 && starMat != null) mr.sharedMaterials = new[] { mat, markMat != null ? markMat : mat, starMat };
+        else if (marks.Count > 0 && markMat != null) mr.sharedMaterials = new[] { mat, markMat };
         else mr.sharedMaterial = mat;
         // 轮子不投影：辐条/螺栓只有几毫米凸起，自己给自己投影会在轮面糊上一圈黑三角
         mr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
@@ -346,7 +349,8 @@ public partial class TrackAssembly
     }
 
     /// <summary>轮子网格：轴沿 X。外圆筒 + 两侧盖 + 轮毂（+ 可选齿）。</summary>
-    static Mesh MakeWheelMesh(float radius, float width, int sides, float hubR, int teeth, List<int> trMarks)
+    static Mesh MakeWheelMesh(float radius, float width, int sides, float hubR, int teeth,
+                              List<int> trMarks, List<int> trStar)
     {
         var v = new List<Vector3>();
         var tr = new List<int>();
@@ -444,25 +448,48 @@ public partial class TrackAssembly
         // 辐条 + 螺栓（2026-11-01 深夜加）：用户反馈"看不出轮子在转"。
         // 原因：轮面是一个均匀的圆盘，转起来没有参照物。加 5 根不对称辐条 + 5 颗螺栓，
         // 侧视就能明显看出轮面在动（5 是奇数，避免出现"转 72° 和没转一样"的对称感）。
+        // 2026-11-02：辐条起点往外让开，给轮心的红色五角星腾位置。
+        float starR = Mathf.Min(hubR * 1.10f, radius * 0.46f);
         {
             float xFace = hx + rimW;
             float spokeTh = 0.006f;   // 薄一点：太厚会自己给自己投影，轮面上出现一圈黑三角
             for (int sgn = 0; sgn < 2; sgn++)
             {
-                // 起点比轮缘外表面再凸 5 mm，否则和轮缘端盖共面 → z-fighting，辐条只剩一条头发丝
+                // 起点比轮缘外表面再凸 2 mm，否则和轮缘端盖共面 → z-fighting，辐条只剩一条头发丝
                 float xa = sgn == 0 ? -(xFace + spokeTh + 0.002f) : xFace + 0.002f;
                 float xb = sgn == 0 ? -(xFace + 0.002f) : xFace + spokeTh + 0.002f;
                 for (int k = 0; k < 5; k++)
                 {
                     float ang = (float)k / 5f * Mathf.PI * 2f + 0.35f;
                     float ca = Mathf.Cos(ang), sa = Mathf.Sin(ang);
-                    // 辐条：从轮毂外沿到轮缘内沿的一条细条
-                    AddRadialBar(v, trMarks, xa, xb, hubR * 1.05f, radius * 0.78f, radius * 0.09f, ca, sa);
+                    // 辐条：从五角星外沿到轮缘内沿的一条细条
+                    AddRadialBar(v, trMarks, xa, xb, starR * 1.12f, radius * 0.78f, radius * 0.09f, ca, sa);
                     // 螺栓：落在轮缘端盖平面上（半径 0.66R），不要飘在空中
                     float rb = radius * 0.66f;
                     float xb0 = sgn == 0 ? xa : xb;
                     AddStud(v, trMarks, xb0, sgn, ca * rb, sa * rb, radius * 0.075f, 0.006f, 10);
                 }
+            }
+        }
+
+        // 轮心红色五角星（2026-11-02 用户要求）。
+        // 贴在轮毂端盖平面上（比轮毂再凸 3 mm），半径略大于轮毂，正好把轮毂端面盖住。
+        if (trStar != null && radius > 0.25f)   // 托带轮太小，不画星
+        {
+            float xStar = hw + 0.003f;
+            for (int sgn = 0; sgn < 2; sgn++)
+            {
+                float x = sgn == 0 ? -xStar : xStar;
+                var ring = new Vector3[10];
+                for (int i = 0; i < 10; i++)
+                {
+                    float a = Mathf.PI * 0.5f + i * Mathf.PI / 5f;     // 从正上方那个尖开始
+                    float r = (i % 2 == 0) ? starR : starR * 0.382f;   // 外尖 / 内凹
+                    ring[i] = new Vector3(x, Mathf.Cos(a) * r, Mathf.Sin(a) * r);
+                }
+                var center = new Vector3(x, 0f, 0f);
+                for (int i = 0; i < 10; i++)
+                    AddTri2(v, trStar, center, ring[i], ring[(i + 1) % 10]);
             }
         }
 
@@ -499,9 +526,11 @@ public partial class TrackAssembly
         // 注意：SetTriangles(list, 1) 不会自己把 subMeshCount 撑到 2（实测 Unity 6 里直接静默丢弃），
         // 必须先手动把 subMeshCount 设成 2，否则第 1 槽永远是空的、辐条根本不渲染。
         bool hasMarks = trMarks != null && trMarks.Count > 0;
-        if (hasMarks) mesh.subMeshCount = 2;
+        bool hasStar = trStar != null && trStar.Count > 0;
+        mesh.subMeshCount = hasStar ? 3 : (hasMarks ? 2 : 1);
         mesh.SetTriangles(tr, 0);
         if (hasMarks) mesh.SetTriangles(trMarks, 1);
+        if (hasStar) mesh.SetTriangles(trStar, 2);
         mesh.RecalculateNormals();
         mesh.RecalculateBounds();
         return mesh;
@@ -528,6 +557,17 @@ public partial class TrackAssembly
         v.Add(a); v.Add(c); v.Add(b); v.Add(d);
         tr.Add(j); tr.Add(j + 1); tr.Add(j + 2);
         tr.Add(j + 1); tr.Add(j + 3); tr.Add(j + 2);
+    }
+
+    /// <summary>双面三角形（两个绕向各用一套顶点，避免法线被平均成 0 → 纯黑）。</summary>
+    static void AddTri2(List<Vector3> v, List<int> tr, Vector3 a, Vector3 b, Vector3 c)
+    {
+        int i = v.Count;
+        v.Add(a); v.Add(b); v.Add(c);
+        tr.Add(i); tr.Add(i + 1); tr.Add(i + 2);
+        int j = v.Count;
+        v.Add(a); v.Add(c); v.Add(b);
+        tr.Add(j); tr.Add(j + 1); tr.Add(j + 2);
     }
 
     /// <summary>轮面上的一条辐条：沿半径 rA→rB、切向半宽 halfW、沿轴 xa→xb 的细长块。</summary>
