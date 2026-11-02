@@ -55,6 +55,12 @@ public class JetIntakeFan : MonoBehaviour
                  new Vector3(r * 0.34f, 0.05f, r * 0.34f), Vector3.zero,
                  new Vector3(90f, 0f, 0f), mat);
 
+            // 发动机轴：从叶片往后伸一截进气道里，看着像"装在里面"而不是浮在进气口前面
+            Part(rotor.transform, PrimitiveType.Cylinder,
+                 new Vector3(r * 0.16f, r * 1.0f, r * 0.16f),
+                 new Vector3(0f, 0f, -r * 1.0f),
+                 new Vector3(90f, 0f, 0f), mat);
+
             // 叶片：绕 Z 均分，往外推，再给一点扭角
             const int N = 9;
             for (int i = 0; i < N; i++)
