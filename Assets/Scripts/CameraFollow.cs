@@ -48,9 +48,18 @@ public class CameraFollow : MonoBehaviour
     [Header("调试")]
     [Tooltip("强制处于炮镜状态（截图/验收用，正常游戏别勾）")]
     public bool forceScopeForTest = false;
+    [Tooltip("强制处于自由环视（截图/验收用，正常游戏别勾）")]
+    public bool forceFreeLookForTest = false;
 
     /// <summary>当前是否在自由视角（炮塔不跟鼠标）。</summary>
     public bool FreeLook { get; private set; }
+
+    /// <summary>
+    /// 全局：这一帧是否按着 C 环视。飞机用它屏蔽鼠标操控
+    /// （不然环视时鼠标一边转镜头一边把飞机拐走）。
+    /// 由 LateUpdate 每帧写，VehiclePhysics.UpdateAir 读 —— 差一帧，看不出来。
+    /// </summary>
+    public static bool FreeLookActive;
 
     /// <summary>当前是否在炮镜（Shift）。HUD 用它画圆形镜筒和十字分划。</summary>
     public bool IsScoped => _scoped;
@@ -132,14 +141,42 @@ public class CameraFollow : MonoBehaviour
             FitDistanceToTarget();
         }
 
-        // 开飞机时是追尾视角：鼠标用来操控飞机，不能同时转镜头
+        // 开飞机时是追尾视角：鼠标用来操控飞机，不能同时转镜头。
+        // 但按住 C 要能环视 —— 这时候鼠标只转镜头，飞机那边会忽略鼠标（见 FreeLookActive）。
         var mm = MatchManager.Instance;
         var pl = mm != null ? mm.Player : null;
         if (pl != null && pl.Def != null && pl.Def.domain == Domain.Air)
         {
-            ChaseCamera();
+            bool lockedAir = Cursor.lockState == CursorLockMode.Locked;
+            bool freeLookAir = (lockedAir && Input.GetKey(freeLookKey)) || forceFreeLookForTest;
+            FreeLook = freeLookAir;
+            FreeLookActive = freeLookAir;
+
+            if (!freeLookAir)
+            {
+                _wasFreeLook = false;
+                ChaseCamera();
+                return;
+            }
+
+            // 刚按下 C：先把 yaw/pitch 对齐到当前镜头方向，免得第一帧跳一下
+            if (!_wasFreeLook)
+            {
+                var e = transform.eulerAngles;
+                yaw = e.y;
+                pitch = Mathf.Clamp(Mathf.DeltaAngle(0f, e.x), minPitch, maxPitch);
+                _wasFreeLook = true;
+            }
+
+            // 按住 C：鼠标绕飞机转镜头，飞机照常飞
+            float sensAir = sensitivity;
+            yaw += Input.GetAxis("Mouse X") * sensAir;
+            pitch -= Input.GetAxis("Mouse Y") * sensAir;
+            pitch = Mathf.Clamp(pitch, minPitch, maxPitch);
+            OrbitAroundTarget();
             return;
         }
+        FreeLookActive = false;
 
         if (Cursor.lockState == CursorLockMode.Locked)
         {
@@ -334,6 +371,40 @@ public class CameraFollow : MonoBehaviour
         var lookAt = target.position + target.forward * 80f;
         transform.rotation = Quaternion.Slerp(transform.rotation,
             Quaternion.LookRotation(lookAt - transform.position), 10f * dt);
+
+        if (_shakeAmount > 0.001f)
+        {
+            _shake = Random.insideUnitSphere * _shakeAmount;
+            _shakeAmount = Mathf.MoveTowards(_shakeAmount, 0f, Time.deltaTime * 14f);
+            transform.rotation *= Quaternion.Euler(_shake.x * 2f, _shake.y * 2f, _shake.z * 2f);
+        }
+    }
+
+    /// <summary>
+    /// 按住 C 时的环视机位（飞机用）：绕着飞机转，看哪边由 yaw/pitch 决定。
+    /// 和坦克那套不一样 —— 飞机不跟着镜头走，镜头只是绕它转一圈。
+    /// </summary>
+    void OrbitAroundTarget()
+    {
+        float dt = Time.unscaledDeltaTime;
+
+        // 环视距离按飞机尺寸走：战斗机 11 m 长，退 16 m 才看得全
+        float want = Mathf.Max(12f, distance);
+        _dist = Mathf.Lerp(_dist, want, 8f * dt);
+
+        var cam = GetComponent<Camera>();
+        if (cam != null) cam.fieldOfView = Mathf.Lerp(cam.fieldOfView, normalFov, scopeSpeed * dt);
+
+        Vector3 look = Quaternion.Euler(pitch, yaw, 0f) * Vector3.forward;
+        Vector3 pivot = target.position + Vector3.up * 1.2f;
+        Vector3 desired = pivot - look * _dist;
+
+        float ground = Mathf.Max(BattlefieldTerrain.SampleHeight(desired.x, desired.z), BattlefieldTerrain.WaterLevel) + 2f;
+        if (desired.y < ground) desired.y = ground;
+
+        transform.position = Vector3.Lerp(transform.position, desired, 12f * dt);
+        transform.rotation = Quaternion.Slerp(transform.rotation,
+            Quaternion.LookRotation(pivot - transform.position), 14f * dt);
 
         if (_shakeAmount > 0.001f)
         {
