@@ -56,7 +56,7 @@ MonoBehaviour:
   modelBarrelPivot: {x: -0.0875, y: 0.4941, z: 1.3779}
   modelTurretPivot: {x: 0.0023, y: 2.4421, z: -0.2471}
   modelTurretMeshOrigin: {x: 0.0023, y: 2.4421, z: -0.2471}
-  autoTurretWellPatch: 0
+  autoTurretWellPatch: 1
   autoTurretSkirt: 1
   modelDeckGunPivot: {x: 0, y: 0, z: 0}
   turretBoneName: Turret

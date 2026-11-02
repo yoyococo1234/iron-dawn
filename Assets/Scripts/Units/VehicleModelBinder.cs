@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using UnityEngine;
 
 /// <summary>
@@ -393,11 +393,52 @@ public static class VehicleModelBinder
             // 炮塔井盖：炮塔是从车体里"挖"走的，车体上留下一个**方形坑**（坑壁就是原来炮塔的侧面）。
             // 圆盘只能盖住外接圆、盖不住四角，所以用和坑同尺寸的方形板把坑口封平。
             // UV 全取 (0.5,0.5)：采样到车体贴图上的同一个色，才不会出现一块"不同色的补丁"。
-            var plate = MakePlate("TurretWellPlate", size.x * 1.0f, size.z * 1.0f, 0.12f, hullMat);
+            //
+            // 2026-11-02：板加厚到 0.55 m（从井口一直填到井底），**顶面贴实测的甲板高度**。
+            // 为什么不再用"炮塔转轴高度"：转轴在甲板下面 20 cm 左右，板沉在井底，
+            // 炮塔一转就看见一个深坑（用户："下面空出来了" / "前面漏风"）。
+            // 甲板高度现在用**临时 MeshCollider + 从上往下射线**实测（车体网格已开 Read/Write）。
+            float deckY = turret.localPosition.y;
+            {
+                var hullTf2 = root.Find("Model");
+                var hmf = hullTf2 != null ? hullTf2.GetComponentInChildren<MeshFilter>() : null;
+                if (hmf != null && hmf.sharedMesh != null && hmf.sharedMesh.isReadable)
+                {
+                    var colGo = hmf.gameObject;
+                    var col = colGo.GetComponent<MeshCollider>();
+                    bool added = col == null;
+                    if (added) col = colGo.AddComponent<MeshCollider>();
+                    col.sharedMesh = hmf.sharedMesh;
+
+                    Vector3 wt = root.TransformPoint(turret.localPosition);
+                    float best = float.MinValue;
+                    for (int i = 0; i < 9; i++)
+                    {
+                        float ox = ((i % 3) - 1) * 0.45f, oz = ((i / 3) - 1) * 0.45f;
+                        var from = new Vector3(wt.x + ox, wt.y + 8f, wt.z + oz);
+                        var hits = Physics.RaycastAll(from, Vector3.down, 16f, ~0, QueryTriggerInteraction.Ignore);
+                        foreach (var h in hits)
+                        {
+                            if (h.collider != col) continue;      // 只认车体网格，别被命中盒/炮塔挡住
+                            if (h.point.y > best) best = h.point.y;
+                        }
+                    }
+                    if (best > float.MinValue)
+                    {
+                        float ly = root.InverseTransformPoint(new Vector3(wt.x, best, wt.z)).y;
+                        deckY = Mathf.Max(deckY, ly + 0.02f);
+                    }
+                    if (added) Object.Destroy(col);
+                    else col.sharedMesh = null;
+                }
+            }
+            // 板比炮塔足迹放大 25%：车体被切开时边缘会留下毛刺三角，板小一点就露在外面。
+            // 顶面再抬高 5 cm 把这些毛刺压到板下面。
+            const float plateH = 0.60f;
+            var plate = MakePlate("TurretWellPlate", size.x * 1.25f, size.z * 1.25f, plateH, hullMat);
             plate.transform.SetParent(root, false);
-            // 顶面和车体顶面齐平（板厚 0.12，中心下沉 0.06）
             plate.transform.localPosition = new Vector3(
-                turret.localPosition.x, turret.localPosition.y - 0.06f, turret.localPosition.z);
+                turret.localPosition.x, deckY + 0.05f - plateH * 0.5f, turret.localPosition.z);
         }
 
         BuildDeckGun(turret, def, vp, center, size, top);

@@ -1,4 +1,4 @@
-using System.Collections;
+﻿using System.Collections;
 using System.Collections.Generic;
 using System.IO;
 using System.Reflection;
@@ -23,6 +23,9 @@ using UnityEngine;
 public class DevTankShots : MonoBehaviour
 {
     const string Root = "D:/UnityProjects/Tank3D/work/shots";
+
+    /// <summary>截图前把炮塔转到这个角度（度）。0 = 不转。用来复现"炮塔一转就露出炮塔井"。</summary>
+    public static float TurretYawForShots = 0f;
 
     public static void Begin(VehicleDef def, string tag, Vector3 pos, float yaw)
     {
