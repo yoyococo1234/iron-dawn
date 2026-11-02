@@ -27,6 +27,7 @@ public static class VehicleFactory
 
         vp.turretBone = turret;
         vp.muzzleBone = muzzle;
+        // 注意：程序化履带的"整车抬高"放在 VehiclePhysics.ApplyDef 里 —— 这里的赋值会被 Start() 覆盖。
 
         // 战斗组件要在模型挂好之后再 AddComponent —— Awake 里要按模型包围盒建命中盒
         var combat = go.AddComponent<VehicleCombat>();

@@ -1,4 +1,4 @@
-﻿using System.Collections.Generic;
+using System.Collections.Generic;
 using UnityEngine;
 
 /// <summary>
@@ -248,7 +248,12 @@ public partial class TrackAssembly
         float wheelY = t + wheelR;                          // 压在履带内表面上
         float axleW = Mathf.Max(0.20f, bandW * 0.62f);
 
-        float spanZ = Mathf.Max(0.5f, hs - R - wheelR * 0.1f);   // 别顶到端部轮
+        // 负重轮的 z 跨度：必须让最外那颗和端部轮（主动轮/诱导轮）之间留出空隙。
+        // 2026-11-02 用户反馈"前两个轮子和后两个轮子重叠了"—— 原来用 hs - R - wheelR*0.1，
+        // 端部轮半径 ≈0.96R，两者圆心只差 0.56 m，而半径和 0.88 m，直接叠在一起了。
+        // 现在按「圆心距 ≥ 两轮半径和 + 6 cm 余量」反算。
+        float endWheelR = R * 0.96f;                       // 主动轮/诱导轮的半径
+        float spanZ = Mathf.Max(0.3f, hs + 0.02f - endWheelR - wheelR - 0.06f);
         for (int i = 0; i < wheelN; i++)
         {
             float f = wheelN == 1 ? 0.5f : (float)i / (wheelN - 1);
@@ -445,32 +450,9 @@ public partial class TrackAssembly
             }
         }
 
-        // 辐条 + 螺栓（2026-11-01 深夜加）：用户反馈"看不出轮子在转"。
-        // 原因：轮面是一个均匀的圆盘，转起来没有参照物。加 5 根不对称辐条 + 5 颗螺栓，
-        // 侧视就能明显看出轮面在动（5 是奇数，避免出现"转 72° 和没转一样"的对称感）。
-        // 2026-11-02：辐条起点往外让开，给轮心的红色五角星腾位置。
+        // 2026-11-02 用户要求：轮面只留五角星，外面的白条（辐条 + 螺栓）全部去掉。
+        // 转动可见性改由五角星提供 —— 五角星的尖朝向不对称，转起来一样看得出来。
         float starR = Mathf.Min(hubR * 1.10f, radius * 0.46f);
-        {
-            float xFace = hx + rimW;
-            float spokeTh = 0.006f;   // 薄一点：太厚会自己给自己投影，轮面上出现一圈黑三角
-            for (int sgn = 0; sgn < 2; sgn++)
-            {
-                // 起点比轮缘外表面再凸 2 mm，否则和轮缘端盖共面 → z-fighting，辐条只剩一条头发丝
-                float xa = sgn == 0 ? -(xFace + spokeTh + 0.002f) : xFace + 0.002f;
-                float xb = sgn == 0 ? -(xFace + 0.002f) : xFace + spokeTh + 0.002f;
-                for (int k = 0; k < 5; k++)
-                {
-                    float ang = (float)k / 5f * Mathf.PI * 2f + 0.35f;
-                    float ca = Mathf.Cos(ang), sa = Mathf.Sin(ang);
-                    // 辐条：从五角星外沿到轮缘内沿的一条细条
-                    AddRadialBar(v, trMarks, xa, xb, starR * 1.12f, radius * 0.78f, radius * 0.09f, ca, sa);
-                    // 螺栓：落在轮缘端盖平面上（半径 0.66R），不要飘在空中
-                    float rb = radius * 0.66f;
-                    float xb0 = sgn == 0 ? xa : xb;
-                    AddStud(v, trMarks, xb0, sgn, ca * rb, sa * rb, radius * 0.075f, 0.006f, 10);
-                }
-            }
-        }
 
         // 轮心红色五角星（2026-11-02 用户要求）。
         // 贴在轮毂端盖平面上（比轮毂再凸 3 mm），半径略大于轮毂，正好把轮毂端面盖住。
