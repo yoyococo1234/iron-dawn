@@ -95,6 +95,11 @@ public class VehicleDef : ScriptableObject
     [Tooltip("程序化履带时整车抬高多少（米）。" +
              "车体原点只离地 3 cm，履带又长 6.8 m，稍微有点坡度履带两端就插进地里 —— 抬一点留余量")]
     public float trackGroundLift = 0.10f;
+    [Tooltip("程序化履带整体下沉多少（米）。" +
+             "车体模型剥掉自带履带以后，车体最低点（车底）比原来履带底面高一截，" +
+             "而程序化履带是按「底面 = 车体原点」生成的，会整体浮在车底那一层。" +
+             "把车底到履带底面的高度差填在这里，履带才落得回地面（主战 0，重装 0.948）")]
+    public float trackDrop = 0f;
     [Tooltip("车体模型里已经烘进去一块炮塔井补板（用 Blender 焊进 hull 网格了）。" +
              "勾上就不再在运行时生成方形补板，免得两层补丁打架")]
     public bool bakedTurretWell = false;

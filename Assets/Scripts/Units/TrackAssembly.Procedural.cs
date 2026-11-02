@@ -57,7 +57,10 @@ public partial class TrackAssembly
         int wheelN = def != null && def.trackRoadWheelCount > 0 ? def.trackRoadWheelCount : 5;
 
         // ---- 把履带总成归零：程序化生成不继承 AlignTracks 的缩放/位移 ----
-        transform.localPosition = Vector3.zero;
+        // 例外：trackDrop —— 车体剥掉自带履带后，车底比履带底面高一截（重装 0.948 m），
+        // 而这里的履带是按「底面 = 本节点原点」生成的，不下沉就会浮在车底那一层。
+        float drop = def != null ? Mathf.Max(0f, def.trackDrop) : 0f;
+        transform.localPosition = new Vector3(0f, -drop, 0f);
         transform.localRotation = Quaternion.identity;
         transform.localScale = Vector3.one;
 
