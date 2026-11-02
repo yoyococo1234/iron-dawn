@@ -152,6 +152,31 @@ public class DevTankShots : MonoBehaviour
     /// <summary>用反射把 TrackAssembly 的运行时数据读出来（不改生产代码）。</summary>
     static string Dump(Transform tank)
     {
+        var sbh = new StringBuilder();
+        {
+            // 贴地高度：车体原点 vs 地形高度，履带/车体的最低点
+            float ground = BattlefieldTerrain.SampleHeight(tank.position.x, tank.position.z);
+            sbh.AppendLine($"[height] rootY={tank.position.y:F3} terrainY={ground:F3} 离地={tank.position.y - ground:F3}");
+            var vp0 = tank.GetComponent<VehiclePhysics>();
+            if (vp0 != null) sbh.AppendLine($"[height] groundClearance={vp0.groundClearance:F3} modelSitsOnGround={vp0.modelSitsOnGround}");
+            foreach (var name in new[] { "Tracks", "Model" })
+            {
+                var t0 = tank.Find(name);
+                if (t0 == null) continue;
+                Bounds b = default; bool any = false;
+                foreach (var r in t0.GetComponentsInChildren<Renderer>())
+                {
+                    if (!r.enabled) continue;
+                    if (!any) { b = r.bounds; any = true; } else b.Encapsulate(r.bounds);
+                }
+                if (any) sbh.AppendLine($"[height] {name} 世界最低点={b.min.y:F3}（相对车体原点 {b.min.y - tank.position.y:F3}），最高={b.max.y:F3}");
+            }
+        }
+        return sbh.ToString() + DumpTrackAssembly(tank);
+    }
+
+    static string DumpTrackAssembly(Transform tank)
+    {
         var sb = new StringBuilder();
         var asm = tank.GetComponentInChildren<TrackAssembly>(true);
         if (asm == null) { sb.AppendLine("[dump] 找不到 TrackAssembly"); return sb.ToString(); }
