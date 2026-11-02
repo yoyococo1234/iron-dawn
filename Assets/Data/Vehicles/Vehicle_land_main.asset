@@ -35,23 +35,23 @@ MonoBehaviour:
   weapons:
   - {fileID: 11400000, guid: c7561de8dca93024e9541f725af12d13, type: 2}
   - {fileID: 11400000, guid: 17cb76d48be325641ba4a1b346291595, type: 2}
-  modelPrefab: {fileID: 919132149155446097, guid: 61c19a64a4e4a23409cc7cbcf38f1535, type: 3}
+  modelPrefab: {fileID: 919132149155446097, guid: b431235c1956d2f41851865d0fa54945, type: 3}
   modelMaterial: {fileID: 2100000, guid: 1579beaf8803a8448a457df137d18c84, type: 2}
   modelTurretPrefab: {fileID: 919132149155446097, guid: a90cc190f55e6c14b9cac4cd0f382530, type: 3}
   useSplitTurret: 1
-  modelTracksPrefab: {fileID: 0}
+  modelTracksPrefab: {fileID: 919132149155446097, guid: 21df1defe4dfc5f4a8f4632a3465aeb9, type: 3}
   modelTrackWellRef: {fileID: 0}
   modelTurretMaterial: {fileID: 2100000, guid: 8993ca90736db654fbd01635f1766202, type: 2}
   modelTracksMaterial: {fileID: 2100000, guid: e8dfe2c82d18f734889eefd1fa6cdbbe, type: 2}
   tracksTargetHeight: 0
-  proceduralTracks: 0
-  trackHalfSpan: 1.725
-  trackBandWidth: 0.55
-  trackLoopLength: 8.3
-  trackLoopHeight: 1.3
-  trackRoadWheelR: 0.42
+  proceduralTracks: 1
+  trackHalfSpan: 1.83
+  trackBandWidth: 0.56
+  trackLoopLength: 8.2
+  trackLoopHeight: 1.1
+  trackRoadWheelR: 0.4
   trackRoadWheelCount: 6
-  trackGroundLift: 0.4
+  trackGroundLift: 0
   bakedTurretWell: 1
   modelBarrelPrefab: {fileID: 0}
   modelBarrelPivot: {x: 0, y: 0, z: 0}
