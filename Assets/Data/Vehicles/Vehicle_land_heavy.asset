@@ -59,7 +59,7 @@ MonoBehaviour:
   modelTurretPivot: {x: 0, y: 3.66, z: -0.2}
   modelTurretMeshOrigin: {x: 0, y: 3.66, z: -0.2}
   autoTurretWellPatch: 0
-  autoTurretSkirt: 1
+  autoTurretSkirt: 0
   modelDeckGunPivot: {x: 0, y: 0, z: 0}
   turretBoneName: Turret
   muzzleBoneName: Muzzle
