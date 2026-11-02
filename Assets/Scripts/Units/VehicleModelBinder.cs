@@ -192,6 +192,10 @@ public static class VehicleModelBinder
         turret = lt;
         muzzle = lm;
         DropToGround(root, model.transform, null, lt, vp);
+
+        // 飞机：机头进气口的涡轮风扇（单网格模型里没有可旋转的叶片，只能程序生成）。
+        // DropToGround 已经把模型整体下移了 model.localPosition.y，风扇要跟着下移。
+        JetIntakeFan.Attach(root, def, vp, model.transform.localPosition.y);
         return true;
     }
 

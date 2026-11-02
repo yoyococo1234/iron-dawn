@@ -127,6 +127,13 @@ public class VehicleDef : ScriptableObject
     [Tooltip("模型缩放修正（1 = 原尺寸）")]
     public float modelScale = 1f;
 
+    [Header("机头进气口涡轮风扇（飞机用）")]
+    [Tooltip("每个风扇在**车体局部坐标**下的位置（米；Y 上、Z 前）。留空 = 不加风扇。" +
+             "Lux3D 出的飞机是单网格、进气口是个窟窿，叶片只能程序生成")]
+    public Vector3[] intakeFans;
+    [Tooltip("风扇半径（米）")]
+    public float intakeFanRadius = 0.5f;
+
     [Header("说明")]
     [TextArea(2, 4)]
     public string description = "";
