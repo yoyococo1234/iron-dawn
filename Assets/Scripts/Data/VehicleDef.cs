@@ -95,6 +95,9 @@ public class VehicleDef : ScriptableObject
     [Tooltip("程序化履带时整车抬高多少（米）。" +
              "车体原点只离地 3 cm，履带又长 6.8 m，稍微有点坡度履带两端就插进地里 —— 抬一点留余量")]
     public float trackGroundLift = 0.10f;
+    [Tooltip("车体模型里已经烘进去一块炮塔井补板（用 Blender 焊进 hull 网格了）。" +
+             "勾上就不再在运行时生成方形补板，免得两层补丁打架")]
+    public bool bakedTurretWell = false;
     [Tooltip("炮管模型（从炮塔上切出来的，单独做俯仰）。留空 = 炮塔整体不会抬炮")]
     public GameObject modelBarrelPrefab;
     [Tooltip("炮管转轴在炮塔局部坐标下的位置（炮盾中心）")]
