@@ -1,4 +1,4 @@
-using UnityEngine;
+﻿using UnityEngine;
 
 /// <summary>
 /// 载具物理：按 def.domain 分三种行为
@@ -154,7 +154,7 @@ public class VehiclePhysics : MonoBehaviour
         // 程序化履带：整车再抬一点。车体原点离地只有 3 cm，履带却长 6.8 m，
         // 稍微有点坡度履带两端就插进地面（2026-11-02 用户反馈）。
         // 注意必须放在这里而不是 VehicleFactory：VehiclePhysics.Start() 会再调一次 ApplyDef 把值覆盖掉。
-        if (modelSitsOnGround && def != null && def.proceduralTracks && def.trackGroundLift > 0.001f)
+        if (modelSitsOnGround && def != null && def.trackGroundLift > 0.001f)
             groundClearance = Mathf.Max(groundClearance, def.trackGroundLift);
     }
 
