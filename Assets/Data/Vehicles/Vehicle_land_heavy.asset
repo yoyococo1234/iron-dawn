@@ -37,7 +37,7 @@ MonoBehaviour:
   - {fileID: 11400000, guid: 17cb76d48be325641ba4a1b346291595, type: 2}
   modelPrefab: {fileID: 919132149155446097, guid: 0a72226bd4ef4994a9c856d80166ab82, type: 3}
   modelMaterial: {fileID: 2100000, guid: 1fe44da6879504544951ab6d5843091f, type: 2}
-  modelTurretPrefab: {fileID: 919132149155446097, guid: 8b648adfde04e3f49b5204b474f67419, type: 3}
+  modelTurretPrefab: {fileID: 919132149155446097, guid: 0f1f530951efc174ca26f25a5c581e2b, type: 3}
   useSplitTurret: 1
   modelTracksPrefab: {fileID: 919132149155446097, guid: df9f97766c8921541a8036089b1b8c66, type: 3}
   modelTrackWellRef: {fileID: 0}
@@ -54,10 +54,10 @@ MonoBehaviour:
   trackGroundLift: 0.948
   trackDrop: 0.948
   bakedTurretWell: 1
-  modelBarrelPrefab: {fileID: 919132149155446097, guid: 9af029344c72a304f823962b45b24648, type: 3}
-  modelBarrelPivot: {x: 0.104, y: 0.925, z: 2.154}
-  modelTurretPivot: {x: 0, y: 3.823, z: -0.2}
-  modelTurretMeshOrigin: {x: 0, y: 3.823, z: -0.2}
+  modelBarrelPrefab: {fileID: 919132149155446097, guid: ce37e7c2dc3c85e43803369fd9519bb2, type: 3}
+  modelBarrelPivot: {x: 0, y: 1.412, z: 2.059}
+  modelTurretPivot: {x: 0, y: 3.66, z: -0.2}
+  modelTurretMeshOrigin: {x: 0, y: 3.66, z: -0.2}
   autoTurretWellPatch: 0
   autoTurretSkirt: 1
   modelDeckGunPivot: {x: 0, y: 0, z: 0}
