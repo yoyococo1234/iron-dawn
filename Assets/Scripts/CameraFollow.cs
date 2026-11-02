@@ -152,6 +152,12 @@ public class CameraFollow : MonoBehaviour
             FreeLook = freeLookAir;
             FreeLookActive = freeLookAir;
 
+            // 滚轮调距离：飞机以前走不到下面那段滚轮代码，所以滚轮完全没反应。
+            // 追尾和环视都吃这个 distance。
+            float scrollAir = Input.GetAxis("Mouse ScrollWheel");
+            if (Mathf.Abs(scrollAir) > 0.0001f)
+                distance = Mathf.Clamp(distance - scrollAir * zoomSpeed, 10f, 70f);
+
             if (!freeLookAir)
             {
                 _wasFreeLook = false;
@@ -388,8 +394,8 @@ public class CameraFollow : MonoBehaviour
     {
         float dt = Time.unscaledDeltaTime;
 
-        // 环视距离按飞机尺寸走：战斗机 11 m 长，退 16 m 才看得全
-        float want = Mathf.Max(12f, distance);
+        // 环视距离用 distance（滚轮可调），下限 10 m 保证飞机 11 m 长也看得全
+        float want = Mathf.Max(10f, distance);
         _dist = Mathf.Lerp(_dist, want, 8f * dt);
 
         var cam = GetComponent<Camera>();
