@@ -1,4 +1,4 @@
-﻿using UnityEngine;
+using UnityEngine;
 
 /// <summary>
 /// 载具物理：按 def.domain 分三种行为
@@ -330,8 +330,12 @@ public class VehiclePhysics : MonoBehaviour
             airRoll = Mathf.Clamp(airRoll + rollIn * airRollRate * dt, -85f, 85f);
             if (Mathf.Abs(rollIn) < 0.05f) airRoll = Mathf.MoveTowards(airRoll, 0f, 45f * dt);
 
-            _airAimX = Mathf.Clamp(_airAimX + Input.GetAxis("Mouse X") * airMouseSensitivity, -1f, 1f);
-            _airAimY = Mathf.Clamp(_airAimY + Input.GetAxis("Mouse Y") * airMouseSensitivity, -1f, 1f);
+            // 按住 C 环视时，鼠标只转镜头 —— 不要再把飞机拐走（不然一边看一边侧翻）
+            if (!CameraFollow.FreeLookActive)
+            {
+                _airAimX = Mathf.Clamp(_airAimX + Input.GetAxis("Mouse X") * airMouseSensitivity, -1f, 1f);
+                _airAimY = Mathf.Clamp(_airAimY + Input.GetAxis("Mouse Y") * airMouseSensitivity, -1f, 1f);
+            }
             _airAimX = Mathf.MoveTowards(_airAimX, 0f, airRecenterSpeed * dt);
             _airAimY = Mathf.MoveTowards(_airAimY, 0f, airRecenterSpeed * dt);
 
