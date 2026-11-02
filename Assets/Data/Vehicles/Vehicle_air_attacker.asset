@@ -44,4 +44,8 @@ MonoBehaviour:
   muzzleBoneName: Muzzle
   modelYawOffset: 0
   modelScale: 1
+  intakeFans:
+  - {x: -1.7, y: 1.35, z: 2.15}
+  - {x: 1.7, y: 1.35, z: 2.15}
+  intakeFanRadius: 0.32
   description: "\u5BF9\u5730\u653B\u51FB\u673A\uFF1A\u673A\u70AE + \u53CD\u5766\u514B\u5BFC\u5F39"
