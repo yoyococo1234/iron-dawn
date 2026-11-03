@@ -226,14 +226,68 @@ public class MatchHUD : MonoBehaviour
             return;
         }
 
-        // 坦克：十字在**屏幕中心**（这是"准星"，炮塔会自己转过来对准它）。
-        // 战雷就是这个做法：准星是瞄准点，炮塔按 turretTurnSpeed 慢慢追 ——
-        // 追没追上从**炮塔模型**看得出来，不靠准星跑位。
-        // （以前准星压在车身上是因为镜头"盯着车看"；现在镜头抬高了，中心落在车前地面上。）
-        var w = new Color(1f, 1f, 1f, 0.75f);
-        Fill(new Rect(x - 16f, y - 1.5f, 32f, 3f), w);
-        Fill(new Rect(x - 1.5f, y - 16f, 3f, 32f), w);
+        // ---------- 陆战 / 海战：只画**炮塔准星** ----------
+        // 屏幕中心那个"人视角准星"不画（战雷里它也不是瞄准用的）。
+        // 画的是炮口真正指向的屏幕位置 —— 炮塔没转过来时它会停在画面边上，
+        // 并且变成箭头指方向；炮塔转过来之后它就回到画面中间。
+        var vpG = p != null && p.Physics != null ? p.Physics : null;
+        var camG = Camera.main;
+        if (vpG == null || camG == null) return;
+
+        Vector3 gunPoint = vpG.GetMuzzlePosition() + vpG.GetMuzzleForward() * 500f;
+        Vector3 local = camG.transform.InverseTransformPoint(gunPoint);   // z>0 = 在镜头前方
+
+        // 方向（屏幕坐标系：右 +x、上 +y）；在镜头背后时整体翻转，指回真实方向
+        Vector2 dirN = new Vector2(local.x, local.y);
+        if (local.z < 0f) dirN = -dirN;
+        if (dirN.sqrMagnitude < 1e-6f) dirN = Vector2.up;
+        dirN.Normalize();
+
+        float cx0 = _vw * 0.5f, cy0 = VH * 0.5f;
+        float halfW = _vw * 0.5f - 52f, halfH = VH * 0.5f - 52f;
+
+        // 先把真实位置投影出来，看是不是在画面内
+        Vector3 spG = camG.WorldToScreenPoint(gunPoint);
+        float gx = spG.x / _scale;
+        float gy = (Screen.height - spG.y) / _scale;
+        bool onScreen = spG.z > 0f && gx > 52f && gx < _vw - 52f && gy > 52f && gy < VH - 52f;
+
+        if (onScreen)
+        {
+            x = gx; y = gy;
+        }
+        else
+        {
+            // 炮口指向在画面外：贴到边缘，用箭头表示方向
+            float tEdge = Mathf.Min(halfW / Mathf.Max(0.001f, Mathf.Abs(dirN.x)),
+                                    halfH / Mathf.Max(0.001f, Mathf.Abs(dirN.y)));
+            x = cx0 + dirN.x * tEdge;
+            y = cy0 - dirN.y * tEdge;
+        }
+        var cTank = onScreen ? new Color(1f, 1f, 1f, 0.85f) : new Color(1f, 0.88f, 0.35f, 0.9f);
+
+        // 十字
+        Fill(new Rect(x - 16f, y - 1.5f, 32f, 3f), cTank);
+        Fill(new Rect(x - 1.5f, y - 16f, 3f, 32f), cTank);
         Fill(new Rect(x - 2f, y - 2f, 4f, 4f), new Color(1f, 0.32f, 0.26f, 0.95f));
+
+        if (!onScreen)
+        {
+            // 边缘箭头：指向炮口实际方向
+            Vector2 perp = new Vector2(-dirN.y, dirN.x);
+            float tipX = x + dirN.x * 16f, tipY = y - dirN.y * 16f;
+            float bx = x - dirN.x * 4f, by = y + dirN.y * 4f;
+            for (int i = 0; i < 10; i++)
+            {
+                float f = i / 10f;
+                float px = Mathf.Lerp(bx - perp.x * 10f, tipX, f);
+                float py = Mathf.Lerp(by - perp.y * 10f, tipY, f);
+                Fill(new Rect(px - 3f, py - 3f, 6f, 6f), cTank);
+                float qx = Mathf.Lerp(bx + perp.x * 10f, tipX, f);
+                float qy = Mathf.Lerp(by + perp.y * 10f, tipY, f);
+                Fill(new Rect(qx - 3f, qy - 3f, 6f, 6f), cTank);
+            }
+        }
     }
 
     // ---------------- 炮镜（Shift 按住，战雷那套圆形镜筒 + 十字分划） ----------------

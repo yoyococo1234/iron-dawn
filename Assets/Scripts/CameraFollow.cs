@@ -289,7 +289,7 @@ public class CameraFollow : MonoBehaviour
             // 以前这里用的是 yaw/pitch，理由是"跟炮管会形成 相机→炮塔→相机 的反馈"。
             // 其实不会：炮塔的目标角来自 camFollow.yaw（只由鼠标驱动），
             // 相机只是**读**炮口朝向、不回写，所以没有闭环。
-            Vector3 lookDir = vp != null && vp.muzzleBone != null
+            Vector3 lookDirS = vp != null && vp.muzzleBone != null
                 ? vp.GetMuzzleForward()
                 : Quaternion.Euler(pitch, yaw, 0f) * Vector3.forward;
 
@@ -310,7 +310,7 @@ public class CameraFollow : MonoBehaviour
                 }
             }
 
-            Vector3 back = new Vector3(lookDir.x, 0f, lookDir.z);
+            Vector3 back = new Vector3(lookDirS.x, 0f, lookDirS.z);
             back = back.sqrMagnitude > 0.0001f ? back.normalized : target.forward;
 
             // 后退距离按炮塔实际尺寸走：小船/坦克 1.5~2 m 刚好，18 m 的炮艇退 1.5 m 会贴到枪口上。
@@ -333,7 +333,7 @@ public class CameraFollow : MonoBehaviour
             camPos.y = turretTopY + 0.42f;
 
             // 防穿模：机位如果落在自己车体里，就往上抬；再检查前方 3 m 会不会被自己挡住。
-            camPos = LiftCameraOutOfSelf(camPos, lookDir, target);
+            camPos = LiftCameraOutOfSelf(camPos, lookDirS, target);
 
             float groundS = Mathf.Max(BattlefieldTerrain.SampleHeight(camPos.x, camPos.z), BattlefieldTerrain.WaterLevel) + 1.2f;
             if (camPos.y < groundS) camPos.y = groundS;
@@ -342,7 +342,7 @@ public class CameraFollow : MonoBehaviour
 
             // 看点必须从**实际的相机位置**沿 lookDir 推出去（不能用抬升前的 camPos）。
             // 用 camPos 的话，机位被地面/自身碰撞盒抬高之后，视线会比炮口歪两三度 —— 镜心就不是炮口了。
-            Vector3 lookAtS = transform.position + lookDir * 300f;
+            Vector3 lookAtS = transform.position + lookDirS * 300f;
             transform.rotation = Quaternion.Slerp(transform.rotation,
                 Quaternion.LookRotation(lookAtS - transform.position), 16f * Time.unscaledDeltaTime);
 
