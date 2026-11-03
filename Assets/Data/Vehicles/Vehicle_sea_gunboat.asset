@@ -58,8 +58,8 @@ MonoBehaviour:
   bakedTurretWell: 0
   modelBarrelPrefab: {fileID: 919132149155446097, guid: a45ef32faa270ab43a7cbe76c1bced42, type: 3}
   modelBarrelPivot: {x: 0, y: 0.857, z: 1.268}
-  modelTurretPivot: {x: -0.0081, y: 2.6709, z: 4.5543}
-  modelTurretMeshOrigin: {x: -0.0081, y: 2.6709, z: 4.5543}
+  modelTurretPivot: {x: -0.0081, y: 2.6709, z: 3.3}
+  modelTurretMeshOrigin: {x: -0.0081, y: 2.6709, z: 3.3}
   autoTurretWellPatch: 1
   autoTurretSkirt: 1
   modelDeckGunPivot: {x: 0, y: 0, z: 0}
