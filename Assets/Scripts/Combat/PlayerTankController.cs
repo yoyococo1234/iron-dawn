@@ -36,8 +36,6 @@ public class PlayerTankController : MonoBehaviour
         bool freeLook = Input.GetKey(KeyCode.C);
 
         Vector3 aimPoint;
-        var camFollowNow = _cam.GetComponent<CameraFollow>();
-        bool scoped = camFollowNow != null && camFollowNow.IsScoped;
         if (freeLook && _hasAim)
         {
             aimPoint = _lastAimPoint;
@@ -47,16 +45,9 @@ public class PlayerTankController : MonoBehaviour
             aimPoint = GetAimPoint();
             _lastAimPoint = aimPoint;
             _hasAim = true;
-
-            // 炮塔跟鼠标（受炮塔转速限制）
-            // **开镜时不走这条**：开镜的相机在炮塔后方 2~3.6 m、而且跟着炮口走，
-            // 用"相机中心射线"打点会产生视差 —— 炮塔追着这个视差转、相机又跟着炮塔转，
-            // 就变成"准星不动、炮塔自己往一边转"。开镜的瞄准完全交给下面的 AimDirect。
-            if (!scoped)
-            {
-                float turn0 = _combat.def != null ? _combat.def.turretTurnSpeed : 90f;
-                _combat.Physics.AimTurretAt(aimPoint, turn0);
-            }
+            // 这里**不再**调 AimTurretAt(aimPoint)：
+            // 瞄准点现在就是沿炮口方向取的，再"把炮塔朝这个点转"等于自己追自己，
+            // 会一点点把炮塔拧走。炮塔的朝向统一由下面的 AimDirect（只认鼠标）负责。
         }
 
         float turn = _combat.def != null ? _combat.def.turretTurnSpeed : 90f;
@@ -140,11 +131,11 @@ public class PlayerTankController : MonoBehaviour
             return AirAimAssist(basePoint, origin, dir, cone);
         }
 
-        // ---------- 开镜：瞄准点直接取**炮口方向** ----------
-        // 开镜时准星就是炮口，相机又挂在炮塔后方 —— 用相机射线会在近处物体上产生视差，
-        // 炮塔会被这个视差带着一直转。直接沿炮口推出去，和相机位置无关。
-        var cfScoped = _cam.GetComponent<CameraFollow>();
-        if (cfScoped != null && cfScoped.IsScoped && _combat.Physics != null)
+        // ---------- 陆战 / 海战：瞄准点沿**炮口方向** ----------
+        // HUD 画的准星就是炮口方向的屏幕投影（MatchHUD.DrawCrosshair），
+        // 所以弹也沿炮口飞 —— 准星在哪、弹就打在哪，炮塔没转过来时准星停在画面边上（箭头）。
+        // 不能再用"相机中心射线"：开镜时相机挂在炮塔后方会产生视差，炮塔会追着视差转。
+        if (_combat.Physics != null)
         {
             Vector3 mp = _combat.Physics.GetMuzzlePosition();
             Vector3 md = _combat.Physics.GetMuzzleForward();
