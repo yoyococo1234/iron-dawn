@@ -40,12 +40,18 @@ public class CameraFollow : MonoBehaviour
     public float zoomSensitivity = 0.3f;
 
     [Header("飞机追尾机位（抬高机位 + 视线压向地面，不开镜也能对地瞄准）")]
-    [Tooltip("跟机距离 = 按机身体积算出的距离 × 该值。越小飞机越大、地面越近")]
-    public float airDistanceFactor = 0.64f;
-    [Tooltip("机位抬高量 = 跟机距离 × 该值。0.52 ≈ 从斜上方俯看机背，飞机落在画面下方 2/3")]
-    public float airHeightFactor = 0.52f;
-    [Tooltip("视线相对水平压低多少度。视野 50° 时压 18° = 地平线落在画面上方 22% 处")]
+    [Tooltip("跟机距离 = 按机身体积算出的距离 × 该值")]
+    public float airDistanceFactor = 1.0f;
+    [Tooltip("机位抬高量 = 跟机距离 × 该值。0.5 ≈ 从斜上方俯看机背")]
+    public float airHeightFactor = 0.5f;
+    [Tooltip("视线相对机头压低多少度。平飞时视野 50° 压 18° = 地平线在画面上方 22%")]
     public float airLookDownDeg = 18f;
+    [Tooltip("跟机距离下限（米）。太近时飞机一抬头，机身会横满屏幕 —— 这是硬下限")]
+    public float airMinDistance = 17f;
+    [Tooltip("跟机距离上限（米）")]
+    public float airMaxDistance = 44f;
+    [Tooltip("镜头跟随飞机滚转的比例：1 = 完全跟随（压杆时地平线跟着斜），0 = 永远水平")]
+    [Range(0f, 1f)] public float airRollFollow = 0.85f;
 
     [Header("飞机开镜（按住右键或 Shift）")]
     [Tooltip("开镜后收窄到的视野角")]
@@ -387,9 +393,14 @@ public class CameraFollow : MonoBehaviour
     }
 
     /// <summary>
-    /// 飞机追尾视角：机位在机尾后上方，视线沿机头再往下压 ——
-    /// 这样地平线落在画面上方 1/4 左右，地面占满大半屏，不开镜也能对地瞄准。
-    /// 按住右键/Shift 开镜：视野收到 airZoomFov，机位略微拉近，角度不变（准星还是落在同一片地面上）。
+    /// 飞机追尾视角（战雷那套：镜头**跟随机身姿态**）。
+    ///
+    /// 关键点：机位和视线都建在飞机自己的坐标系里 ——
+    ///   · 飞机抬头，镜头跟着抬头，看到的是天空，不是"从上面俯视一架正在爬升的飞机"
+    ///   · 飞机滚转，地平线跟着倾斜（airRollFollow 控制跟多少）
+    ///   · 视线相对机头固定压低 airLookDownDeg，所以平飞时地面占大半屏、准星落在地面上
+    /// 距离有上下限（airMinDistance / airMaxDistance），滚轮拉到底也不会贴到机背上。
+    /// 按住右键/Shift 开镜：视野收到 airZoomFov，机位按 airZoomDistFactor 退远，飞机大小不变。
     /// </summary>
     void ChaseCamera()
     {
@@ -401,36 +412,36 @@ public class CameraFollow : MonoBehaviour
                                  Input.GetKey(KeyCode.LeftShift) || Input.GetKey(KeyCode.RightShift)))
                      || forceAirScopeForTest;
 
-        // 距离：开镜时拉近一点点，让目标占画面更大
-        float wantDist = Mathf.Max(6f, distance * ( _airScoped ? airZoomDistFactor : 1f));
+        // 距离：先在飞机自己的区间里夹一次，再叠加开镜倍数
+        float baseDist = Mathf.Clamp(distance * airDistanceFactor, airMinDistance, airMaxDistance);
+        float wantDist = Mathf.Clamp(baseDist * (_airScoped ? airZoomDistFactor : 1f),
+                                     airMinDistance, airMaxDistance * airZoomDistFactor);
         _dist = Mathf.Lerp(_dist, wantDist, 8f * dt);
 
         if (cam != null)
             cam.fieldOfView = Mathf.Lerp(cam.fieldOfView, _airScoped ? airZoomFov : normalFov, scopeSpeed * dt);
 
-        // 机位：机尾正后方 + 正上方。
-        // 用**水平方向**（把机头投影到地面）而不是机头本身 —— 飞机抬头/俯冲时机位不会跟着
-        // 甩到机背上方或机身下方，画面构图是稳定的，准星永远落在地面同一片区域。
+        // ---- 机位：在**飞机坐标系**里往后上方放 ----
+        // 用机头（含俯仰）而不是机头的水平投影：飞机爬升时机位跟着一起爬，
+        // 不会出现"镜头还在地面方向、飞机已经竖着往上飞"的怪画面。
         Vector3 back = target.forward;
-        Vector3 flat = new Vector3(back.x, 0f, back.z);
-        if (flat.sqrMagnitude < 0.0001f) flat = Vector3.forward;
-        flat.Normalize();
+        Vector3 upPlane = target.up;
 
-        var desired = target.position - flat * _dist + Vector3.up * (_dist * airHeightFactor);
+        var desired = target.position - back * _dist + upPlane * (_dist * airHeightFactor);
         float ground = Mathf.Max(BattlefieldTerrain.SampleHeight(desired.x, desired.z), BattlefieldTerrain.WaterLevel) + 2f;
         if (desired.y < ground) desired.y = ground;
 
         transform.position = Vector3.Lerp(transform.position, desired, 9f * dt);
 
-        // 视线：水平机头方向再压低 airLookDownDeg。
-        // 压低量按世界水平算（不是相对机头），所以地平线在画面里的高度是固定的：
-        // 视野 50° 时压 13.5° = 地平线落在画面上方 23% 处，地面占满大半屏。
-        Vector3 right = Vector3.Cross(Vector3.up, flat);
-        Vector3 lookDir = Quaternion.AngleAxis(airLookDownDeg, right.normalized) * flat;
+        // ---- 视线：机头方向再压低 airLookDownDeg（在飞机坐标系里压，所以跟着俯仰走）----
+        Vector3 lookDir = target.rotation * (Quaternion.AngleAxis(airLookDownDeg, Vector3.right) * Vector3.forward);
 
-        var lookAt = transform.position + lookDir * 200f;
-        transform.rotation = Quaternion.Slerp(transform.rotation,
-            Quaternion.LookRotation(lookAt - transform.position), 10f * dt);
+        // ---- 滚转跟随：airRollFollow = 1 完全跟随（地平线随滚转倾斜），0 = 永远水平 ----
+        Vector3 camUp = Vector3.Slerp(Vector3.up, upPlane, Mathf.Clamp01(airRollFollow));
+        if (camUp.sqrMagnitude < 0.0001f) camUp = Vector3.up;
+
+        var wantRot = Quaternion.LookRotation(lookDir, camUp);
+        transform.rotation = Quaternion.Slerp(transform.rotation, wantRot, 10f * dt);
 
         if (_shakeAmount > 0.001f)
         {
