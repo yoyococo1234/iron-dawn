@@ -12,6 +12,8 @@ CC-BY 的条目**必须在报告书/游戏内标注作者**，下面这份就是
 | `Resources/Audio/hit_metal.wav` | clank1（Mechanical Sounds） | BMacZero | CC0 | https://opengameart.org/content/mechanical-sounds |
 | `Resources/Audio/hit_heavy.wav` | Cannon hit | Thimras | CC0 | https://opengameart.org/content/cannon-hit |
 | `Resources/Audio/track_loop.wav` | **从视频音轨抠取**：M-1 Tank: Close up of Treads Rolling（22.5–27.5 s） | YouTube 上传者 | ⚠ **非 CC 授权，风险项** | https://www.youtube.com/watch?v=_bSJpWYUg-s |
+| `Resources/Audio/engine_loop_jet.wav` | 战斗机引擎：① Jet Constant Noise ② Constant Jet Noise - Interior（两条混合） | craigsmith | **CC0** | ① https://freesound.org/people/craigsmith/sounds/437888/ ② https://freesound.org/people/craigsmith/sounds/437923/ |
+| `Resources/Audio/engine_loop_prop.wav` | 攻击机引擎：G06-18_C-47 2 Engine Prop Idle | craigsmith | **CC0** | https://freesound.org/people/craigsmith/sounds/437838/ |
 
 ## 加工说明
 

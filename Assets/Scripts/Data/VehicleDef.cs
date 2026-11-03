@@ -12,6 +12,11 @@ public class VehicleDef : ScriptableObject
     public string displayName = "主战坦克";
     public Domain domain = Domain.Land;
 
+    [Tooltip("发动机循环音片段名（Assets/Resources/Audio/<名字>.wav）。" +
+             "留空 = 按域自动选：陆/海用 engine_loop，空用 engine_loop_jet。" +
+             "螺旋桨飞机填 engine_loop_prop")]
+    public string engineLoopName = "";
+
     [Header("经济")]
     [Tooltip("购买价（换车时按 1.15^换车次数 涨价）")]
     public int price = 200;

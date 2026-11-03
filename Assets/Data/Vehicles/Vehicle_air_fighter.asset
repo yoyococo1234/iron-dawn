@@ -15,6 +15,7 @@ MonoBehaviour:
   id: air_fighter
   displayName: "\u6218\u6597\u673A"
   domain: 2
+  engineLoopName: engine_loop_jet
   price: 160
   respawnBaseCost: 80
   maxHp: 300

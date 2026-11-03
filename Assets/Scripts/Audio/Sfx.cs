@@ -11,7 +11,9 @@ using UnityEngine;
 public static class Sfx
 {
     // 片段名（对应 Assets/Resources/Audio/<name>.wav）
-    public const string EngineLoop = "engine_loop";
+    public const string EngineLoop = "engine_loop";            // 陆战车（柴油机）
+    public const string EngineLoopJet = "engine_loop_jet";     // 喷气机（涡轮啸叫）
+    public const string EngineLoopProp = "engine_loop_prop";   // 螺旋桨机（转桨轰鸣）
     public const string TrackLoop = "track_loop";
     public const string CannonFire = "cannon_fire";
     public const string MgFire = "mg_fire";
