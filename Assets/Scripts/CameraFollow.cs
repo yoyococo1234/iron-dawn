@@ -28,11 +28,12 @@ public class CameraFollow : MonoBehaviour
     public float followLerp = 10f;
     public float lookHeight = 2.2f;
 
-    [Header("陆/海机位（和飞机同一个思路：车后上方 + 视线压低）")]
+    [Header("陆/海机位（镜头抬高，准星在屏幕中心，炮塔自己转过来对准它）")]
     [Tooltip("机位抬高量 = 跟车距离 × 该值。越大越俯视，车身在画面里越靠下")]
-    public float tankHeightFactor = 0.32f;
-    [Tooltip("视线相对水平压低多少度。压低后车身落到画面下方，炮口准星升到中上部")]
-    public float tankLookDownDeg = 10f;
+    public float tankHeightFactor = 0.37f;
+    [Tooltip("视线相对水平压低多少度。压低后车身落到画面下方；炮管会跟着压到这个角度，" +
+             "所以别超过炮管的 maxDepression（默认 8°），否则瞄不到准星")]
+    public float tankLookDownDeg = 7f;
 
     [Header("右键：轻微放大（不换视角）")]
     [Tooltip("按住右键时把视野收窄到这个角度（比 normalFov 小一点即可）")]

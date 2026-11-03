@@ -226,23 +226,10 @@ public class MatchHUD : MonoBehaviour
             return;
         }
 
-        // 坦克：十字画在**炮口指向**的屏幕投影上（不是屏幕中心）。
-        // 第三人称镜头围着车看车，屏幕中心其实落在车身上 —— 准星压在炮塔上什么也说明不了。
-        var vpG = p != null && p.Physics != null ? p.Physics : null;
-        if (vpG != null)
-        {
-            var camG = Camera.main;
-            if (camG == null) return;
-            Vector3 gp = vpG.GetMuzzlePosition();
-            Vector3 gd = vpG.GetMuzzleForward();
-            Vector3 gsp = camG.WorldToScreenPoint(gp + gd * 500f);
-            if (gsp.z > 0f)
-            {
-                x = Mathf.Clamp(gsp.x / _scale, 48f, _vw - 48f);
-                y = Mathf.Clamp((Screen.height - gsp.y) / _scale, 48f, VH - 48f);
-            }
-        }
-
+        // 坦克：十字在**屏幕中心**（这是"准星"，炮塔会自己转过来对准它）。
+        // 战雷就是这个做法：准星是瞄准点，炮塔按 turretTurnSpeed 慢慢追 ——
+        // 追没追上从**炮塔模型**看得出来，不靠准星跑位。
+        // （以前准星压在车身上是因为镜头"盯着车看"；现在镜头抬高了，中心落在车前地面上。）
         var w = new Color(1f, 1f, 1f, 0.75f);
         Fill(new Rect(x - 16f, y - 1.5f, 32f, 3f), w);
         Fill(new Rect(x - 1.5f, y - 16f, 3f, 32f), w);
