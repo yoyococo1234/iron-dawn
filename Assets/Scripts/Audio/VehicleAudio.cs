@@ -35,12 +35,25 @@ public class VehicleAudio : MonoBehaviour
         float topPitch = maxPitch;
         float range = fullSpeed;
 
+        // 先决定用哪条循环音：每台车可以单独指定（VehicleDef.engineLoopName），
+        // 留空就按域给默认——陆/海用柴油机那条，空用喷气那条。
+        string loopName = Sfx.EngineLoop;
+        if (def != null)
+        {
+            if (!string.IsNullOrEmpty(def.engineLoopName)) loopName = def.engineLoopName;
+            else if (def.domain == Domain.Air) loopName = Sfx.EngineLoopJet;
+        }
+        bool isProp = loopName == Sfx.EngineLoopProp;
+
         if (def != null)
         {
             switch (def.domain)
             {
                 case Domain.Air:
-                    basePitch = 0.95f; topPitch = 1.7f; range = 60f;
+                    // 螺旋桨：转速范围窄、音高变化小，靠"转速感"而不是变调
+                    if (isProp) { basePitch = 0.82f; topPitch = 1.30f; range = 45f; }
+                    // 喷气：涡轮本来就是稳态高频，变调大了会像电机，只给一点点
+                    else { basePitch = 1.00f; topPitch = 1.16f; range = 60f; }
                     break;
                 case Domain.Sea:
                     basePitch = 0.65f; topPitch = 1.15f; range = 16f;
@@ -51,9 +64,10 @@ public class VehicleAudio : MonoBehaviour
             }
         }
 
+        _basePitch = basePitch;
         _pitch = basePitch;
         _vol = idleVolume;
-        _engine = Sfx.CreateLoop(Sfx.EngineLoop, transform, _vol, _pitch, 14f, 450f);
+        _engine = Sfx.CreateLoop(loopName, transform, _vol, _pitch, 14f, 450f);
         if (_engine != null)
         {
             _engine.pitch = basePitch;
@@ -80,6 +94,7 @@ public class VehicleAudio : MonoBehaviour
 
     float _fullPitch = 1.45f;
     float _fullRange = 14f;
+    float _basePitch = 0.80f;
 
     void Update()
     {
@@ -88,7 +103,7 @@ public class VehicleAudio : MonoBehaviour
         float v = _phys != null ? Mathf.Abs(_phys.speed) : 0f;
         float t = Mathf.Clamp01(v / _fullRange);
 
-        float targetPitch = Mathf.Lerp(idlePitch, _fullPitch, Mathf.Pow(t, 0.7f));
+        float targetPitch = Mathf.Lerp(_basePitch, _fullPitch, Mathf.Pow(t, 0.7f));
         float targetVol = Mathf.Lerp(idleVolume, maxVolume, Mathf.Pow(t, 0.5f));
 
         _pitch = Mathf.Lerp(_pitch, targetPitch, Time.deltaTime * 4f);

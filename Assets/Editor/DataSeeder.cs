@@ -81,6 +81,8 @@ public static class DataSeeder
             TerrainType.Air, 80, "制空战斗机：机炮 + 空空导弹", gun20, misAa);
         // Lux3D 的飞机模型机头朝 -Z（其余载具朝 +Z）—— 转 180° 正过来，否则看着像倒着飞
         fighter.modelYawOffset = 180f;
+        // 喷气机用涡轮啸叫那条循环音（不是坦克柴油机）
+        fighter.engineLoopName = Sfx.EngineLoopJet;
         EditorUtility.SetDirty(fighter);
 
         var attacker = Vehicle("air_attacker", "攻击机", Domain.Air, 200, 450, ArmorMode.Uniform,
@@ -89,6 +91,8 @@ public static class DataSeeder
             TerrainType.Air, 85, "对地攻击机：机炮 + 反坦克导弹", gun20, misAt);
         // 攻击机模型机头本来就朝 +Z，不需要转（战斗机才需要 180）
         attacker.modelYawOffset = 0f;
+        // 攻击机走螺旋桨那条（和战斗机音色拉开，一听就能分清是哪架）
+        attacker.engineLoopName = Sfx.EngineLoopProp;
         EditorUtility.SetDirty(attacker);
 
         // ---------- 对局与经济 ----------
