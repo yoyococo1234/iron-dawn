@@ -43,7 +43,7 @@ public static class DataSeeder
         var gun130 = Weapon("gun_130",  "130mm 重炮",  420f, 6.0f,  900f,  950f, Domain.Land, ap, heat);
         var mg12   = Weapon("mg_12",    "12mm 机枪",    25f, 0.12f, 400f,  850f, Domain.Land, ap);
         var naval  = Weapon("naval_gun","舰炮",        260f, 5.0f, 1200f,  800f, Domain.Sea,  he, heat);
-        var torpL  = Weapon("torpedo_launcher", "鱼雷管", 850f, 12f, 500f, 40f, Domain.Sea,  torp);
+        var torpL  = Weapon("torpedo_launcher", "鱼雷管", 850f, 9f, 500f, 50f, Domain.Sea,  torp);
         var gun20  = Weapon("gun_20",   "20mm 机炮",    60f, 0.15f, 800f, 1050f, Domain.Air,  cannon, aa);
         var misAt  = Weapon("missile_at","反坦克导弹", 520f, 7.0f, 1400f, 320f, Domain.Air,  missileAt);
         var misAa  = Weapon("missile_aa","空空导弹",   380f, 5.0f, 1600f, 480f, Domain.Air,  missileAa);
@@ -53,25 +53,25 @@ public static class DataSeeder
         // 参数顺序：id, 名, 域, 价, 血, 装甲模式, 正/侧/背, 统一, 速度, 转向, 炮塔转速,
         //           功率kW, 质量t, 硬地阻力, 软地阻力, 涉水深度, 通行, 复活基础, 说明, 武器
         Vehicle("land_light", "轻坦", Domain.Land, 160, 800, ArmorMode.Directional,
-            0.95f, 1.10f, 1.30f, 0f, 18f, 90f, 120f,
+            0.95f, 1.10f, 1.30f, 0f, 18f, 90f, 60f,
             320f, 15f, 0.8f, 1.6f, 1.0f,
             TerrainType.Land | TerrainType.ShallowWater, 80, "快、皮薄，能爬 35° 陡坡", gun75, mg12);
 
         Vehicle("land_main", "主战坦克", Domain.Land, 200, 1200, ArmorMode.Directional,
-            0.70f, 0.90f, 1.10f, 0f, 12f, 60f, 80f,
+            0.70f, 0.90f, 1.10f, 0f, 12f, 60f, 45f,
             750f, 45f, 0.9f, 1.8f, 1.2f,
             TerrainType.Land | TerrainType.ShallowWater, 80, "均衡，能爬 29°", gun120, mg12);
 
         var heavy = Vehicle("land_heavy", "重装坦克", Domain.Land, 220, 1600, ArmorMode.Directional,
-            0.60f, 0.80f, 1.05f, 0f, 8f, 40f, 50f,
+            0.60f, 0.80f, 1.05f, 0f, 8f, 40f, 30f,
             800f, 65f, 1.0f, 2.0f, 1.4f,
             TerrainType.Land | TerrainType.ShallowWater, 90, "正面极硬，只能爬 22°", gun130, mg12);
         // Lux3D 出的重装坦克长轴沿 +X，其余 5 台沿 +Z —— 这里转正
         heavy.modelYawOffset = 90f;
         EditorUtility.SetDirty(heavy);
 
-        Vehicle("sea_gunboat", "炮艇", Domain.Sea, 180, 1000, ArmorMode.Directional,
-            0.85f, 1.00f, 1.15f, 0f, 22f, 70f, 100f,
+        Vehicle("sea_gunboat", "炮艇", Domain.Sea, 180, 1400, ArmorMode.Directional,
+            0.85f, 1.00f, 1.15f, 0f, 24f, 70f, 50f,
             1200f, 40f, 1.2f, 1.2f, 0.8f,
             TerrainType.ShallowWater | TerrainType.DeepWater, 80, "海上霸主，吃水 0.8m", naval, torpL);
 

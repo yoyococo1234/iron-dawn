@@ -15,9 +15,9 @@ MonoBehaviour:
   id: torpedo_launcher
   displayName: "\u9C7C\u96F7\u7BA1"
   baseDamage: 850
-  reloadTime: 12
+  reloadTime: 9
   range: 600
-  projectileSpeed: 40
+  projectileSpeed: 50
   ammoTypes:
   - {fileID: 11400000, guid: 967c7ef39e396c147b8aee16c3a5e35e, type: 2}
   mountedDomain: 1

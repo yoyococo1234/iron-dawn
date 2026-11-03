@@ -168,6 +168,18 @@ public class VehiclePhysics : MonoBehaviour
             case Domain.Air: UpdateAir(); break;
             default: UpdateLand(); break;
         }
+
+        // ---------- 硬保证：任何载具都不允许低于地形 ----------
+        // 海战最典型：船搁浅后 y 还锁在水面高度，而沙滩比水面高 1~2 m，
+        // 结果整条船埋进沙面以下，只剩栏杆露出来（用户截图里那根"小尖尖"）。
+        // 这里统一兜底，不管哪个域、哪段逻辑把车弄到地下，都在这一帧拽回来。
+        if (def.domain != Domain.Air)
+        {
+            var p = transform.position;
+            float floorY = GroundY(p.x, p.z) + (def.domain == Domain.Sea ? 0.35f : 0.05f);
+            if (p.y < floorY)
+                transform.position = new Vector3(p.x, floorY, p.z);
+        }
     }
 
     // ==================== 陆 ====================
@@ -266,9 +278,30 @@ public class VehiclePhysics : MonoBehaviour
         {
             stateText = "搁浅";
             speed = Mathf.MoveTowards(speed, 0f, brakeDecel * Time.deltaTime);
-            // 允许倒车脱离
+
+            // ---------- 沿"更深"的方向滑回水里 ----------
+            // 抄的是 World of Warships 12.3 的做法：船碰到浅水不是卡死，而是"滑"。
+            // 采样周围 8 个方向的水深，朝最深的那边走；搁浅越深推得越快。
+            Vector3 slideDir = DeeperDirection(pos, 7f, out float slideDepth);
+            if (slideDepth > waterDepth + 0.05f)
+            {
+                float howStuck = Mathf.Clamp01((wadeDepth - waterDepth) / Mathf.Max(0.25f, wadeDepth));
+                float push = Mathf.Lerp(0.8f, 3.2f, howStuck);
+                transform.position += slideDir * push * Time.deltaTime;
+
+                // 滑的时候船头慢慢转向深水，免得"横着蹭"看着别扭
+                if (slideDir.sqrMagnitude > 0.01f)
+                {
+                    float wantYaw = Mathf.Atan2(slideDir.x, slideDir.z) * Mathf.Rad2Deg;
+                    float curYaw = transform.eulerAngles.y;
+                    float newYaw = Mathf.MoveTowardsAngle(curYaw, wantYaw, 35f * Time.deltaTime);
+                    transform.rotation = Quaternion.Euler(0f, newYaw, 0f);
+                }
+            }
+
+            // 倒车给满速（原来只有 40%，玩家经常退不出来）
             if (throttle < 0f)
-                speed = Mathf.MoveTowards(speed, throttle * def.speed * 0.4f, acceleration * Time.deltaTime);
+                speed = Mathf.MoveTowards(speed, throttle * def.speed, acceleration * Time.deltaTime);
         }
         else
         {
@@ -283,10 +316,14 @@ public class VehiclePhysics : MonoBehaviour
         transform.position += transform.forward * speed * Time.deltaTime;
         ClampToBounds();
 
-        // 浮在水面 + 轻微摇晃
+        // 浮在水面 + 轻微摇晃。
+        // 注意要跟地形取 max：搁浅时船得"坐在沙面上"，不能钉在水面高度 ——
+        // 否则地形一高就把整条船埋进沙里（只剩栏杆露出来）。
         pos = transform.position;
         float bob = Mathf.Sin(Time.time * 1.6f + transform.position.x * 0.3f) * 0.12f;
-        pos.y = Mathf.Lerp(pos.y, WaterLevel + 0.25f + bob, 6f * Time.deltaTime);
+        float waterY = Mathf.Lerp(pos.y, WaterLevel + 0.25f + bob, 6f * Time.deltaTime);
+        float floorY = GroundY(pos.x, pos.z) + 0.35f;
+        pos.y = Mathf.Max(waterY, floorY);
         transform.position = pos;
 
         float yaw = transform.eulerAngles.y;
@@ -294,6 +331,29 @@ public class VehiclePhysics : MonoBehaviour
         float pitch = Mathf.Cos(Time.time * 1.5f) * 1.5f;
         transform.rotation = Quaternion.Slerp(transform.rotation,
             Quaternion.Euler(pitch, yaw, roll), 3f * Time.deltaTime);
+    }
+
+    /// <summary>
+    /// 采样周围 8 个方向的水深，返回"最深"的那个方向（水平单位向量）和那个方向的水深。
+    /// 搁浅时用它决定往哪边滑；都不比脚下深就返回零向量（说明四面都是浅滩，滑不动）。
+    /// </summary>
+    Vector3 DeeperDirection(Vector3 pos, float radius, out float bestDepth)
+    {
+        bestDepth = WaterDepthAt(pos.x, pos.z);
+        Vector3 best = Vector3.zero;
+        for (int i = 0; i < 8; i++)
+        {
+            float a = i * Mathf.PI * 0.25f;
+            float x = pos.x + Mathf.Sin(a) * radius;
+            float z = pos.z + Mathf.Cos(a) * radius;
+            float d = WaterDepthAt(x, z);
+            if (d > bestDepth + 0.02f)
+            {
+                bestDepth = d;
+                best = new Vector3(Mathf.Sin(a), 0f, Mathf.Cos(a));
+            }
+        }
+        return best;
     }
 
     // ==================== 空 ====================

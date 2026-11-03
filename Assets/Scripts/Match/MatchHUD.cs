@@ -158,6 +158,15 @@ public class MatchHUD : MonoBehaviour
         Fill(new Rect(rlBar.x, rlBar.y, rlBar.width * Mathf.Clamp01(p.ReloadProgress), rlBar.height), CGold);
 
         Text(new Rect(x + w - 230f, y + 64f, 210f, 24f), "Q 切武器 · 右键瞄准 · Shift 拉近", _s18, new Color(1f, 1f, 1f, 0.55f), TextAnchor.MiddleRight);
+
+        // 炮艇：显示还剩几发干扰弹
+        if (def != null && def.domain == Domain.Sea)
+        {
+            var pc = p.GetComponent<PlayerTankController>();
+            int n = pc != null ? pc.DecoyCharges : 0;
+            Text(new Rect(x + w - 230f, y + 92f, 210f, 22f), $"干扰弹 ×{n}　X 释放", _s18,
+                 n > 0 ? CGold : new Color(1f, 1f, 1f, 0.35f), TextAnchor.MiddleRight);
+        }
     }
 
     // ---------------- 右上：击杀提示 ----------------

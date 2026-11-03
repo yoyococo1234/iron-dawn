@@ -98,6 +98,50 @@ public class PlayerTankController : MonoBehaviour
             for (int i = 0; i < Mathf.Min(3, w.ammoTypes.Length); i++)
                 if (Input.GetKeyDown(KeyCode.Alpha1 + i)) _combat.ammoIndex = i;
         }
+
+        // X = 放干扰弹（只有炮艇有）：骗走追过来的鱼雷
+        TickDecoy();
+    }
+
+    // ---------------- 干扰弹 ----------------
+
+    [Header("干扰弹（炮艇专用）")]
+    [Tooltip("一共带几发")]
+    public int decoyCharges = 3;
+    [Tooltip("两发之间的冷却（秒）")]
+    public float decoyCooldown = 12f;
+    [Tooltip("诱饵的吸引半径（米）")]
+    public float decoyRadius = 130f;
+    [Tooltip("诱饵存活时间（秒）")]
+    public float decoyLife = 18f;
+
+    /// <summary>当前还剩几发（HUD 显示用）。</summary>
+    public int DecoyCharges => decoyCharges;
+    float _decoyReadyAt;
+    bool _decoyInited;
+
+    void TickDecoy()
+    {
+        if (!_decoyInited)
+        {
+            // 换车后重新装满
+            _decoyInited = true;
+            decoyCharges = Mathf.Max(decoyCharges, 3);
+        }
+
+        bool sea = _combat != null && _combat.Def != null && _combat.Def.domain == Domain.Sea;
+        if (!sea) return;
+        if (!Input.GetKeyDown(KeyCode.X)) return;
+        if (decoyCharges <= 0) return;
+        if (Time.time < _decoyReadyAt) return;
+
+        decoyCharges--;
+        _decoyReadyAt = Time.time + decoyCooldown;
+
+        // 放在船尾后面一点：往前丢的话自己会先撞上自己的诱饵
+        Vector3 pos = _combat.transform.position - _combat.transform.forward * 6f;
+        Decoy.Deploy(pos, BattlefieldTerrain.WaterLevel, decoyRadius, decoyLife);
+        Sfx.PlayAt(Sfx.MgFire, pos, 0.5f, 1.6f, 20f, 300f);   // 先拿机炮声顶一下，后面再换专门音效
     }
 
     /// <summary>

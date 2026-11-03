@@ -17,15 +17,15 @@ MonoBehaviour:
   domain: 1
   price: 180
   respawnBaseCost: 80
-  maxHp: 1000
+  maxHp: 1400
   armorMode: 0
   armorFront: 0.85
   armorSide: 1
   armorRear: 1.15
   uniformMultiplier: 0
-  speed: 22
+  speed: 24
   turnSpeed: 70
-  turretTurnSpeed: 90
+  turretTurnSpeed: 50
   enginePower: 1200
   mass: 40
   resistanceHard: 1.2

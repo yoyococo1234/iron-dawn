@@ -1,10 +1,12 @@
 using UnityEngine;
 
 /// <summary>
-/// 鱼雷：**水下**定深直航的慢速弹（40 m/s，炮弹是 800 m/s）。
+/// 鱼雷：**水下**定深航行的慢速弹（50 m/s，炮弹是 800 m/s）。
 ///
 /// 和 Projectile 的区别：
-///   · 不吃重力 —— 入水后保持固定深度水平直航，不会掉到海床上
+///   · 不吃重力 —— 入水后保持固定深度水平航行，不会掉到海床上
+///   · **会制导** —— 出管一段距离后锁定附近敌方舰艇，按 homingTurnRate 转向追过去；
+///     场上只要有干扰弹（Decoy）进了吸引半径，就改追干扰弹（被骗走）
 ///   · 有水面航迹 —— 白色气泡尾迹 + 水面泡沫条，远远能看见一条线冲过来
 ///   · 只打水里的东西 —— 撞到岸/浅滩就自毁
 ///
@@ -16,6 +18,14 @@ public class Torpedo : MonoBehaviour
     public float diveTime = 0.35f;
     /// <summary>命中判定半径（米）。</summary>
     public float hitRadius = 0.9f;
+
+    // ---- 制导参数 ----
+    /// <summary>转向速度（度/秒）。50 m/s 下 45°/s ≈ 64 m 转弯半径，追得上但不会瞬间拐弯。</summary>
+    public float homingTurnRate = 45f;
+    /// <summary>开始制导前的直线距离（米）——刚出管就拐弯会像被拽着走。</summary>
+    public float homingArmDistance = 25f;
+    /// <summary>搜索目标的锥角（度）：只锁定正前方这个锥里的敌舰。</summary>
+    public float seekConeDeg = 55f;
 
     Vector3 _dir;
     float _speed;
@@ -32,6 +42,8 @@ public class Torpedo : MonoBehaviour
 
     AmmoDef _ammo;
     VehicleCombat _owner;
+    VehicleCombat _target;
+    Decoy _decoy;
 
     TrailRenderer _trail;
 
@@ -117,6 +129,55 @@ public class Torpedo : MonoBehaviour
             transform.position = new Vector3(transform.position.x, targetY, transform.position.z);
         }
 
+        // ---------- 制导：先看有没有干扰弹，再找敌舰 ----------
+        if (_travelled > homingArmDistance)
+        {
+            Vector3 aim = Vector3.zero;
+            bool hasAim = false;
+
+            float decDist;
+            var dec = Decoy.Nearest(transform.position, out decDist);
+            if (dec != null)
+            {
+                // 诱饵优先：鱼雷被骗走，掉头追它
+                _decoy = dec;
+                _target = null;
+                aim = dec.transform.position;
+                hasAim = true;
+            }
+            else
+            {
+                if (_target == null || !_target.Alive) _target = AcquireTarget();
+                if (_target != null)
+                {
+                    aim = _target.transform.position;
+                    hasAim = true;
+                }
+            }
+
+            if (hasAim)
+            {
+                Vector3 to = aim - transform.position;
+                to.y = 0f;
+                if (to.sqrMagnitude > 0.04f)
+                {
+                    // 追到诱饵头上就算被骗掉：诱饵没有碰撞体，不判定的话鱼雷会绕着它转圈
+                    if (_decoy != null && to.magnitude < 5f)
+                    {
+                        LastKillReason = "decoyed";
+                        Explode(false);
+                        return;
+                    }
+
+                    Vector3 want = to.normalized;
+                    _dir = Vector3.RotateTowards(_dir, want, homingTurnRate * Mathf.Deg2Rad * dt, 0f);
+                    _dir.y = 0f;
+                    if (_dir.sqrMagnitude > 0.0001f) _dir.Normalize();
+                    transform.rotation = Quaternion.LookRotation(_dir);
+                }
+            }
+        }
+
         // ---------- 前进 + 扫掠命中 ----------
         Vector3 stepVec = _dir * _speed * dt;
         float step = Mathf.Min(stepVec.magnitude, 3f);      // 硬上限：任何情况下单帧不超过 3 m
@@ -178,6 +239,38 @@ public class Torpedo : MonoBehaviour
             Explode(false);
             return;
         }
+    }
+
+    /// <summary>
+    /// 找一个可以锁的敌舰：敌方阵营、还活着、在海面上、在射程内、并且落在正前方的搜索锥里。
+    /// 已经锁上的目标不重新挑（否则两艘船一交错就会来回改主意，鱼雷走成 S 形）。
+    /// </summary>
+    VehicleCombat AcquireTarget()
+    {
+        if (_owner == null) return null;
+
+        VehicleCombat best = null;
+        float bestScore = float.MaxValue;
+        var all = Object.FindObjectsByType<VehicleCombat>(FindObjectsSortMode.None);
+        foreach (var vc in all)
+        {
+            if (vc == null || vc == _owner || !vc.Alive) continue;
+            if (vc.team == _owner.team) continue;
+            if (vc.Def == null || vc.Def.domain != Domain.Sea) continue;
+
+            Vector3 to = vc.transform.position - transform.position;
+            to.y = 0f;
+            float dist = to.magnitude;
+            if (dist > _range || dist < 3f) continue;
+
+            float ang = Vector3.Angle(_dir, to);
+            if (ang > seekConeDeg) continue;
+
+            // 角度优先、同角度取近的
+            float score = ang * 4f + dist * 0.02f;
+            if (score < bestScore) { bestScore = score; best = vc; }
+        }
+        return best;
     }
 
     void SpawnFoam()

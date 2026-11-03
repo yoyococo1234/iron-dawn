@@ -25,7 +25,7 @@ MonoBehaviour:
   uniformMultiplier: 0
   speed: 18
   turnSpeed: 90
-  turretTurnSpeed: 120
+  turretTurnSpeed: 60
   enginePower: 320
   mass: 15
   resistanceHard: 0.8
