@@ -281,9 +281,16 @@ public class CameraFollow : MonoBehaviour
         {
             var vp = target.GetComponent<VehiclePhysics>();
 
-            // 视线方向 = 玩家自己的 yaw/pitch（**不跟炮管**）。
-            // 跟炮管的话，相机→炮塔→相机 会形成反馈，放大后炮塔会自己往左右漂。
-            Vector3 lookDir = Quaternion.Euler(pitch, yaw, 0f) * Vector3.forward;
+            // 视线方向 = **炮口真实朝向**，不是鼠标的 yaw/pitch。
+            // 炮塔转速有限（turretTurnSpeed），所以开镜后视野是跟着炮塔慢慢转过去的 ——
+            // 准星永远在炮口指的方向上，这就是"十字跟着炮塔转"（战雷那套）。
+            //
+            // 以前这里用的是 yaw/pitch，理由是"跟炮管会形成 相机→炮塔→相机 的反馈"。
+            // 其实不会：炮塔的目标角来自 camFollow.yaw（只由鼠标驱动），
+            // 相机只是**读**炮口朝向、不回写，所以没有闭环。
+            Vector3 lookDir = vp != null && vp.muzzleBone != null
+                ? vp.GetMuzzleForward()
+                : Quaternion.Euler(pitch, yaw, 0f) * Vector3.forward;
 
             // 机位基点用**炮塔实际位置**，不是车体中心。
             // 用中心的话，炮塔靠船头的船会退到驾驶舱里 —— 那正是"放大到脑袋上、看不见前面"的原因。
