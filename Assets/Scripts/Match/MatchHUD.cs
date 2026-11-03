@@ -226,7 +226,23 @@ public class MatchHUD : MonoBehaviour
             return;
         }
 
-        // 坦克：屏幕中心十字
+        // 坦克：十字画在**炮口指向**的屏幕投影上（不是屏幕中心）。
+        // 第三人称镜头围着车看车，屏幕中心其实落在车身上 —— 准星压在炮塔上什么也说明不了。
+        var vpG = p != null && p.Physics != null ? p.Physics : null;
+        if (vpG != null)
+        {
+            var camG = Camera.main;
+            if (camG == null) return;
+            Vector3 gp = vpG.GetMuzzlePosition();
+            Vector3 gd = vpG.GetMuzzleForward();
+            Vector3 gsp = camG.WorldToScreenPoint(gp + gd * 500f);
+            if (gsp.z > 0f)
+            {
+                x = Mathf.Clamp(gsp.x / _scale, 48f, _vw - 48f);
+                y = Mathf.Clamp((Screen.height - gsp.y) / _scale, 48f, VH - 48f);
+            }
+        }
+
         var w = new Color(1f, 1f, 1f, 0.75f);
         Fill(new Rect(x - 16f, y - 1.5f, 32f, 3f), w);
         Fill(new Rect(x - 1.5f, y - 16f, 3f, 32f), w);
