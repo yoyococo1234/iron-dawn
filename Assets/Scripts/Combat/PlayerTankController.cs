@@ -129,6 +129,23 @@ public class PlayerTankController : MonoBehaviour
         Vector2 screenPos = new Vector2(Screen.width * 0.5f, Screen.height * 0.5f);
         var ray = _cam.ScreenPointToRay(screenPos);
 
+        // ---------- 陆战 / 海战：瞄准点沿**炮口方向**，不是屏幕中心 ----------
+        // 第三人称镜头是"围着车看车"的，屏幕中心其实落在车身上（准星就压在炮塔上，没意义）。
+        // 炮塔的朝向是 AimDirect 按镜头角度转的，所以真正要打的方向是炮口朝向。
+        var vp = _combat != null ? _combat.Physics : null;
+        if (vp != null)
+        {
+            Vector3 muzzle = vp.GetMuzzlePosition();
+            Vector3 mdir = vp.GetMuzzleForward();
+            // 从炮口再往前 4 m 起算，否则射线先打到自己车体的碰撞盒
+            Vector3 start = muzzle + mdir * 4f;
+
+            if (Physics.Raycast(start, mdir, out var mhit, aimRayLength, ~0, QueryTriggerInteraction.Ignore))
+                return mhit.point;
+
+            return start + mdir * 700f;
+        }
+
         if (Physics.Raycast(ray, out var hit, aimRayLength, ~0, QueryTriggerInteraction.Ignore))
         {
             float d = Vector3.Distance(ray.origin, hit.point);
