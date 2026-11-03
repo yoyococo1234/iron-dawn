@@ -3,6 +3,13 @@
 > Aholo Lux3D 全球 3D AI 黑客松参赛作品 —— 三域（陆 / 海 / 空）载具对战的 3D 战术射击游戏。
 > Unity 6000.3.27f1 · Built-in 渲染管线 · 全部载具与场景物件由 **Aholo Lux3D** 生成
 
+## ▶ 想直接玩
+
+**[下载 Windows 版（186 MB）](https://github.com/yoyococo1234/iron-dawn/releases/latest)** → 解压 → 双击 `Tank3D.exe`。
+
+> 只有 Windows 能跑，需要一块能跑 3D 的显卡。
+> 浏览器在线版（WebGL）正在做性能优化，暂时不如桌面版流畅。
+
 ---
 
 ## 这是什么
