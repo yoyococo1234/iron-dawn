@@ -15,6 +15,7 @@ MonoBehaviour:
   id: sea_gunboat
   displayName: "\u70AE\u8247"
   domain: 1
+  engineLoopName: 
   price: 180
   respawnBaseCost: 80
   maxHp: 1400
@@ -36,17 +37,27 @@ MonoBehaviour:
   - {fileID: 11400000, guid: 0cbc85164d7b1524ba9e7ebb0cfa353d, type: 2}
   - {fileID: 11400000, guid: 793e01789c0530e4f979a8952346282b, type: 2}
   - {fileID: 11400000, guid: 17cb76d48be325641ba4a1b346291595, type: 2}
-  modelPrefab: {fileID: 919132149155446097, guid: 180efe0d8dbe01f41a297762b1a3e755, type: 3}
+  modelPrefab: {fileID: 919132149155446097, guid: de7890ae4b7927347bdbac73a19878bd, type: 3}
   modelMaterial: {fileID: 2100000, guid: ea3a34e8b235a144f89d63e09b97897a, type: 2}
-  modelTurretPrefab: {fileID: 919132149155446097, guid: 615db663d989a9d4799ad672e5da37c2, type: 3}
+  modelTurretPrefab: {fileID: 919132149155446097, guid: c91712bd52cc7f44aa7e4a468d05b78f, type: 3}
   useSplitTurret: 1
   modelTracksPrefab: {fileID: 0}
   modelTrackWellRef: {fileID: 0}
   modelTurretMaterial: {fileID: 0}
   modelTracksMaterial: {fileID: 0}
   tracksTargetHeight: 0
-  modelBarrelPrefab: {fileID: 919132149155446097, guid: 5660e1e171a27ff4daae8196f1833319, type: 3}
-  modelBarrelPivot: {x: -0.0422, y: 0.7699, z: -0.1106}
+  proceduralTracks: 0
+  trackHalfSpan: 0
+  trackBandWidth: 0
+  trackLoopLength: 0
+  trackLoopHeight: 0
+  trackRoadWheelR: 0
+  trackRoadWheelCount: 0
+  trackGroundLift: 0.1
+  trackDrop: 0
+  bakedTurretWell: 0
+  modelBarrelPrefab: {fileID: 919132149155446097, guid: a45ef32faa270ab43a7cbe76c1bced42, type: 3}
+  modelBarrelPivot: {x: 0, y: 0.857, z: 1.268}
   modelTurretPivot: {x: -0.0081, y: 2.6709, z: 4.5543}
   modelTurretMeshOrigin: {x: -0.0081, y: 2.6709, z: 4.5543}
   autoTurretWellPatch: 1
@@ -56,4 +67,6 @@ MonoBehaviour:
   muzzleBoneName: Muzzle
   modelYawOffset: 0
   modelScale: 1
+  intakeFans: []
+  intakeFanRadius: 0.5
   description: "\u6D77\u4E0A\u9738\u4E3B\uFF0C\u5403\u6C34 0.8m"

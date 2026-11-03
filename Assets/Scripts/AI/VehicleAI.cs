@@ -233,6 +233,17 @@ public class VehicleAI : MonoBehaviour
             Repath(target);
         }
 
+        // ---------- 海：寻路失败时绝不直线冲岸 ----------
+        // 目标常常在陆地上（打岸上的坦克），海上又找不到通往它的水路。
+        // 以前这里会退回"直线冲向目标点"，炮艇就一路开上沙滩卡死。
+        // 现在改成：目标不在水上、又没有水路 → 原地待命，用舰炮打，不动。
+        if (NavMode == NavGrid.NavMode.Sea && _path.Count == 0 && !IsOnWater(_lastTargetPos))
+        {
+            _phys.aiSteer = 0f;
+            _phys.aiThrottle = 0f;
+            return;
+        }
+
         SteerToward(CurrentWaypoint());
     }
 
