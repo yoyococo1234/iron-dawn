@@ -61,6 +61,9 @@ public class CameraFollow : MonoBehaviour
     public float airZoomDistFactor = 2.2f;
     [Tooltip("按住右键的轻微放大（不是开镜，机位不动，只把视野收窄一点）")]
     public float airRightZoomFov = 38f;
+    [Tooltip("开镜时视线压低多少度。0 = 正对机头（准星在正中间，像真正的机炮瞄准具）；" +
+             "视野只有 22°，压低 18° 的话机头准星会飞出画面")]
+    public float airScopeLookDownDeg = 0f;
 
     [Header("自由视角（按住 C，战雷那套）")]
     [Tooltip("按住这个键：鼠标只转镜头，炮塔不动")]
@@ -459,8 +462,10 @@ public class CameraFollow : MonoBehaviour
 
         transform.position = Vector3.Lerp(transform.position, desired, 9f * dt);
 
-        // ---- 视线：机头方向再压低 airLookDownDeg（在飞机坐标系里压，所以跟着俯仰走）----
-        Vector3 lookDir = target.rotation * (Quaternion.AngleAxis(airLookDownDeg, Vector3.right) * Vector3.forward);
+        // ---- 视线：机头方向再压低（在飞机坐标系里压，所以跟着俯仰走）----
+        // 开镜时几乎不压：视野只剩 22°，压 18° 的话机头准星会飞出画面。
+        float lookDown = _airScoped ? airScopeLookDownDeg : airLookDownDeg;
+        Vector3 lookDir = target.rotation * (Quaternion.AngleAxis(lookDown, Vector3.right) * Vector3.forward);
 
         // ---- 滚转跟随：airRollFollow = 1 完全跟随（地平线随滚转倾斜），0 = 永远水平 ----
         Vector3 camUp = Vector3.Slerp(Vector3.up, upPlane, Mathf.Clamp01(airRollFollow));

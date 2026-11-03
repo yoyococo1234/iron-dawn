@@ -98,42 +98,36 @@ public class PlayerTankController : MonoBehaviour
     /// <summary>
     /// 准星打到哪。
     /// 陆战：屏幕正中央，命中点太近就沿视线取远处（避免朝脚下打）。
-    /// 空战（战雷式）：准星是可以用鼠标推着走的圈，不压平高度 —— 俯冲时子弹必须跟着往下走。
+    /// 空战：**沿机头方向打**（不是屏幕中心）。镜头是压低 18° 俯看机背的，
+    /// 用屏幕中心的话子弹会打向地面，和机头指向对不上，准星也就成了没意义的装饰。
+    /// 现在准星画在机头指向的屏幕投影上（MatchHUD.DrawCrosshair），子弹也沿机头飞，两边一致。
     /// </summary>
     Vector3 GetAimPoint()
     {
         bool air = _combat != null && _combat.Def != null && _combat.Def.domain == Domain.Air;
 
-        Vector2 screenPos;
-        if (air && _combat.Physics != null)
-        {
-            Vector2 aim = _combat.Physics.AirAim;
-            float r = Screen.height * 0.32f;
-            screenPos = new Vector2(Screen.width * 0.5f + aim.x * r, Screen.height * 0.5f - aim.y * r);
-        }
-        else
-        {
-            screenPos = new Vector2(Screen.width * 0.5f, Screen.height * 0.5f);
-        }
-
-        var ray = _cam.ScreenPointToRay(screenPos);
-
         if (air)
         {
-            // 不压平高度：直接沿视线打远，俯冲时炮口才会跟着往下
+            // 炮口起点取机身中心稍微抬高，方向就是机头
+            Vector3 origin = _combat.transform.position + Vector3.up * 0.5f;
+            Vector3 dir = _combat.transform.forward;
+
             Vector3 basePoint;
-            if (Physics.Raycast(ray, out var hitAir, aimRayLength, ~0, QueryTriggerInteraction.Ignore)
-                && Vector3.Distance(ray.origin, hitAir.point) >= 150f)
+            if (Physics.Raycast(origin, dir, out var hitAir, aimRayLength, ~0, QueryTriggerInteraction.Ignore)
+                && Vector3.Distance(origin, hitAir.point) >= 150f)
                 basePoint = hitAir.point;
             else
-                basePoint = ray.origin + ray.direction * 2000f;
+                basePoint = origin + dir * 2000f;
 
-            // 辅助瞄准：准星附近有敌人就吸过去（导弹吸得宽，机炮吸得窄）
+            // 辅助瞄准：机头方向附近有敌人就吸过去（导弹吸得宽，机炮吸得窄）
             var w = _combat.Weapon;
             bool missile = w != null && w.projectileSpeed <= 600f && w.baseDamage >= 300f;
             float cone = missile ? 20f : 6f;
-            return AirAimAssist(basePoint, ray.origin, ray.direction, cone);
+            return AirAimAssist(basePoint, origin, dir, cone);
         }
+
+        Vector2 screenPos = new Vector2(Screen.width * 0.5f, Screen.height * 0.5f);
+        var ray = _cam.ScreenPointToRay(screenPos);
 
         if (Physics.Raycast(ray, out var hit, aimRayLength, ~0, QueryTriggerInteraction.Ignore))
         {

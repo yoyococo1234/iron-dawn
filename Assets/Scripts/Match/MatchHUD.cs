@@ -196,12 +196,24 @@ public class MatchHUD : MonoBehaviour
 
         if (air && p.Physics != null)
         {
-            // 战雷式：准星是可以被鼠标推着走的圈，飞机朝圈飞
-            Vector2 aim = p.Physics.AirAim;
-            x += aim.x * (VH * 0.32f);
-            y -= aim.y * (VH * 0.32f);
+            // 空战准星 = **机头指向（炮口方向）**投影到屏幕上的位置，不再钉在屏幕中心。
+            // 子弹就是沿机头方向打出去的（见 PlayerTankController.GetAimPoint），
+            // 所以准星在哪、子弹就打在哪 —— 平飞时它落在天边（机头指哪打哪），俯冲时跟着压到地面。
+            var cam = Camera.main;
+            if (cam == null) return;
+            Vector3 muzzleDir = p.Physics.transform.forward;
+            Vector3 world = p.Physics.transform.position + muzzleDir * 900f;
+            Vector3 sp = cam.WorldToScreenPoint(world);
+            if (sp.z <= 0f) return;                 // 机头指向跑到镜头背后，不画
 
-            // 开镜（右键/Shift）：换成专门的空战分划，不画那个小黄圈
+            x = sp.x / _scale;
+            y = (Screen.height - sp.y) / _scale;
+
+            // 夹在画面内，免得机头抬高时准星飞出屏幕找不到
+            x = Mathf.Clamp(x, 48f, _vw - 48f);
+            y = Mathf.Clamp(y, 48f, VH - 48f);
+
+            // 开镜（Shift）：换成专门的空战分划，画在同一个位置
             if (IsAirScoped()) { DrawAirScope(x, y); return; }
 
             var c = new Color(1f, 0.88f, 0.35f, 0.95f);

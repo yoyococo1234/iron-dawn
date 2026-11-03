@@ -91111,6 +91111,8 @@ MonoBehaviour:
   airRollFollow: 0.85
   airZoomFov: 22
   airZoomDistFactor: 2.2
+  airRightZoomFov: 38
+  airScopeLookDownDeg: 0
   freeLookKey: 99
   recenterSpeed: 6
   forceScopeForTest: 0
