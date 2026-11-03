@@ -28,6 +28,12 @@ public class CameraFollow : MonoBehaviour
     public float followLerp = 10f;
     public float lookHeight = 2.2f;
 
+    [Header("陆/海机位（和飞机同一个思路：车后上方 + 视线压低）")]
+    [Tooltip("机位抬高量 = 跟车距离 × 该值。越大越俯视，车身在画面里越靠下")]
+    public float tankHeightFactor = 0.32f;
+    [Tooltip("视线相对水平压低多少度。压低后车身落到画面下方，炮口准星升到中上部")]
+    public float tankLookDownDeg = 10f;
+
     [Header("右键：轻微放大（不换视角）")]
     [Tooltip("按住右键时把视野收窄到这个角度（比 normalFov 小一点即可）")]
     public float rightZoomFov = 30f;
@@ -355,15 +361,25 @@ public class CameraFollow : MonoBehaviour
         _dist = Mathf.Lerp(_dist, distance, 10f * Time.unscaledDeltaTime);
 
         var pivot = target.position + Vector3.up * lookHeight;
-        var rot = Quaternion.Euler(pitch, yaw, 0f);
-        var desired = pivot - rot * Vector3.forward * _dist;
+
+        // ---- 陆/海：和飞机同一个思路 ----
+        // 机位放到车"正后方 + 上方"，视线固定压低 tankLookDownDeg —— 不再"盯着车看"。
+        // 盯着车看的时候屏幕中心就是车身，炮口准星只能贴在炮塔上（离车身只有 10° 的夹角）。
+        // 抬高 + 压低之后：车身落到画面下方、炮口准星升到中上部，两者拉开距离。
+        Vector3 flat = Quaternion.Euler(0f, yaw, 0f) * Vector3.forward;
+        var desired = pivot - flat * _dist + Vector3.up * (_dist * tankHeightFactor);
 
         // 别把相机塞进地里
         float ground = Mathf.Max(BattlefieldTerrain.SampleHeight(desired.x, desired.z), BattlefieldTerrain.WaterLevel) + 2f;
         if (desired.y < ground) desired.y = ground;
 
         transform.position = Vector3.Lerp(transform.position, desired, followLerp * Time.unscaledDeltaTime);
-        transform.rotation = Quaternion.LookRotation(pivot - transform.position);
+
+        // 视线压低量 = 基础值 + 鼠标俯仰的偏移（pitch 默认 8° 当"水平"，往上看就减小）
+        float lookDownL = tankLookDownDeg + (pitch - 8f);
+        Vector3 lookDirL = Quaternion.Euler(lookDownL, yaw, 0f) * Vector3.forward;
+        transform.rotation = Quaternion.Slerp(transform.rotation,
+            Quaternion.LookRotation(lookDirL, Vector3.up), 14f * Time.unscaledDeltaTime);
 
         if (_shakeAmount > 0.001f)
         {
