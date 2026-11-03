@@ -201,6 +201,9 @@ public class MatchHUD : MonoBehaviour
             x += aim.x * (VH * 0.32f);
             y -= aim.y * (VH * 0.32f);
 
+            // 开镜（右键/Shift）：换成专门的空战分划，不画那个小黄圈
+            if (IsAirScoped()) { DrawAirScope(x, y); return; }
+
             var c = new Color(1f, 0.88f, 0.35f, 0.95f);
             float r = 16f, t = 2.5f;
             Fill(new Rect(x - r, y - t * 0.5f, r * 0.55f, t), c);   // 左
@@ -222,12 +225,65 @@ public class MatchHUD : MonoBehaviour
 
     static Texture2D _scopeMask;
 
-    static bool IsScoped()
+    static CameraFollow CamFollow()
     {
         var cam = Camera.main;
-        if (cam == null) return false;
-        var cf = cam.GetComponent<CameraFollow>();
+        return cam != null ? cam.GetComponent<CameraFollow>() : null;
+    }
+
+    static bool IsScoped()
+    {
+        var cf = CamFollow();
         return cf != null && cf.IsScoped;
+    }
+
+    static bool IsAirScoped()
+    {
+        var cf = CamFollow();
+        return cf != null && cf.AirScoped;
+    }
+
+    /// <summary>飞机开镜的分划：细圆环 + 四向刻线 + 中心点 + 放大倍率。不压黑边（不是炮镜）。</summary>
+    void DrawAirScope(float cx, float cy)
+    {
+        var cf = CamFollow();
+        float zoom = cf != null && cf.airZoomFov > 1f ? cf.normalFov / cf.airZoomFov : 2f;
+
+        float R = Mathf.Min(_vw, VH) * 0.13f;
+        var ring = new Color(0.95f, 0.92f, 0.78f, 0.75f);
+        var dim = new Color(0.95f, 0.92f, 0.78f, 0.35f);
+
+        // 细圆环（96 个小点近似）
+        for (int i = 0; i < 96; i++)
+        {
+            float a = i / 96f * Mathf.PI * 2f;
+            float x = cx + Mathf.Cos(a) * R;
+            float y = cy + Mathf.Sin(a) * R;
+            Fill(new Rect(x - 1.5f, y - 1.5f, 3f, 3f), ring);
+        }
+
+        // 四个方向的刻线（留中心空隙）
+        float gap = 12f, len = R * 0.42f, t = 2f;
+        Fill(new Rect(cx - R - len, cy - t * 0.5f, len, t), ring);      // 左
+        Fill(new Rect(cx + R, cy - t * 0.5f, len, t), ring);            // 右
+        Fill(new Rect(cx - t * 0.5f, cy - R - len, t, len), ring);      // 上
+        Fill(new Rect(cx - t * 0.5f, cy + R, t, len), ring);            // 下
+
+        // 内圈四点（空战瞄准环常见的"漏斗"标记）
+        for (int i = 0; i < 4; i++)
+        {
+            float a = Mathf.PI * 0.25f + i * Mathf.PI * 0.5f;
+            float x = cx + Mathf.Cos(a) * (R * 0.55f);
+            float y = cy + Mathf.Sin(a) * (R * 0.55f);
+            Fill(new Rect(x - 2f, y - 2f, 4f, 4f), dim);
+        }
+
+        // 中心点
+        Fill(new Rect(cx - 2.5f, cy - 2.5f, 5f, 5f), new Color(1f, 0.32f, 0.26f, 1f));
+
+        // 倍率 + 提示
+        Text(new Rect(0f, cy + R + len + 10f, _vw, 24f), $"×{zoom:F1}　·　松开右键退出开镜", _s20,
+             new Color(1f, 1f, 1f, 0.55f), TextAnchor.MiddleCenter);
     }
 
     /// <summary>圆形镜筒遮罩：圆内透明、圆外纯黑（方形四角也被压黑）。只生成一次。</summary>

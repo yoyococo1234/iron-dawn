@@ -24093,6 +24093,9 @@ MonoBehaviour:
   garageDelay: 2.5
   aiRespawnDelay: 6
   teamSize: 5
+  unlimitedLives: 1
+  unlimitedGold: 1
+  debugGold: 999999
   timeLeft: 0
   matchOver: 0
   winnerTeam: -1
@@ -91100,9 +91103,16 @@ MonoBehaviour:
   zoomFov: 14
   scopeSpeed: 12
   zoomSensitivity: 0.3
+  airDistanceFactor: 0.64
+  airHeightFactor: 0.52
+  airLookDownDeg: 18
+  airZoomFov: 22
+  airZoomDistFactor: 2.2
   freeLookKey: 99
   recenterSpeed: 6
   forceScopeForTest: 0
+  forceFreeLookForTest: 0
+  forceAirScopeForTest: 0
 --- !u!114 &960803343
 MonoBehaviour:
   m_ObjectHideFlags: 0
