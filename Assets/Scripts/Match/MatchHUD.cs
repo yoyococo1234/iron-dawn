@@ -282,7 +282,7 @@ public class MatchHUD : MonoBehaviour
         Fill(new Rect(cx - 2.5f, cy - 2.5f, 5f, 5f), new Color(1f, 0.32f, 0.26f, 1f));
 
         // 倍率 + 提示
-        Text(new Rect(0f, cy + R + len + 10f, _vw, 24f), $"×{zoom:F1}　·　松开右键退出开镜", _s20,
+        Text(new Rect(0f, cy + R + len + 10f, _vw, 24f), $"×{zoom:F1}　·　松开 Shift 退出开镜", _s20,
              new Color(1f, 1f, 1f, 0.55f), TextAnchor.MiddleCenter);
     }
 

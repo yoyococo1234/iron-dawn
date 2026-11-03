@@ -53,12 +53,14 @@ public class CameraFollow : MonoBehaviour
     [Tooltip("镜头跟随飞机滚转的比例：1 = 完全跟随（压杆时地平线跟着斜），0 = 永远水平")]
     [Range(0f, 1f)] public float airRollFollow = 0.85f;
 
-    [Header("飞机开镜（按住右键或 Shift）")]
+    [Header("飞机开镜（按住 Shift）")]
     [Tooltip("开镜后收窄到的视野角")]
     public float airZoomFov = 22f;
     [Tooltip("开镜时跟机距离乘多少。要 >1：视野收窄 2.3 倍的同时把机位退远，" +
              "飞机在画面里大小不变，被放大的是地面 —— 不然一开镜满屏都是机背")]
     public float airZoomDistFactor = 2.2f;
+    [Tooltip("按住右键的轻微放大（不是开镜，机位不动，只把视野收窄一点）")]
+    public float airRightZoomFov = 38f;
 
     [Header("自由视角（按住 C，战雷那套）")]
     [Tooltip("按住这个键：鼠标只转镜头，炮塔不动")]
@@ -80,6 +82,7 @@ public class CameraFollow : MonoBehaviour
     /// <summary>飞机是否在开镜（按住右键/Shift）。HUD 用它画空战分划。</summary>
     public bool AirScoped => _airScoped;
     bool _airScoped;
+    bool _playerAlive;
 
     /// <summary>
     /// 全局：这一帧是否按着 C 环视。飞机用它屏蔽鼠标操控
@@ -157,6 +160,20 @@ public class CameraFollow : MonoBehaviour
 
     void LateUpdate()
     {
+        // 玩家死了到复活之间 mm.Player 是 null。这段必须放在最前面 ——
+        // 以前这里直接落到下面的坦克分支，按 Shift 会套上坦克那圈黑色炮镜（用户报的 bug）。
+        // 放最前面还有个原因：车被销毁后 target 会变成 null、下面提前 return，
+        // 那些"清状态"的代码就永远跑不到，开镜状态会一直留在画面上。
+        var mm0 = MatchManager.Instance;
+        var pl0 = mm0 != null ? mm0.Player : null;
+        _playerAlive = pl0 != null && pl0.Alive;
+        if (!_playerAlive)
+        {
+            _scoped = false;
+            _airScoped = false;
+            _rightZoom = false;
+        }
+
         if (target == null) AutoFindTarget();
         if (target == null) return;
 
@@ -172,7 +189,8 @@ public class CameraFollow : MonoBehaviour
         // 但按住 C 要能环视 —— 这时候鼠标只转镜头，飞机那边会忽略鼠标（见 FreeLookActive）。
         var mm = MatchManager.Instance;
         var pl = mm != null ? mm.Player : null;
-        if (pl != null && pl.Def != null && pl.Def.domain == Domain.Air)
+
+        if (_playerAlive && pl.Def != null && pl.Def.domain == Domain.Air)
         {
             // 飞机用的是自己那套开镜（AirScoped），坦克的炮镜状态必须清掉，
             // 否则从坦克换到飞机时那圈黑色镜筒会一直留在画面上。
@@ -243,8 +261,9 @@ public class CameraFollow : MonoBehaviour
         // Shift = 炮镜（圆形镜筒 + 十字分划，HUD 负责画）；右键 = 只是把视野收窄一点。
         // 两者不再叠加（旧版两个一起按会放到更大，手感很怪）。
         bool locked = Cursor.lockState == CursorLockMode.Locked;
-        _scoped = locked && (Input.GetKey(KeyCode.LeftShift) || Input.GetKey(KeyCode.RightShift)) || forceScopeForTest;
-        _rightZoom = locked && Input.GetMouseButton(1) && !_scoped;
+        _scoped = (_playerAlive && locked && (Input.GetKey(KeyCode.LeftShift) || Input.GetKey(KeyCode.RightShift)))
+                  || forceScopeForTest;
+        _rightZoom = _playerAlive && locked && Input.GetMouseButton(1) && !_scoped;
         var cam = GetComponent<Camera>();
 
         // ---------- 炮手视角（右键按住）：相机贴到炮塔上方，炮管就在画面下缘 ----------
@@ -408,9 +427,13 @@ public class CameraFollow : MonoBehaviour
         var cam = GetComponent<Camera>();
 
         bool locked = Cursor.lockState == CursorLockMode.Locked;
-        _airScoped = (locked && (Input.GetMouseButton(1) ||
-                                 Input.GetKey(KeyCode.LeftShift) || Input.GetKey(KeyCode.RightShift)))
+
+        // Shift = 开镜（大倍率 + 空战分划）；右键 = 只是把视野收窄一点，机位不动。
+        // 和坦克那套保持一致：右键是"轻微放大"，Shift 才是开镜。
+        _airScoped = (_playerAlive && locked &&
+                      (Input.GetKey(KeyCode.LeftShift) || Input.GetKey(KeyCode.RightShift)))
                      || forceAirScopeForTest;
+        _rightZoom = _playerAlive && locked && Input.GetMouseButton(1) && !_airScoped;
 
         // 距离：先在飞机自己的区间里夹一次，再叠加开镜倍数
         float baseDist = Mathf.Clamp(distance * airDistanceFactor, airMinDistance, airMaxDistance);
@@ -419,7 +442,10 @@ public class CameraFollow : MonoBehaviour
         _dist = Mathf.Lerp(_dist, wantDist, 8f * dt);
 
         if (cam != null)
-            cam.fieldOfView = Mathf.Lerp(cam.fieldOfView, _airScoped ? airZoomFov : normalFov, scopeSpeed * dt);
+        {
+            float wantFov = _airScoped ? airZoomFov : (_rightZoom ? airRightZoomFov : normalFov);
+            cam.fieldOfView = Mathf.Lerp(cam.fieldOfView, wantFov, scopeSpeed * dt);
+        }
 
         // ---- 机位：在**飞机坐标系**里往后上方放 ----
         // 用机头（含俯仰）而不是机头的水平投影：飞机爬升时机位跟着一起爬，
