@@ -91103,9 +91103,12 @@ MonoBehaviour:
   zoomFov: 14
   scopeSpeed: 12
   zoomSensitivity: 0.3
-  airDistanceFactor: 0.64
-  airHeightFactor: 0.52
+  airDistanceFactor: 1
+  airHeightFactor: 0.5
   airLookDownDeg: 18
+  airMinDistance: 17
+  airMaxDistance: 44
+  airRollFollow: 0.85
   airZoomFov: 22
   airZoomDistFactor: 2.2
   freeLookKey: 99
