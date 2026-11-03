@@ -91098,6 +91098,8 @@ MonoBehaviour:
   zoomSpeed: 45
   followLerp: 10
   lookHeight: 2.2
+  tankHeightFactor: 0.37
+  tankLookDownDeg: 7
   rightZoomFov: 38
   normalFov: 50
   zoomFov: 14
