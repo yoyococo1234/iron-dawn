@@ -39,6 +39,21 @@ public class CameraFollow : MonoBehaviour
     [Tooltip("开镜时的鼠标灵敏度倍率")]
     public float zoomSensitivity = 0.3f;
 
+    [Header("飞机追尾机位（抬高机位 + 视线压向地面，不开镜也能对地瞄准）")]
+    [Tooltip("跟机距离 = 按机身体积算出的距离 × 该值。越小飞机越大、地面越近")]
+    public float airDistanceFactor = 0.64f;
+    [Tooltip("机位抬高量 = 跟机距离 × 该值。0.52 ≈ 从斜上方俯看机背，飞机落在画面下方 2/3")]
+    public float airHeightFactor = 0.52f;
+    [Tooltip("视线相对水平压低多少度。视野 50° 时压 18° = 地平线落在画面上方 22% 处")]
+    public float airLookDownDeg = 18f;
+
+    [Header("飞机开镜（按住右键或 Shift）")]
+    [Tooltip("开镜后收窄到的视野角")]
+    public float airZoomFov = 22f;
+    [Tooltip("开镜时跟机距离乘多少。要 >1：视野收窄 2.3 倍的同时把机位退远，" +
+             "飞机在画面里大小不变，被放大的是地面 —— 不然一开镜满屏都是机背")]
+    public float airZoomDistFactor = 2.2f;
+
     [Header("自由视角（按住 C，战雷那套）")]
     [Tooltip("按住这个键：鼠标只转镜头，炮塔不动")]
     public KeyCode freeLookKey = KeyCode.C;
@@ -50,9 +65,15 @@ public class CameraFollow : MonoBehaviour
     public bool forceScopeForTest = false;
     [Tooltip("强制处于自由环视（截图/验收用，正常游戏别勾）")]
     public bool forceFreeLookForTest = false;
+    [Tooltip("强制飞机开镜（截图/验收用，正常游戏别勾）")]
+    public bool forceAirScopeForTest = false;
 
     /// <summary>当前是否在自由视角（炮塔不跟鼠标）。</summary>
     public bool FreeLook { get; private set; }
+
+    /// <summary>飞机是否在开镜（按住右键/Shift）。HUD 用它画空战分划。</summary>
+    public bool AirScoped => _airScoped;
+    bool _airScoped;
 
     /// <summary>
     /// 全局：这一帧是否按着 C 环视。飞机用它屏蔽鼠标操控
@@ -147,6 +168,11 @@ public class CameraFollow : MonoBehaviour
         var pl = mm != null ? mm.Player : null;
         if (pl != null && pl.Def != null && pl.Def.domain == Domain.Air)
         {
+            // 飞机用的是自己那套开镜（AirScoped），坦克的炮镜状态必须清掉，
+            // 否则从坦克换到飞机时那圈黑色镜筒会一直留在画面上。
+            _scoped = false;
+            _rightZoom = false;
+
             bool lockedAir = Cursor.lockState == CursorLockMode.Locked;
             bool freeLookAir = (lockedAir && Input.GetKey(freeLookKey)) || forceFreeLookForTest;
             FreeLook = freeLookAir;
@@ -183,6 +209,7 @@ public class CameraFollow : MonoBehaviour
             return;
         }
         FreeLookActive = false;
+        _airScoped = false;
 
         if (Cursor.lockState == CursorLockMode.Locked)
         {
@@ -359,22 +386,49 @@ public class CameraFollow : MonoBehaviour
         return camPos;
     }
 
-    /// <summary>飞机追尾视角：贴着机尾看，随飞机姿态转。</summary>
+    /// <summary>
+    /// 飞机追尾视角：机位在机尾后上方，视线沿机头再往下压 ——
+    /// 这样地平线落在画面上方 1/4 左右，地面占满大半屏，不开镜也能对地瞄准。
+    /// 按住右键/Shift 开镜：视野收到 airZoomFov，机位略微拉近，角度不变（准星还是落在同一片地面上）。
+    /// </summary>
     void ChaseCamera()
     {
         float dt = Time.unscaledDeltaTime;
-        _dist = Mathf.Lerp(_dist, distance, 8f * dt);
-
         var cam = GetComponent<Camera>();
-        if (cam != null) cam.fieldOfView = Mathf.Lerp(cam.fieldOfView, normalFov, scopeSpeed * dt);
 
-        var desired = target.position - target.forward * _dist + target.up * (_dist * 0.22f);
+        bool locked = Cursor.lockState == CursorLockMode.Locked;
+        _airScoped = (locked && (Input.GetMouseButton(1) ||
+                                 Input.GetKey(KeyCode.LeftShift) || Input.GetKey(KeyCode.RightShift)))
+                     || forceAirScopeForTest;
+
+        // 距离：开镜时拉近一点点，让目标占画面更大
+        float wantDist = Mathf.Max(6f, distance * ( _airScoped ? airZoomDistFactor : 1f));
+        _dist = Mathf.Lerp(_dist, wantDist, 8f * dt);
+
+        if (cam != null)
+            cam.fieldOfView = Mathf.Lerp(cam.fieldOfView, _airScoped ? airZoomFov : normalFov, scopeSpeed * dt);
+
+        // 机位：机尾正后方 + 正上方。
+        // 用**水平方向**（把机头投影到地面）而不是机头本身 —— 飞机抬头/俯冲时机位不会跟着
+        // 甩到机背上方或机身下方，画面构图是稳定的，准星永远落在地面同一片区域。
+        Vector3 back = target.forward;
+        Vector3 flat = new Vector3(back.x, 0f, back.z);
+        if (flat.sqrMagnitude < 0.0001f) flat = Vector3.forward;
+        flat.Normalize();
+
+        var desired = target.position - flat * _dist + Vector3.up * (_dist * airHeightFactor);
         float ground = Mathf.Max(BattlefieldTerrain.SampleHeight(desired.x, desired.z), BattlefieldTerrain.WaterLevel) + 2f;
         if (desired.y < ground) desired.y = ground;
 
         transform.position = Vector3.Lerp(transform.position, desired, 9f * dt);
 
-        var lookAt = target.position + target.forward * 80f;
+        // 视线：水平机头方向再压低 airLookDownDeg。
+        // 压低量按世界水平算（不是相对机头），所以地平线在画面里的高度是固定的：
+        // 视野 50° 时压 13.5° = 地平线落在画面上方 23% 处，地面占满大半屏。
+        Vector3 right = Vector3.Cross(Vector3.up, flat);
+        Vector3 lookDir = Quaternion.AngleAxis(airLookDownDeg, right.normalized) * flat;
+
+        var lookAt = transform.position + lookDir * 200f;
         transform.rotation = Quaternion.Slerp(transform.rotation,
             Quaternion.LookRotation(lookAt - transform.position), 10f * dt);
 
