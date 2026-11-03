@@ -36,6 +36,8 @@ public class PlayerTankController : MonoBehaviour
         bool freeLook = Input.GetKey(KeyCode.C);
 
         Vector3 aimPoint;
+        var camFollowNow = _cam.GetComponent<CameraFollow>();
+        bool scoped = camFollowNow != null && camFollowNow.IsScoped;
         if (freeLook && _hasAim)
         {
             aimPoint = _lastAimPoint;
@@ -45,9 +47,16 @@ public class PlayerTankController : MonoBehaviour
             aimPoint = GetAimPoint();
             _lastAimPoint = aimPoint;
             _hasAim = true;
+
             // 炮塔跟鼠标（受炮塔转速限制）
-            float turn0 = _combat.def != null ? _combat.def.turretTurnSpeed : 90f;
-            _combat.Physics.AimTurretAt(aimPoint, turn0);
+            // **开镜时不走这条**：开镜的相机在炮塔后方 2~3.6 m、而且跟着炮口走，
+            // 用"相机中心射线"打点会产生视差 —— 炮塔追着这个视差转、相机又跟着炮塔转，
+            // 就变成"准星不动、炮塔自己往一边转"。开镜的瞄准完全交给下面的 AimDirect。
+            if (!scoped)
+            {
+                float turn0 = _combat.def != null ? _combat.def.turretTurnSpeed : 90f;
+                _combat.Physics.AimTurretAt(aimPoint, turn0);
+            }
         }
 
         float turn = _combat.def != null ? _combat.def.turretTurnSpeed : 90f;
@@ -129,6 +138,20 @@ public class PlayerTankController : MonoBehaviour
             bool missile = w != null && w.projectileSpeed <= 600f && w.baseDamage >= 300f;
             float cone = missile ? 20f : 6f;
             return AirAimAssist(basePoint, origin, dir, cone);
+        }
+
+        // ---------- 开镜：瞄准点直接取**炮口方向** ----------
+        // 开镜时准星就是炮口，相机又挂在炮塔后方 —— 用相机射线会在近处物体上产生视差，
+        // 炮塔会被这个视差带着一直转。直接沿炮口推出去，和相机位置无关。
+        var cfScoped = _cam.GetComponent<CameraFollow>();
+        if (cfScoped != null && cfScoped.IsScoped && _combat.Physics != null)
+        {
+            Vector3 mp = _combat.Physics.GetMuzzlePosition();
+            Vector3 md = _combat.Physics.GetMuzzleForward();
+            Vector3 start = mp + md * 4f;
+            if (Physics.Raycast(start, md, out var mh, aimRayLength, ~0, QueryTriggerInteraction.Ignore))
+                return mh.point;
+            return start + md * 700f;
         }
 
         Vector2 screenPos = new Vector2(Screen.width * 0.5f, Screen.height * 0.5f);
