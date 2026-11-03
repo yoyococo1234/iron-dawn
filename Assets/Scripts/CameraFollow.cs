@@ -335,12 +335,14 @@ public class CameraFollow : MonoBehaviour
             // 防穿模：机位如果落在自己车体里，就往上抬；再检查前方 3 m 会不会被自己挡住。
             camPos = LiftCameraOutOfSelf(camPos, lookDir, target);
 
-            Vector3 lookAtS = camPos + lookDir * 300f;
-
             float groundS = Mathf.Max(BattlefieldTerrain.SampleHeight(camPos.x, camPos.z), BattlefieldTerrain.WaterLevel) + 1.2f;
             if (camPos.y < groundS) camPos.y = groundS;
 
             transform.position = Vector3.Lerp(transform.position, camPos, 16f * Time.unscaledDeltaTime);
+
+            // 看点必须从**实际的相机位置**沿 lookDir 推出去（不能用抬升前的 camPos）。
+            // 用 camPos 的话，机位被地面/自身碰撞盒抬高之后，视线会比炮口歪两三度 —— 镜心就不是炮口了。
+            Vector3 lookAtS = transform.position + lookDir * 300f;
             transform.rotation = Quaternion.Slerp(transform.rotation,
                 Quaternion.LookRotation(lookAtS - transform.position), 16f * Time.unscaledDeltaTime);
 

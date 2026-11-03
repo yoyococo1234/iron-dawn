@@ -62,9 +62,12 @@ public class PlayerTankController : MonoBehaviour
         if (!freeLook && camFollow != null && _combat.Physics != null && _combat.Physics.turretBone != null)
         {
             float wantYawWorld = camFollow.yaw;
-            // 炮管俯仰 = **镜头实际俯仰的反向**，这样炮口最终指向的就是屏幕中心那个准星。
-            // 以前写的是 -(pitch-8)，是绑在旧轨道镜头的俯仰上的；镜头改了之后就对不上了。
-            float wantPitch = -Mathf.DeltaAngle(0f, _cam.transform.eulerAngles.x);
+            // 炮管俯仰 = **镜头"应该"的俯仰的反向**（用 camFollow 的鼠标俯仰算，不用相机的实际朝向）。
+            //
+            // 千万别读 _cam.transform.eulerAngles：开镜时相机是**跟着炮口**走的，
+            // 读相机就等于"炮口 → 相机 → 炮口"闭环 —— 瞄准会自己漂、鼠标推不动（用户报的 bug）。
+            // 用 camFollow.pitch（只由鼠标改）就断开了这个环。
+            float wantPitch = -(camFollow.tankLookDownDeg + (camFollow.pitch - 8f));
             _combat.Physics.AimDirect(wantYawWorld, wantPitch, turn);
 
             // 切到车顶机枪时，机枪有自己的一套俯仰（能抬到 85° 打飞机），不受炮管 20° 的限制
