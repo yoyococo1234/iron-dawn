@@ -63,6 +63,7 @@ MonoBehaviour:
   autoTurretWellPatch: 0
   autoTurretSkirt: 0
   modelDeckGunPivot: {x: 0, y: 0, z: 0}
+  turretYawLimit: 150
   turretBoneName: Turret
   muzzleBoneName: Muzzle
   modelYawOffset: 0

@@ -123,6 +123,10 @@ public class VehicleDef : ScriptableObject
     public bool autoTurretSkirt = true;
     [Tooltip("甲板/车顶机枪挂点（车体局部坐标）。零向量 = 自动放在炮塔顶后部")]
     public Vector3 modelDeckGunPivot = Vector3.zero;
+    [Tooltip("炮塔左右可转的角度上限（度，相对车头方向；180 = 不限，能转一整圈）。" +
+             "炮艇主炮在甲板中央、正后方就是船桥（z -1.0~+1.5，高 3.93 m），" +
+             "3.5 m 长的炮管转到后方会插进驾驶室 —— 所以限到 150（±150° 之外是死角）")]
+    public float turretYawLimit = 180f;
     [Tooltip("炮塔节点名（模型里的子物体名），炮塔要能转就靠它")]
     public string turretBoneName = "Turret";
     [Tooltip("炮口节点名（开火时子弹从这里出）")]

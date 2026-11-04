@@ -455,6 +455,15 @@ public class VehiclePhysics : MonoBehaviour
     public void RotateTurret(float deltaDeg)
     {
         turretYaw += deltaDeg;
+        // 偏航限位：炮艇主炮后方是船桥，炮管转过去会插进驾驶室（见 VehicleDef.turretYawLimit）。
+        // turretYaw 是累积值，先归一化到 -180~180 再夹，夹完写回去，避免累积溢出。
+        float limit = def != null ? def.turretYawLimit : 180f;
+        if (limit > 0f && limit < 180f)
+        {
+            float norm = Mathf.DeltaAngle(0f, turretYaw);
+            if (norm > limit || norm < -limit)
+                turretYaw = Mathf.Clamp(norm, -limit, limit);
+        }
         if (turretBone != null)
             turretBone.localRotation = Quaternion.Euler(0f, turretYaw, 0f);
     }
