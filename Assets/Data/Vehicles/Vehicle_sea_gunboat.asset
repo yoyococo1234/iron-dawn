@@ -55,13 +55,13 @@ MonoBehaviour:
   trackRoadWheelCount: 0
   trackGroundLift: 0.1
   trackDrop: 0
-  bakedTurretWell: 0
+  bakedTurretWell: 1
   modelBarrelPrefab: {fileID: 919132149155446097, guid: a45ef32faa270ab43a7cbe76c1bced42, type: 3}
-  modelBarrelPivot: {x: 0, y: 0.857, z: 1.268}
+  modelBarrelPivot: {x: 0, y: 0.884, z: 1.268}
   modelTurretPivot: {x: -0.0081, y: 2.6709, z: 3.3}
   modelTurretMeshOrigin: {x: -0.0081, y: 2.6709, z: 3.3}
-  autoTurretWellPatch: 1
-  autoTurretSkirt: 1
+  autoTurretWellPatch: 0
+  autoTurretSkirt: 0
   modelDeckGunPivot: {x: 0, y: 0, z: 0}
   turretBoneName: Turret
   muzzleBoneName: Muzzle
