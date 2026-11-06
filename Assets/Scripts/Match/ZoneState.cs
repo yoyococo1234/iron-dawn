@@ -22,11 +22,15 @@ public class ZoneState
 
     public bool Contains(Vector3 worldPos) => def != null && def.Contains(worldPos);
 
-    /// <summary>这个点能不能被这台载具占（陆点要陆战载具，海点要船）。</summary>
+    /// <summary>
+    /// 这个点能不能被这台载具占。
+    /// 2026-11-06 用户要求：**任何载具都能占**（飞机在天上飞过据点也算数），
+    /// 不再按 domain 过滤 —— 只要 XZ 在区域矩形内就行（见 ZoneDef.Contains）。
+    /// </summary>
     public bool CanBeCapturedBy(VehicleCombat c)
     {
         if (c == null || c.Def == null || def == null) return false;
-        return c.Def.domain == def.domain;
+        return def.captureable;
     }
 
     public Color OwnerColor

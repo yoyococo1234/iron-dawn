@@ -189,7 +189,47 @@ public static class BattlefieldTerrainBuilder
             }
         }
 
+        Despike(heights, res);
         data.SetHeights(0, 0, heights);
+    }
+
+    /// <summary>
+    /// 去尖刺：把"一格之内突然高/低好几米"的像素拉回邻域范围内。
+    ///
+    /// 为什么需要：道路削填、鞍部压平这些操作在山体上切出近乎垂直的壁，
+    /// 在高度图上就是相邻两格落差 2~6 m（≈ 85°+），跑起来看着像地形 bug
+    /// （2026-11-06 用户反馈"有些陆地骤然的起伏"）。
+    /// 这里只削"比四个邻居都高/低超过 maxStep"的格子，正常山坡（哪怕 50°）不受影响。
+    /// </summary>
+    static void Despike(float[,] h, int res)
+    {
+        const int Passes = 12;
+        float maxStep = 0.5f / HeightRange;          // 单格最大允许落差 ≈ 0.5 m（约 64°）
+        var tmp = new float[res, res];
+
+        for (int pass = 0; pass < Passes; pass++)
+        {
+            System.Array.Copy(h, tmp, h.Length);
+            bool changed = false;
+            for (int j = 1; j < res - 1; j++)
+            {
+                for (int i = 1; i < res - 1; i++)
+                {
+                    float c = h[j, i];
+                    float n0 = h[j, i - 1], n1 = h[j, i + 1], n2 = h[j - 1, i], n3 = h[j + 1, i];
+                    float mn = Mathf.Min(Mathf.Min(n0, n1), Mathf.Min(n2, n3));
+                    float mx = Mathf.Max(Mathf.Max(n0, n1), Mathf.Max(n2, n3));
+
+                    float target = c;
+                    if (c > mx + maxStep) target = mx + maxStep;
+                    else if (c < mn - maxStep) target = mn - maxStep;
+
+                    if (target != c) { tmp[j, i] = target; changed = true; }
+                }
+            }
+            System.Array.Copy(tmp, h, h.Length);
+            if (!changed) break;
+        }
     }
 
     /// <summary>世界坐标 (x,z) → 世界高度 y。设计坐标算完再等比放大，保证坡度角度不变。</summary>
@@ -237,6 +277,24 @@ public static class BattlefieldTerrainBuilder
         // ---------- 微起伏（城区和公路压住）----------
         float micro = (Fbm(x * 0.55f + 4.2f, z * 0.55f + 8.8f, 2) - 0.5f) * 0.16f;
         h += micro * (1f - 0.75f * cityW) * (1f - 0.85f * roadW);
+
+        // ---------- 地图边界：陆侧包一圈山，把"正方形地图"藏起来 ----------
+        // 2026-11-06：原来是 2 km 的正方形平地，边上是空的，一眼就能看出地图边界。
+        // 常见做法（战地/战术小队这类）是用山脉/海湾把可玩区围起来，玩家看到的是山谷而不是直边。
+        // 北侧是海，不抬（留给舰队活动）；滩头带 z>12 也不抬，免得把沙滩顶成山。
+        {
+            float edge = Mathf.Max(Mathf.Abs(x) - 42f, -z - 44f);   // 0 = 进入边界带
+            if (edge > 0f)
+            {
+                float rimK = SStep(0f, 13f, edge);                   // 平滑抬升
+                rimK *= 1f - SStep(5f, 12f, z);                      // 靠海一侧取消
+                if (rimK > 0.001f)
+                {
+                    float rimH = 7f + 15f * Fbm(x * 0.021f + 3.1f, z * 0.021f + 7.7f, 3);
+                    h = Mathf.Lerp(h, Mathf.Max(h, rimH), rimK);
+                }
+            }
+        }
 
         return h;
     }
@@ -373,7 +431,16 @@ public static class BattlefieldTerrainBuilder
     static float CarvePass(float h, float x, float z, out float roadW)
     {
         var p = new Vector2(x, z);
-        float bestD = float.MaxValue, target = 0f;
+        float bestD = float.MaxValue;
+
+        // 路基高度按"所有邻近路段反距离加权"混合，而不是只取最近那一段。
+        //
+        // 为什么（2026-11-06 踩到的坑）：折线路径的"最近点"在两条段的等距线附近会突然从
+        // 一段跳到另一段，两段在各自最近点上的路基高度不一样 → 高度函数出现 0.3~0.6 设计米
+        // （世界 5~10 m）的**阶跃**，山体上就是一条笔直的断崖，看着像地形 bug。
+        // 加权平均后这个跳变被抹平了。
+        const float W = 11f;
+        float wSum = 0f, hSum = 0f;
 
         for (int r = 0; r < PassPaths.Length; r++)
         {
@@ -385,14 +452,19 @@ public static class BattlefieldTerrainBuilder
                 Vector2 ab = b - a;
                 float t = Mathf.Clamp01(Vector2.Dot(p - a, ab) / Mathf.Max(1e-5f, ab.sqrMagnitude));
                 float d = Vector2.Distance(p, a + ab * t);
-                if (d < bestD) { bestD = d; target = Mathf.Lerp(hh[i], hh[i + 1], t); }
+                if (d < bestD) bestD = d;
+                if (d >= W) continue;
+                float w = 1f / (d * d + 0.05f);
+                wSum += w;
+                hSum += w * Mathf.Lerp(hh[i], hh[i + 1], t);
             }
         }
 
         roadW = 1f - SStep(3f, 6f, bestD);                     // 给地表/噪声用
-        const float W = 6f;                                    // 路廊半宽（设计 m）→ 世界 100 m
-        if (bestD > W) return h;
-        float fall = 1f - SStep(1.2f, W, bestD);               // 路基 20 m 宽，往外 100 m 渐变
+        if (bestD > W || wSum <= 0f) return h;
+
+        float target = hSum / wSum;
+        float fall = 1f - SStep(1.5f, W, bestD);               // 路基 ~25 m 宽，往外 183 m 渐变
         return Mathf.Lerp(h, target, fall);                    // 削高填低，路基是平的
     }
 
