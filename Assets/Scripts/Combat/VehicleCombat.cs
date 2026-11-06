@@ -33,6 +33,8 @@ public class VehicleCombat : MonoBehaviour
     [Header("出生保护")]
     [Tooltip("出生 / 复活后多少秒内免疫伤害。2026-11-05 用户要求取消（大家都打不到对方），默认 0")]
     public float spawnProtection = 0f;
+    [Tooltip("复活后的无敌秒数。2026-11-06 用户要求：开场不要无敌，但死了复活要有 2 秒")]
+    public float respawnProtection = 2f;
 
     /// <summary>无敌截止时间。闪烁提示在 Update 里做。</summary>
     float _invulnerableUntil;
@@ -854,7 +856,7 @@ public class VehicleCombat : MonoBehaviour
         var ws = GetComponent<WingStores>();
         if (ws != null) ws.Reset();
         lastAttacker = null;
-        _invulnerableUntil = Time.time + spawnProtection;   // 复活也有两秒无敌
+        _invulnerableUntil = Time.time + respawnProtection;   // 复活 2 秒无敌
         if (_phys != null) _phys.ResetState();
         transform.position = pos;
         transform.rotation = Quaternion.Euler(0f, yaw, 0f);

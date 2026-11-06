@@ -80,8 +80,32 @@ public class SeaFoamWake : MonoBehaviour
 
     void Start()
     {
+        Create();
+    }
+
+    void OnEnable()
+    {
+        // 复活时载具是 SetActive(true) 复用同一个物体，尾迹要重建
+        if (_mesh == null) Create();
+    }
+
+    void OnDisable()
+    {
+        // 击沉/阵亡时载具是 SetActive(false)，**不销毁**。
+        // 如果这时不把输入撤掉，Crest 会一直按最后那帧的飘带往泡沫模拟里画，
+        // 海面上就留下一坨永远散不掉的白泡沫。
+        DestroyWake();
+    }
+
+    void Create()
+    {
+        if (_mesh != null) return;
+
         _bornAt = Time.time;
         _lastPos = transform.position;
+        _widthLocked = false;
+        _samples.Clear();
+        _speed = 0f;
 
         var ocean = OceanRenderer.Instance;
         _seaLevel = ocean != null ? ocean.SeaLevel : transform.position.y;
@@ -267,8 +291,22 @@ public class SeaFoamWake : MonoBehaviour
 
     void OnDestroy()
     {
+        DestroyWake();
+    }
+
+    void DestroyWake()
+    {
+        // 先把网格清空再销毁物体：万一销毁延迟到帧末，这一帧也不会再往泡沫模拟里画东西
+        if (_mesh != null) { _mesh.Clear(); }
+        _samples.Clear();
+
+        if (_wakeGo != null) Destroy(_wakeGo);
         if (_mesh != null) Destroy(_mesh);
         if (_mat != null) Destroy(_mat);
-        if (_wakeGo != null) Destroy(_wakeGo);
+
+        _wakeGo = null;
+        _mesh = null;
+        _mr = null;
+        _mat = null;
     }
 }
