@@ -29,6 +29,14 @@ public class AmmoDef : ScriptableObject
     [Tooltip("非伤害弹药（烟幕、干扰弹等），V2 再用")]
     public bool isSupport = false;
 
+    [Header("穿深（mm）—— 0 表示不参与穿透判定（炸弹/鱼雷/防空弹）")]
+    [Tooltip("穿甲能力（mm）。和装甲有效厚度比：够就击穿，不够就是未击穿")]
+    public float penetration = 0f;
+    [Tooltip("每 100 m 穿深衰减（mm）。动能弹用；化学能弹设 0")]
+    public float penFalloffPer100m = 0f;
+    [Tooltip("化学能弹（HEAT / 反坦克导弹）：不吃距离衰减")]
+    public bool isChemical = false;
+
     public string Describe()
         => $"{displayName}：装甲×{vsArmor} 软×{vsSoft} 空×{vsAir} 海×{vsSea}，{pricePerShot}金/发";
 }

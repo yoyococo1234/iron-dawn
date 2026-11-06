@@ -436,6 +436,9 @@ public class VehicleAI : MonoBehaviour
         var primAmmo = _self.AmmoFor(_self.Weapon);
         if (VehicleCombat.AmmoMultiplierVs(primAmmo, Target.Def) < 0.3f) return;
 
+        // 打不穿就别开火（穿透系统上了之后，穿深不够开炮只会跳弹，纯浪费装填）
+        if (Target != null && !VehicleCombat.CanPenetrateFrom(primAmmo, Target, transform.position, dist)) return;
+
         _self.Fire(aim);
     }
 
@@ -485,6 +488,26 @@ public class VehicleAI : MonoBehaviour
                 {
                     float m = VehicleCombat.AmmoMultiplierVs(w.ammoTypes[i], Target.Def);
                     if (m > bestMul) { bestMul = m; best = i; }
+                }
+                _self.ammoIndex = best;
+            }
+        }
+        else
+        {
+            // 地面/海面：优先挑**能打穿**的弹，都能穿再比倍率
+            var w = _self.Weapon;
+            if (w != null && w.ammoTypes != null && w.ammoTypes.Length > 1 && Target.Def != null)
+            {
+                int best = 0;
+                float bestScore = float.MinValue;
+                for (int i = 0; i < w.ammoTypes.Length; i++)
+                {
+                    var a = w.ammoTypes[i];
+                    if (a == null) continue;
+                    float m = VehicleCombat.AmmoMultiplierVs(a, Target.Def);
+                    bool pen = VehicleCombat.CanPenetrateFrom(a, Target, transform.position, 300f);
+                    float score = (pen ? 10f : 0f) + m;
+                    if (score > bestScore) { bestScore = score; best = i; }
                 }
                 _self.ammoIndex = best;
             }

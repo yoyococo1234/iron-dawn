@@ -23,6 +23,8 @@ public class WeaponDef : ScriptableObject
     [Header("弹药")]
     [Tooltip("这把武器能装哪些弹（玩家可以切换）")]
     public AmmoDef[] ammoTypes;
+    [Tooltip("总备弹数（发）。0 = 无限。挂架上 8 枚导弹就是 8")]
+    public int ammoCapacity = 0;
 
     [Header("挂载")]
     [Tooltip("这把武器属于哪个域（AI 只在本域内选目标）")]

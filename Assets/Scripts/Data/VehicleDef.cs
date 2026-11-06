@@ -34,6 +34,14 @@ public class VehicleDef : ScriptableObject
     [Tooltip("背面受击倍率")]
     public float armorRear = 1.10f;
 
+    [Header("装甲厚度（mm）—— 穿透判定用")]
+    [Tooltip("正面装甲厚度（mm）。摆角度会让有效厚度变厚")]
+    public float armorThicknessFront = 100f;
+    [Tooltip("侧面装甲厚度（mm）")]
+    public float armorThicknessSide = 60f;
+    [Tooltip("后面装甲厚度（mm）")]
+    public float armorThicknessRear = 40f;
+
     [Tooltip("统一受击倍率（Uniform 模式用，飞机用这个）")]
     public float uniformMultiplier = 1.0f;
 
@@ -123,6 +131,27 @@ public class VehicleDef : ScriptableObject
     public bool autoTurretSkirt = true;
     [Tooltip("甲板/车顶机枪挂点（车体局部坐标）。零向量 = 自动放在炮塔顶后部")]
     public Vector3 modelDeckGunPivot = Vector3.zero;
+    [Tooltip("甲板/车顶机枪整体缩放。炮艇用 1.0（12.7mm 高射机枪原尺寸），" +
+             "坦克炮塔小，用 0.65~0.75 才不会显得像顶着一门比炮塔还宽的机枪")]
+    public float deckGunScale = 1f;
+
+    [Header("摇摆炮塔 / 整座俯仰（真实机构，见 AMX-13 的 FL-10）")]
+    [Tooltip("开启后炮塔分成两块：下部座圈只转方位，**上部塔体整体绕耳轴俯仰**，" +
+             "炮管刚性固定在上部塔体里（不再单独俯仰）。像 AMX-13 / AMX-50 / 潘哈德 EBR")]
+    public bool oscillatingTurret = false;
+    [Tooltip("固定下座圈的网格（拆件）。开启摇摆炮塔时必填：它不俯仰，只跟着炮塔偏航")]
+    public GameObject modelTurretLowerPrefab;
+    [Tooltip("耳轴位置（炮塔本地坐标，Y 上 / Z 前）。上部塔体绕这个点俯仰。" +
+             "放在塔体中高处：底面边缘主要做前后平移，不会从座圈上撬开")]
+    public Vector3 modelElevatingPivot = Vector3.zero;
+    [Tooltip("塔体跟随炮管俯仰的比例：1 = 整块塔体 1:1 跟随（真摇摆炮塔），" +
+             "0.25 左右 = 塔体微动（底面扫过小，不用底座也不用大缝）")]
+    [Range(0f, 1f)] public float elevatingFollow = 1f;
+    [Tooltip("炮塔俯仰上限（度，正=抬）。0 = 用 VehiclePhysics 的默认值 20")]
+    public float maxElevationOverride = 0f;
+    [Tooltip("炮塔俯仰下限（度，负=压）。0 = 用 VehiclePhysics 的默认值 -8")]
+    public float maxDepressionOverride = 0f;
+
     [Tooltip("炮塔左右可转的角度上限（度，相对车头方向；180 = 不限，能转一整圈）。" +
              "炮艇主炮在甲板中央、正后方就是船桥（z -1.0~+1.5，高 3.93 m），" +
              "3.5 m 长的炮管转到后方会插进驾驶室 —— 所以限到 150（±150° 之外是死角）")]

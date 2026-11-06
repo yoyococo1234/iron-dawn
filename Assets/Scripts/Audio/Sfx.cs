@@ -12,6 +12,7 @@ public static class Sfx
 {
     // 片段名（对应 Assets/Resources/Audio/<name>.wav）
     public const string EngineLoop = "engine_loop";            // 陆战车（柴油机）
+    public const string EngineLoopBoat = "engine_loop_boat";   // 炮艇（船用柴油机 + 水声）
     public const string EngineLoopJet = "engine_loop_jet";     // 喷气机（涡轮啸叫）
     public const string EngineLoopProp = "engine_loop_prop";   // 螺旋桨机（转桨轰鸣）
     public const string TrackLoop = "track_loop";
@@ -21,8 +22,40 @@ public static class Sfx
     public const string HitMetal = "hit_metal";
     public const string HitHeavy = "hit_heavy";
 
+    // 命中反馈三种（穿透系统）：跳弹 / 未击穿 / 击穿
+    public const string HitRicochet = "hit_ricochet";
+    public const string HitNonPen = "hit_nonpen";
+    public const string HitPen = "hit_pen";
+    // 机枪 / 机炮打中装甲：叮（不是炮弹那种砰）
+    public const string HitMg = "hit_mg";
+
+    // 命中 / 被击中 / 击杀 的语音播报（豆包音频生成，见 work/doubao_gen_v2.py）
+    // 跳弹只留 2 句；"车体受损"是坦克专用，军舰不播（用 VoHitSea）
+    public static readonly string[] VoRicochet = { "vo_ricochet_1", "vo_ricochet_2" };
+    public static readonly string[] VoNonPen = { "vo_nonpen_1", "vo_nonpen_2", "vo_nonpen_3" };
+    public static readonly string[] VoPen = { "vo_pen_1", "vo_pen_2", "vo_pen_3" };
+    public static readonly string[] VoHit = { "vo_hit_1", "vo_hit_2", "vo_hit_3" };
+    // 非陆战载具（军舰 / 飞机）不用"车体受损"这句，只播另外两句
+    public static readonly string[] VoHitNoHull = { "vo_hit_1", "vo_hit_3" };
+    public static readonly string[] VoKill = { "vo_kill_1", "vo_kill_2", "vo_kill_3" };
+
+    static int _lastVo = -1;
+    /// <summary>最后播放的语音文件名（调试/自测用）。</summary>
+    public static string LastVo = "";
+
+    /// <summary>从一组语音里随机挑一句（尽量不连着重复同一句）。</summary>
+    public static void PlayRandomVo(string[] pool, float volume = 0.9f)
+    {
+        if (pool == null || pool.Length == 0) return;
+        int i = Random.Range(0, pool.Length);
+        if (pool.Length > 1 && i == _lastVo) i = (i + 1) % pool.Length;
+        _lastVo = i;
+        LastVo = pool[i];
+        Play2D(pool[i], volume);
+    }
+
     public static float MasterVolume = 1f;
-    public static int MaxConcurrent = 24;
+    public static int MaxConcurrent = 40;
 
     static readonly Dictionary<string, AudioClip> _cache = new Dictionary<string, AudioClip>();
     static int _active;

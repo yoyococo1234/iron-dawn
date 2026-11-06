@@ -24075,6 +24075,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 6c5310f4a26271b47bfc01b7c7414559, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::MatchHUD
+  radarRange: 700
 --- !u!114 &233710958
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -81464,6 +81465,65 @@ Transform:
   m_CorrespondingSourceObject: {fileID: -8679921383154817045, guid: 1e15478ffb6db424eb4b9f76709f684f, type: 3}
   m_PrefabInstance: {fileID: 858000723}
   m_PrefabAsset: {fileID: 0}
+--- !u!1 &858575284
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 858575285}
+  - component: {fileID: 858575286}
+  m_Layer: 0
+  m_Name: GerstnerWaves
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &858575285
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 858575284}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 1041117378}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &858575286
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 858575284}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 7581c8217e105de4b83ca0ce4f8fa8c2, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Crest::Crest.ShapeGerstnerBatched
+  _version: 0
+  _mode: 0
+  _spectrum: {fileID: 11400000, guid: 29917d922a4bf1043a645dfbe2b33a50, type: 2}
+  _windDirectionAngle: 45
+  _componentsPerOctave: 8
+  _weight: 1
+  _randomSeed: 0
+  _evaluateSpectrumAtRuntime: 1
+  _wavelengths: []
+  _amplitudes: []
+  _angleDegs: []
+  _phases: []
+  _directTowardsPoint: 0
+  _pointPositionXZ: {x: 0, y: 0}
+  _pointRadii: {x: 100, y: 200}
 --- !u!1001 &859792950
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -91115,11 +91175,20 @@ MonoBehaviour:
   airZoomDistFactor: 2.2
   airRightZoomFov: 38
   airScopeLookDownDeg: 0
+  mgScopeFov: 26
+  mgScopeBack: 1.15
+  mgScopeUp: 0.3
+  mgScopeSensitivity: 0.55
+  mouseSmoothing: 0.45
+  sensX: 1
+  sensY: 1
+  pivotSmoothTime: 0.06
   freeLookKey: 99
   recenterSpeed: 6
   forceScopeForTest: 0
   forceFreeLookForTest: 0
   forceAirScopeForTest: 0
+  forceMgScopeForTest: 0
 --- !u!114 &960803343
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -97529,6 +97598,108 @@ Transform:
   m_CorrespondingSourceObject: {fileID: -8679921383154817045, guid: ef6dd79f8acea864ba7eb9d2c1b60b1f, type: 3}
   m_PrefabInstance: {fileID: 1040667159}
   m_PrefabAsset: {fileID: 0}
+--- !u!1 &1041117376
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 1041117378}
+  - component: {fileID: 1041117377}
+  m_Layer: 0
+  m_Name: CrestOcean
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &1041117377
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1041117376}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: dde37eff0f7685f41902f400d1de0c6c, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Crest::Crest.OceanRenderer
+  _version: 0
+  _globalWindZone: {fileID: 0}
+  _globalWindSpeed: 2.5
+  _globalWindDirectionAngle: 45
+  _globalWindTurbulence: 0.1
+  _viewpoint: {fileID: 0}
+  _camera: {fileID: 0}
+  _teleportThreshold: 10
+  _timeProvider: {fileID: 0}
+  _primaryLight: {fileID: 251396245}
+  _searchForPrimaryLightOnStartup: 1
+  _material: {fileID: 2100000, guid: 9def92ac79181fe41b238e91663f0fad, type: 2}
+  _waterTilePrefab: {fileID: 0}
+  _layerName: 
+  _layer: 4
+  _overrideGravity: 0
+  _gravity: -9.8
+  _gravityMultiplier: 1
+  _waterBodyCulling: 1
+  _minScale: 8
+  _maxScale: 256
+  _dropDetailHeightBasedOnWaves: 0.2
+  _lodDataResolution: 384
+  _geometryDownSampleFactor: 2
+  _lodCount: 7
+  _extentsSizeMultiplier: 100
+  _simSettingsAnimatedWaves: {fileID: 11400000, guid: 5d30d004c70f4e149aad19381ef8756d, type: 2}
+  _createSeaFloorDepthData: 1
+  _simSettingsSeaFloorDepth: {fileID: 0}
+  _createFoamSim: 1
+  _simSettingsFoam: {fileID: 11400000, guid: 0ae7dca5adffeee489d58fd75834004c, type: 2}
+  _createDynamicWaveSim: 1
+  _simSettingsDynamicWaves: {fileID: 11400000, guid: af452a2112f633d4eb9e78a682798d24, type: 2}
+  _createFlowSim: 0
+  _simSettingsFlow: {fileID: 0}
+  _createShadowData: 0
+  _simSettingsShadow: {fileID: 0}
+  _createClipSurfaceData: 0
+  _simSettingsClipSurface: {fileID: 0}
+  _defaultClippingState: 0
+  _createAlbedoData: 0
+  _settingsAlbedo: {fileID: 0}
+  _surfaceSelfIntersectionFixMode: 2
+  _underwaterCullLimit: 0.001
+  _fixFlickeringParticleInput: 0
+  _enableRenderQueueSorting: 0
+  _showOceanProxyPlane: 0
+  _editModeFPS: 30
+  _followSceneCamera: 1
+  _heightQueries: 1
+  _debug:
+    _attachDebugGUI: 0
+    _showOceanTileGameObjects: 0
+    _disableFollowViewpoint: 0
+    _destroyResourcesInOnDisable: 0
+    _forceBatchMode: 0
+    _forceNoGPU: 0
+--- !u!4 &1041117378
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1041117376}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: -6.6667, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children:
+  - {fileID: 858575285}
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1001 &1042021907
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -169709,7 +169880,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!23 &1890985670
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -193532,3 +193703,4 @@ SceneRoots:
   - {fileID: 1690619346}
   - {fileID: 1057803907}
   - {fileID: 2004202176}
+  - {fileID: 1041117378}

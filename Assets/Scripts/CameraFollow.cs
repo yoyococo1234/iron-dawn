@@ -72,6 +72,26 @@ public class CameraFollow : MonoBehaviour
              "视野只有 22°，压低 18° 的话机头准星会飞出画面")]
     public float airScopeLookDownDeg = 0f;
 
+    [Header("机枪瞄准镜（V 进机枪模式 + 按住 Shift）")]
+    [Tooltip("机枪开镜收窄到的视野角。飞机是 22°，机枪给它 26°（视野比炮镜宽，方便扫射）")]
+    public float mgScopeFov = 26f;
+    [Tooltip("开镜时机位在枪口后方多远（米）")]
+    public float mgScopeBack = 1.15f;
+    [Tooltip("开镜时机位比枪口高多少（米），让枪管落在画面下缘")]
+    public float mgScopeUp = 0.30f;
+    [Tooltip("机枪开镜时的鼠标灵敏度倍率（视野比炮镜宽，别压到 0.3 那么慢）")]
+    public float mgScopeSensitivity = 0.55f;
+
+    [Header("鼠标手感（参考战争雷霆 cameraSmooth / 坦克世界 惯性）")]
+    [Tooltip("输入平滑：0 = 原始输入（最灵敏，容易抖），0.9 = 明显阻尼。战争雷霆的 cameraSmooth 就是这一档")]
+    [Range(0f, 0.95f)] public float mouseSmoothing = 0.45f;
+    [Tooltip("水平灵敏度倍率")]
+    public float sensX = 1f;
+    [Tooltip("垂直灵敏度倍率（坦克世界允许 X/Y 分开调）")]
+    public float sensY = 1f;
+    [Tooltip("相机跟随**车体位移**的平滑时间（秒）。只管'车在动'，不影响鼠标转动")]
+    public float pivotSmoothTime = 0.06f;
+
     [Header("自由视角（按住 C，战雷那套）")]
     [Tooltip("按住这个键：鼠标只转镜头，炮塔不动")]
     public KeyCode freeLookKey = KeyCode.C;
@@ -85,6 +105,8 @@ public class CameraFollow : MonoBehaviour
     public bool forceFreeLookForTest = false;
     [Tooltip("强制飞机开镜（截图/验收用，正常游戏别勾）")]
     public bool forceAirScopeForTest = false;
+    [Tooltip("强制机枪开镜（截图/验收用，正常游戏别勾）")]
+    public bool forceMgScopeForTest = false;
 
     /// <summary>当前是否在自由视角（炮塔不跟鼠标）。</summary>
     public bool FreeLook { get; private set; }
@@ -92,6 +114,10 @@ public class CameraFollow : MonoBehaviour
     /// <summary>飞机是否在开镜（按住右键/Shift）。HUD 用它画空战分划。</summary>
     public bool AirScoped => _airScoped;
     bool _airScoped;
+
+    /// <summary>机枪是否在开镜（V 进机枪模式 + 按住 Shift）。HUD 用它画机枪分划。</summary>
+    public bool MgScoped => _mgScoped;
+    bool _mgScoped;
     bool _playerAlive;
 
     /// <summary>
@@ -111,6 +137,9 @@ public class CameraFollow : MonoBehaviour
     float _shakeAmount;
     float _dist = 16f;
     float _curYaw;
+    Vector3 _smoothPivot;      // 只对"车体位移"做平滑，鼠标转动不吃这层
+    bool _pivotInit;
+    float _mouseX, _mouseY;    // 平滑后的鼠标输入
     bool _scoped;
     bool _rightZoom;
     bool _wasFreeLook;
@@ -181,6 +210,7 @@ public class CameraFollow : MonoBehaviour
         {
             _scoped = false;
             _airScoped = false;
+            _mgScoped = false;
             _rightZoom = false;
         }
 
@@ -193,6 +223,8 @@ public class CameraFollow : MonoBehaviour
         {
             _lastTarget = target;
             FitDistanceToTarget();
+            _pivotInit = false;      // 换车时重置平滑基准，别从上一台车的位置滑过去
+            _mouseX = _mouseY = 0f;
         }
 
         // 开飞机时是追尾视角：鼠标用来操控飞机，不能同时转镜头。
@@ -205,6 +237,7 @@ public class CameraFollow : MonoBehaviour
             // 飞机用的是自己那套开镜（AirScoped），坦克的炮镜状态必须清掉，
             // 否则从坦克换到飞机时那圈黑色镜筒会一直留在画面上。
             _scoped = false;
+            _mgScoped = false;
             _rightZoom = false;
 
             bool lockedAir = Cursor.lockState == CursorLockMode.Locked;
@@ -245,12 +278,45 @@ public class CameraFollow : MonoBehaviour
         FreeLookActive = false;
         _airScoped = false;
 
+        // ---------- 机枪模式（V 进/出）：机枪镜要顶掉炮塔那套炮镜 ----------
+        var ptc = target.GetComponent<PlayerTankController>();
+        bool mgMode = ptc != null && ptc.MgMode;
+        bool lockedNow = Cursor.lockState == CursorLockMode.Locked;
+        _mgScoped = mgMode && _playerAlive && lockedNow &&
+                    (Input.GetKey(KeyCode.LeftShift) || Input.GetKey(KeyCode.RightShift))
+                    || (mgMode && forceMgScopeForTest);
+
         if (Cursor.lockState == CursorLockMode.Locked)
         {
-            float sens = sensitivity * (_scoped ? zoomSensitivity : 1f);
-            yaw += Input.GetAxis("Mouse X") * sens;
-            pitch -= Input.GetAxis("Mouse Y") * sens;
-            pitch = Mathf.Clamp(pitch, minPitch, maxPitch);
+            // 机枪镜也是放大视野，灵敏度要一起压下来，不然 26° 视野里鼠标飞快
+            float sens = sensitivity * (_mgScoped ? mgScopeSensitivity
+                                    : (_scoped ? zoomSensitivity : 1f));
+
+            // ---- 输入平滑（战争雷霆的 cameraSmooth 思路）----
+            // 平滑的是**输入本身**，不是"让镜头追着输入跑"。
+            // 用指数形式（1-e^(-dt/τ)），帧率 30 / 60 / 144 手感一致；
+            // 之前直接乘 dt 的 Lerp 在低帧率下会明显迟钝。
+            float rawX = Input.GetAxis("Mouse X") * sens * sensX;
+            float rawY = Input.GetAxis("Mouse Y") * sens * sensY;
+            float tau = 0.02f + mouseSmoothing * 0.13f;
+            float kIn = 1f - Mathf.Exp(-Time.unscaledDeltaTime / Mathf.Max(0.001f, tau));
+            _mouseX = Mathf.Lerp(_mouseX, rawX, kIn);
+            _mouseY = Mathf.Lerp(_mouseY, rawY, kIn);
+
+            yaw += _mouseX;
+            pitch -= _mouseY;
+
+            // ---------- 抬头上限：跟着当前武器走（开镜 / 不开镜都一样） ----------
+            //   用炮   → 最多抬到**炮管能抬的角度**（炮艇 12°、坦克 20°）。
+            //            炮打不到天上去，镜头也就不该往天上飘（用户："不能无限往上看"）。
+            //   用机枪 → 抬到机枪的 85°，才能对着飞机扫射。
+            // pitch 的语义：越大越往下看；镜头压低量 = tankLookDownDeg + (pitch - 8)。
+            var vpPitch = target.GetComponent<VehiclePhysics>();
+            float upLimitDeg = vpPitch != null ? (mgMode ? vpPitch.mgMaxElevation : vpPitch.maxElevation) : 20f;
+            float pitchFloor = 8f - tankLookDownDeg - upLimitDeg;
+            float pitchLo = mgMode ? Mathf.Min(minPitch, pitchFloor)   // 机枪：放宽到 85°
+                                   : Mathf.Max(minPitch, pitchFloor);  // 用炮：收紧到炮的仰角
+            pitch = Mathf.Clamp(pitch, pitchLo, maxPitch);
         }
 
         // ---------- 自由视角（按住 C）----------
@@ -270,11 +336,49 @@ public class CameraFollow : MonoBehaviour
 
         // Shift = 炮镜（圆形镜筒 + 十字分划，HUD 负责画）；右键 = 只是把视野收窄一点。
         // 两者不再叠加（旧版两个一起按会放到更大，手感很怪）。
-        bool locked = Cursor.lockState == CursorLockMode.Locked;
-        _scoped = (_playerAlive && locked && (Input.GetKey(KeyCode.LeftShift) || Input.GetKey(KeyCode.RightShift)))
-                  || forceScopeForTest;
-        _rightZoom = _playerAlive && locked && Input.GetMouseButton(1) && !_scoped;
+        // 机枪模式下 Shift 走机枪镜（见下面的 MgScopeCamera），不再套炮镜。
+        bool locked = lockedNow;
+        _scoped = !mgMode &&
+                  ((_playerAlive && locked && (Input.GetKey(KeyCode.LeftShift) || Input.GetKey(KeyCode.RightShift)))
+                   || forceScopeForTest);
+        _rightZoom = _playerAlive && locked && Input.GetMouseButton(1) && !_scoped && !_mgScoped;
         var cam = GetComponent<Camera>();
+
+        // ---------- 机枪瞄准镜：镜头贴在枪口后方、正对枪管（和飞机开镜同一个思路） ----------
+        if (_mgScoped && cam != null)
+        {
+            var vpM = target.GetComponent<VehiclePhysics>();
+            Vector3 lookM = vpM != null ? vpM.GetDeckGunForward() : target.forward;
+
+            // 机位锚在**炮塔坐标系**（只吃偏航、不吃机枪俯仰）。
+            // 旧版锚在枪口上：一抬枪，枪口往前上方跑，镜头跟着平移，整个画面在"滑" —— 就是那种不自然。
+            // 现在的锚点是摇架（相对炮塔固定），抬枪只让**视线**转，机位不动。
+            Vector3 anchor = vpM != null && vpM.mgBone != null
+                ? vpM.mgBone.position
+                : (vpM != null ? vpM.GetDeckGunMuzzle() : target.position + Vector3.up * 2f);
+            Vector3 backDir = vpM != null && vpM.turretBone != null ? vpM.turretBone.forward : target.forward;
+            backDir.y = 0f;
+            if (backDir.sqrMagnitude < 1e-4f) backDir = Vector3.forward;
+            backDir.Normalize();
+
+            // 机位距离跟着机枪的实际缩放走：坦克的机枪是按炮塔尺寸缩小的，
+            // 用固定 1.15 m 会退到炮塔外面去。
+            float mgScale = vpM != null && vpM.mgBone != null ? Mathf.Max(0.3f, vpM.mgBone.lossyScale.x) : 1f;
+
+            Vector3 camPosM = anchor - backDir * (mgScopeBack * mgScale) + Vector3.up * (mgScopeUp * mgScale);
+            float groundM = Mathf.Max(BattlefieldTerrain.SampleHeight(camPosM.x, camPosM.z),
+                                      BattlefieldTerrain.WaterLevel) + 0.6f;
+            if (camPosM.y < groundM) camPosM.y = groundM;
+
+            transform.position = Vector3.Lerp(transform.position, camPosM, 18f * Time.unscaledDeltaTime);
+            // 看点从**实际机位**沿枪管推出去 —— 镜心就是枪口指向（和炮镜同一个坑）
+            Vector3 lookAtM = transform.position + lookM * 300f;
+            transform.rotation = Quaternion.Slerp(transform.rotation,
+                Quaternion.LookRotation(lookAtM - transform.position), 20f * Time.unscaledDeltaTime);
+
+            cam.fieldOfView = Mathf.Lerp(cam.fieldOfView, mgScopeFov, scopeSpeed * Time.unscaledDeltaTime);
+            return;
+        }
 
         // ---------- 炮手视角（右键按住）：相机贴到炮塔上方，炮管就在画面下缘 ----------
         // 战雷里右键就是这个：看到自己的炮管，准星就是炮口指向。按住 Shift 再拉近一档。
@@ -368,7 +472,7 @@ public class CameraFollow : MonoBehaviour
         float scroll = Input.GetAxis("Mouse ScrollWheel");
         if (Mathf.Abs(scroll) > 0.0001f)
             distance = Mathf.Clamp(distance - scroll * zoomSpeed, minDistance, maxDistance);
-        _dist = Mathf.Lerp(_dist, distance, 10f * Time.unscaledDeltaTime);
+        _dist = Mathf.Lerp(_dist, distance, 1f - Mathf.Exp(-10f * Time.unscaledDeltaTime));
 
         var pivot = target.position + Vector3.up * lookHeight;
 
@@ -376,20 +480,27 @@ public class CameraFollow : MonoBehaviour
         // 机位放到车"正后方 + 上方"，视线固定压低 tankLookDownDeg —— 不再"盯着车看"。
         // 盯着车看的时候屏幕中心就是车身，炮口准星只能贴在炮塔上（离车身只有 10° 的夹角）。
         // 抬高 + 压低之后：车身落到画面下方、炮口准星升到中上部，两者拉开距离。
+        //
+        // 2026-11-05 修手感：**平滑只作用在"跟车"上，鼠标转动立刻生效**。
+        // 之前机位和朝向各有一层 Lerp/Slerp，鼠标一转，画面被拖着走两拍 —— 就是"不自然"的来源。
+        // 战争雷霆 / 坦克世界都是这个做法：镜头绕着车转是瞬时的，只有车本身的移动被平滑。
+        float kp = 1f - Mathf.Exp(-Time.unscaledDeltaTime / Mathf.Max(0.01f, pivotSmoothTime));
+        if (!_pivotInit) { _smoothPivot = pivot; _pivotInit = true; }
+        _smoothPivot = Vector3.Lerp(_smoothPivot, pivot, kp);
+
         Vector3 flat = Quaternion.Euler(0f, yaw, 0f) * Vector3.forward;
-        var desired = pivot - flat * _dist + Vector3.up * (_dist * tankHeightFactor);
+        var desired = _smoothPivot - flat * _dist + Vector3.up * (_dist * tankHeightFactor);
 
         // 别把相机塞进地里
         float ground = Mathf.Max(BattlefieldTerrain.SampleHeight(desired.x, desired.z), BattlefieldTerrain.WaterLevel) + 2f;
         if (desired.y < ground) desired.y = ground;
 
-        transform.position = Vector3.Lerp(transform.position, desired, followLerp * Time.unscaledDeltaTime);
+        transform.position = desired;      // 直接放，不再拖
 
         // 视线压低量 = 基础值 + 鼠标俯仰的偏移（pitch 默认 8° 当"水平"，往上看就减小）
         float lookDownL = tankLookDownDeg + (pitch - 8f);
         Vector3 lookDirL = Quaternion.Euler(lookDownL, yaw, 0f) * Vector3.forward;
-        transform.rotation = Quaternion.Slerp(transform.rotation,
-            Quaternion.LookRotation(lookDirL, Vector3.up), 14f * Time.unscaledDeltaTime);
+        transform.rotation = Quaternion.LookRotation(lookDirL, Vector3.up);   // 直接转，不再慢半拍
 
         if (_shakeAmount > 0.001f)
         {

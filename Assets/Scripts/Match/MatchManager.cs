@@ -357,27 +357,116 @@ public class MatchManager : MonoBehaviour
 
         // 每个单位从不同的 z 起点扫，避免全挤在同一个点上
         float start = 0.5f + (slot - 2) * 0.08f;
+
+        // ---------- 船：必须整条船都在够深的水里 ----------
+        // 旧版只检查一个点，而且 80 次扫不到就直接取出生线中点（**完全不查水深**），
+        // 于是舰艇重生经常一头扎在沙滩上，动都动不了。
+        if (domain == Domain.Sea) return FindSeaSpawn(x, start, zMin, zMax, slot);
+
         float bestZ = Mathf.Lerp(zMin, zMax, 0.5f);
         bool found = false;
 
+        // 陆/空也要避开已经站着的车，不然开局几台车会叠在一起
+        float minDist = domain == Domain.Air ? 60f : 16f;
         for (int i = 0; i < 80; i++)
         {
             float t = start + (i % 2 == 0 ? 1f : -1f) * (i * 0.006f);
             if (t < 0.02f || t > 0.98f) continue;
             float z = Mathf.Lerp(zMin, zMax, t);
-            if (FitsDomain(x, z, domain)) { bestZ = z; found = true; break; }
+            if (!FitsDomain(x, z, domain)) continue;
+            if (!SpawnClear(new Vector3(x, 0f, z), minDist)) continue;
+            bestZ = z; found = true; break;
         }
-        if (!found) bestZ = Mathf.Lerp(zMin, zMax, 0.5f);
+        if (!found)
+        {
+            // 实在找不到空位：按槽位横向错开，至少别完全重叠
+            bestZ = Mathf.Lerp(zMin, zMax, 0.5f) + (slot - 2) * (domain == Domain.Air ? 80f : 18f);
+            bestZ = Mathf.Clamp(bestZ, zMin, zMax);
+        }
 
         float ground = BattlefieldTerrain.SampleHeight(x, bestZ);
         float y;
         switch (domain)
         {
             case Domain.Air: y = Mathf.Max(ground, BattlefieldTerrain.WaterLevel) + 420f; break;
-            case Domain.Sea: y = BattlefieldTerrain.WaterLevel + 0.5f; break;
             default: y = ground + 1.2f; break;
         }
         return new Vector3(x, y, bestZ);
+    }
+
+    /// <summary>
+    /// 船的出生点：**整条船**（船体中心 ±10 m 五个采样点）都要 ≥3 m 深。
+    /// 出生线整段是浅滩时，退到全图找最深的水域，绝不再往沙滩上放。
+    /// </summary>
+    Vector3 FindSeaSpawn(float lineX, float start, float zMin, float zMax, int slot)
+    {
+        float wy = BattlefieldTerrain.WaterLevel + 0.5f;
+
+        // 1) 先沿出生线找（要求够深 **且** 附近没有别的船）
+        for (int i = 0; i < 120; i++)
+        {
+            float t = start + (i % 2 == 0 ? 1f : -1f) * (i * 0.004f);
+            if (t < 0.02f || t > 0.98f) continue;
+            float z = Mathf.Lerp(zMin, zMax, t);
+            if (!SeaFits(lineX, z)) continue;
+            if (!SpawnClear(new Vector3(lineX, 0f, z), 26f)) continue;
+            return new Vector3(lineX, wy, z);
+        }
+
+        // 2) 出生线不行：全图扫一遍找够深、且离别的船最远的水域。
+        //    ⚠️ 旧版这里直接返回"全局最深的那个点"——那是个**固定坐标**，
+        //    所有船都会拿到同一个点，于是开局两条船叠在一起（用户报的问题）。
+        Vector3 best = new Vector3(lineX, wy, Mathf.Lerp(zMin, zMax, 0.5f));
+        float bestScore = -999f;
+        const float half = 900f;
+        for (float gx = -half; gx <= half; gx += 25f)
+            for (float gz = -half; gz <= half; gz += 25f)
+            {
+                float d = BattlefieldTerrain.WaterDepth(gx, gz);
+                if (d <= 0f) continue;
+                if (!SeaFits(gx, gz)) continue;
+                // 得分 = 水深 + 与已有载具的最近距离（距离优先，避免叠船）
+                float near = NearestVehicleDist(new Vector3(gx, 0f, gz));
+                float score = Mathf.Min(near, 120f) * 10f + d;
+                if (score <= bestScore) continue;
+                bestScore = score;
+                best = new Vector3(gx, wy, gz);
+            }
+
+        // 3) 兜底：真的全图都挤，按槽位错开
+        if (NearestVehicleDist(best) < 26f)
+            best += Vector3.forward * ((slot - 2) * 30f);
+        return best;
+    }
+
+    /// <summary>离最近的活着的载具有多远（出生点避让用）。</summary>
+    static float NearestVehicleDist(Vector3 p)
+    {
+        float best = 9999f;
+        var all = Object.FindObjectsByType<VehicleCombat>(FindObjectsSortMode.None);
+        foreach (var v in all)
+        {
+            if (v == null || !v.Alive) continue;
+            float d = Vector3.Distance(new Vector3(v.transform.position.x, 0f, v.transform.position.z),
+                                       new Vector3(p.x, 0f, p.z));
+            if (d < best) best = d;
+        }
+        return best;
+    }
+
+    /// <summary>这个点周围有没有别的载具（出生避让）。</summary>
+    static bool SpawnClear(Vector3 p, float minDist) => NearestVehicleDist(p) >= minDist;
+
+    /// <summary>这个点能不能放船：船体中心 + 前后左右各 10 m 都要 ≥3 m 深。</summary>
+    static bool SeaFits(float x, float z)
+    {
+        const float halfLen = 10f;
+        if (BattlefieldTerrain.WaterDepth(x, z) < 3.0f) return false;
+        if (BattlefieldTerrain.WaterDepth(x + halfLen, z) < 3.0f) return false;
+        if (BattlefieldTerrain.WaterDepth(x - halfLen, z) < 3.0f) return false;
+        if (BattlefieldTerrain.WaterDepth(x, z + halfLen) < 3.0f) return false;
+        if (BattlefieldTerrain.WaterDepth(x, z - halfLen) < 3.0f) return false;
+        return true;
     }
 
     static bool FitsDomain(float x, float z, Domain domain)

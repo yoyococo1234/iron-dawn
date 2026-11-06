@@ -15,7 +15,7 @@ MonoBehaviour:
   id: sea_gunboat
   displayName: "\u70AE\u8247"
   domain: 1
-  engineLoopName: 
+  engineLoopName: engine_loop_boat
   price: 180
   respawnBaseCost: 80
   maxHp: 1400
@@ -23,6 +23,9 @@ MonoBehaviour:
   armorFront: 0.85
   armorSide: 1
   armorRear: 1.15
+  armorThicknessFront: 60
+  armorThicknessSide: 40
+  armorThicknessRear: 30
   uniformMultiplier: 0
   speed: 24
   turnSpeed: 70
@@ -39,7 +42,7 @@ MonoBehaviour:
   - {fileID: 11400000, guid: 17cb76d48be325641ba4a1b346291595, type: 2}
   modelPrefab: {fileID: 919132149155446097, guid: de7890ae4b7927347bdbac73a19878bd, type: 3}
   modelMaterial: {fileID: 2100000, guid: ea3a34e8b235a144f89d63e09b97897a, type: 2}
-  modelTurretPrefab: {fileID: 919132149155446097, guid: c91712bd52cc7f44aa7e4a468d05b78f, type: 3}
+  modelTurretPrefab: {fileID: 919132149155446097, guid: fcd2e45933aabd24ba14839e6dd3760f, type: 3}
   useSplitTurret: 1
   modelTracksPrefab: {fileID: 0}
   modelTrackWellRef: {fileID: 0}
@@ -57,12 +60,19 @@ MonoBehaviour:
   trackDrop: 0
   bakedTurretWell: 1
   modelBarrelPrefab: {fileID: 919132149155446097, guid: a45ef32faa270ab43a7cbe76c1bced42, type: 3}
-  modelBarrelPivot: {x: 0, y: 0.884, z: 1.268}
+  modelBarrelPivot: {x: 0, y: 0.984, z: 1.268}
   modelTurretPivot: {x: -0.0081, y: 2.6709, z: 3.3}
   modelTurretMeshOrigin: {x: -0.0081, y: 2.6709, z: 3.3}
   autoTurretWellPatch: 0
   autoTurretSkirt: 0
   modelDeckGunPivot: {x: 0, y: 0, z: 0}
+  deckGunScale: 1
+  oscillatingTurret: 1
+  modelTurretLowerPrefab: {fileID: 919132149155446097, guid: 2c290659cacd54f4185f523332f30016, type: 3}
+  modelElevatingPivot: {x: 0, y: 0.95, z: 0.15}
+  elevatingFollow: 0.25
+  maxElevationOverride: 12
+  maxDepressionOverride: -6
   turretYawLimit: 150
   turretBoneName: Turret
   muzzleBoneName: Muzzle

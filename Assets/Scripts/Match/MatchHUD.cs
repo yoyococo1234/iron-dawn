@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 
 /// <summary>
@@ -56,7 +57,9 @@ public class MatchHUD : MonoBehaviour
         DrawZones(mm);
         DrawPlayerPanel(mm);
         DrawFeed(mm);
+        DrawRadar(mm);
         DrawCrosshair(mm);
+        // 命中结果不再写屏幕文字，改用语音播报（Sfx.VoRicochet / VoNonPen / VoPen）
         if (mm.matchOver) DrawSettlement(mm);
 
         GUI.matrix = oldMatrix;
@@ -151,7 +154,12 @@ public class MatchHUD : MonoBehaviour
 
         var w2 = p.Weapon;
         string ammo = p.Ammo != null ? p.Ammo.displayName : "—";
-        Text(new Rect(x + 20f, y + 64f, 300f, 24f), $"弹药 {ammo} · 武器 {(w2 != null ? w2.displayName : "—")}", _s18, new Color(1f, 1f, 1f, 0.8f), TextAnchor.MiddleLeft);
+        // 有备弹上限的武器（飞机挂架导弹）额外显示剩余发数
+        string ammoTxt = $"弹药 {ammo} · 武器 {(w2 != null ? w2.displayName : "—")}";
+        int left = p.CurrentAmmoLeft;
+        int cap = p.CurrentAmmoCapacity;
+        if (cap > 0) ammoTxt += $"  {left}/{cap}";
+        Text(new Rect(x + 20f, y + 64f, 420f, 24f), ammoTxt, _s18, new Color(1f, 1f, 1f, 0.8f), TextAnchor.MiddleLeft);
 
         var rlBar = new Rect(x + 20f, y + 92f, w - 40f, 8f);
         Fill(rlBar, new Color(1f, 1f, 1f, 0.10f));
@@ -166,6 +174,30 @@ public class MatchHUD : MonoBehaviour
             int n = pc != null ? pc.DecoyCharges : 0;
             Text(new Rect(x + w - 230f, y + 92f, 210f, 22f), $"干扰弹 ×{n}　X 释放", _s18,
                  n > 0 ? CGold : new Color(1f, 1f, 1f, 0.35f), TextAnchor.MiddleRight);
+        }
+
+        // 部位状态（部位伤害系统）：一排小方块，打坏的标红
+        var vmod = p.GetComponent<VehicleModule>();
+        if (vmod != null) DrawModuleStatus(vmod, def != null ? def.domain : Domain.Land, x, y - 32f, w);
+    }
+
+    void DrawModuleStatus(VehicleModule mod, Domain domain, float x, float y, float w)
+    {
+        var kinds = new List<ModuleKind> { ModuleKind.Engine, ModuleKind.TurretRing, ModuleKind.Gun, ModuleKind.AmmoRack, ModuleKind.Fuel };
+        var names = new List<string> { "发动机", "炮塔环", "炮管", "弹药架", "油箱" };
+        if (domain == Domain.Land) { kinds.Insert(4, ModuleKind.Tracks); names.Insert(4, "履带"); }
+
+        float cw = 88f, gap = 6f;
+        float total = kinds.Count * cw + (kinds.Count - 1) * gap;
+        float sx = x + (w - total) * 0.5f;
+
+        for (int i = 0; i < kinds.Count; i++)
+        {
+            bool broken = mod.IsBroken(kinds[i]);
+            var r = new Rect(sx + i * (cw + gap), y, cw, 26f);
+            Fill(r, broken ? new Color(0.55f, 0.12f, 0.10f, 0.9f) : new Color(0.10f, 0.22f, 0.14f, 0.75f));
+            Text(r, (broken ? "✕ " : "✓ ") + names[i], _s18,
+                 broken ? CEnemy : new Color(0.65f, 0.9f, 0.7f), TextAnchor.MiddleCenter);
         }
     }
 
@@ -199,6 +231,11 @@ public class MatchHUD : MonoBehaviour
         if (IsScoped()) return;                                   // 开镜时用炮镜分划，不画这个
 
         var p = mm.Player;
+
+        // ---------- 机枪模式（V）：机枪有自己一套准星/镜，不走炮塔那一套 ----------
+        var ptcHud = p != null ? p.GetComponent<PlayerTankController>() : null;
+        if (ptcHud != null && ptcHud.MgMode) { DrawMgReticle(p); return; }
+
         bool air = p != null && p.Def != null && p.Def.domain == Domain.Air;
 
         float x = _vw * 0.5f, y = VH * 0.5f;
@@ -319,6 +356,120 @@ public class MatchHUD : MonoBehaviour
     {
         var cf = CamFollow();
         return cf != null && cf.AirScoped;
+    }
+
+    static bool IsMgScoped()
+    {
+        var cf = CamFollow();
+        return cf != null && cf.MgScoped;
+    }
+
+    /// <summary>
+    /// 机枪准星（V 进入机枪模式）。
+    /// 不开镜：画**枪管指向**的屏幕投影（机枪挂在炮塔上，炮塔没转过来时会贴边，和炮塔准星一个道理）。
+    /// 开镜（Shift）：画机枪分划，样式和飞机开镜那套一样（细圆环 + 刻线 + 中心红点 + 倍率）。
+    /// </summary>
+    void DrawMgReticle(VehicleCombat p)
+    {
+        if (p == null || p.Physics == null) return;
+        var cam = Camera.main;
+        if (cam == null) return;
+
+        if (IsMgScoped())
+        {
+            DrawMgScope(_vw * 0.5f, VH * 0.5f);
+            return;
+        }
+
+        Vector3 muzzle = p.Physics.GetDeckGunMuzzle();
+        Vector3 dir = p.Physics.GetDeckGunForward();
+        Vector3 world = muzzle + dir * 400f;
+        Vector3 sp = cam.WorldToScreenPoint(world);
+
+        float x = sp.x / _scale, y = (Screen.height - sp.y) / _scale;
+        bool onScreen = sp.z > 0f && x > 52f && x < _vw - 52f && y > 52f && y < VH - 52f;
+
+        if (!onScreen)
+        {
+            Vector3 local = cam.transform.InverseTransformPoint(world);
+            Vector2 d = new Vector2(local.x, local.y);
+            if (local.z < 0f) d = -d;
+            if (d.sqrMagnitude < 1e-6f) d = Vector2.up;
+            d.Normalize();
+            float halfW = _vw * 0.5f - 52f, halfH = VH * 0.5f - 52f;
+            float t = Mathf.Min(halfW / Mathf.Max(0.001f, Mathf.Abs(d.x)),
+                                halfH / Mathf.Max(0.001f, Mathf.Abs(d.y)));
+            x = _vw * 0.5f + d.x * t;
+            y = VH * 0.5f - d.y * t;
+        }
+
+        var c = onScreen ? new Color(1f, 0.95f, 0.75f, 0.9f) : new Color(1f, 0.88f, 0.35f, 0.9f);
+        // 散布圈（机枪连射的视觉提示）
+        var dimC = new Color(c.r, c.g, c.b, 0.26f);
+        for (int i = 0; i < 40; i++)
+        {
+            float a = i / 40f * Mathf.PI * 2f;
+            Fill(new Rect(x + Mathf.Cos(a) * 26f - 1.5f, y + Mathf.Sin(a) * 26f - 1.5f, 3f, 3f), dimC);
+        }
+        // 小十字
+        Fill(new Rect(x - 13f, y - 1.5f, 26f, 3f), c);
+        Fill(new Rect(x - 1.5f, y - 13f, 3f, 26f), c);
+        Fill(new Rect(x - 2f, y - 2f, 4f, 4f), new Color(1f, 0.32f, 0.26f, 0.95f));
+
+        Text(new Rect(0f, y + 34f, _vw, 22f), "机枪　·　Shift 开镜　V 退出", _s20,
+             new Color(1f, 1f, 1f, 0.5f), TextAnchor.MiddleCenter);
+    }
+
+    /// <summary>机枪开镜分划：细圆环 + 四向刻线 + 密位刻度 + 中心红点 + 倍率。样式对齐飞机开镜那套。</summary>
+    void DrawMgScope(float cx, float cy)
+    {
+        var cf = CamFollow();
+        float zoom = cf != null && cf.mgScopeFov > 1f ? cf.normalFov / cf.mgScopeFov : 2f;
+
+        float R = Mathf.Min(_vw, VH) * 0.17f;
+        var ring = new Color(0.95f, 0.92f, 0.78f, 0.8f);
+        var dim = new Color(0.95f, 0.92f, 0.78f, 0.38f);
+
+        // 细圆环
+        for (int i = 0; i < 96; i++)
+        {
+            float a = i / 96f * Mathf.PI * 2f;
+            Fill(new Rect(cx + Mathf.Cos(a) * R - 1.5f, cy + Mathf.Sin(a) * R - 1.5f, 3f, 3f), ring);
+        }
+
+        // 四向刻线（留中心空隙）
+        float gap = 10f, len = R * 0.45f, t = 2f;
+        Fill(new Rect(cx - R - len, cy - t * 0.5f, len, t), ring);
+        Fill(new Rect(cx + R, cy - t * 0.5f, len, t), ring);
+        Fill(new Rect(cx - t * 0.5f, cy - R - len, t, len), ring);
+        Fill(new Rect(cx - t * 0.5f, cy + R, t, len), ring);
+
+        // 横向密位刻度
+        for (int i = 1; i <= 5; i++)
+        {
+            float d = i * R * 0.16f;
+            float h = (i % 2 == 0) ? 9f : 5f;
+            Fill(new Rect(cx - d - 1f, cy - h * 0.5f, 2f, h), dim);
+            Fill(new Rect(cx + d - 1f, cy - h * 0.5f, 2f, h), dim);
+        }
+        // 纵向测距刻度（往下，机枪打远目标要抬枪）
+        for (int i = 1; i <= 4; i++)
+        {
+            float d = i * R * 0.18f;
+            float w = (i % 2 == 0) ? 9f : 5f;
+            Fill(new Rect(cx - w * 0.5f, cy + d - 1f, w, 2f), dim);
+        }
+
+        // 中心红点 + 内圈四点
+        for (int i = 0; i < 4; i++)
+        {
+            float a = Mathf.PI * 0.25f + i * Mathf.PI * 0.5f;
+            Fill(new Rect(cx + Mathf.Cos(a) * (R * 0.52f) - 2f, cy + Mathf.Sin(a) * (R * 0.52f) - 2f, 4f, 4f), dim);
+        }
+        Fill(new Rect(cx - 2.5f, cy - 2.5f, 5f, 5f), new Color(1f, 0.32f, 0.26f, 1f));
+
+        Text(new Rect(0f, cy + R + len + 8f, _vw, 24f), $"机枪 ×{zoom:F1}　·　松开 Shift 退出开镜", _s20,
+             new Color(1f, 1f, 1f, 0.55f), TextAnchor.MiddleCenter);
     }
 
     /// <summary>飞机开镜的分划：细圆环 + 四向刻线 + 中心点 + 放大倍率。不压黑边（不是炮镜）。</summary>
@@ -465,6 +616,189 @@ public class MatchHUD : MonoBehaviour
     }
 
     // ---------------- 绘制工具 ----------------
+
+    // ---------------- 舰载雷达（只有船有） ----------------
+
+    /// <summary>雷达探测半径（米）。</summary>
+    public float radarRange = 700f;
+
+    static VehicleCombat[] _radarVehicles = new VehicleCombat[0];
+    static float _radarNextScan;
+    static Texture2D _radarDisc;
+
+    void Update()
+    {
+        // OnGUI 一帧会跑好几遍，别在里面 FindObjects
+        if (Time.time < _radarNextScan) return;
+        _radarNextScan = Time.time + 0.15f;
+        _radarVehicles = Object.FindObjectsByType<VehicleCombat>(FindObjectsSortMode.None);
+    }
+
+    /// <summary>雷达圆盘贴图：圆内不透明、圆外透明（用 GUI.color 染色）。</summary>
+    static Texture2D RadarDisc()
+    {
+        if (_radarDisc != null) return _radarDisc;
+        const int S = 256;
+        var t = new Texture2D(S, S, TextureFormat.RGBA32, false) { wrapMode = TextureWrapMode.Clamp };
+        var px = new Color32[S * S];
+        float c = S * 0.5f, r = S * 0.5f - 1f;
+        for (int y = 0; y < S; y++)
+            for (int x = 0; x < S; x++)
+            {
+                float dx = x + 0.5f - c, dy = y + 0.5f - c;
+                float d = Mathf.Sqrt(dx * dx + dy * dy) / r;
+                float a = Mathf.Clamp01((0.99f - d) / 0.05f);
+                px[y * S + x] = new Color32(255, 255, 255, (byte)(a * 255f));
+            }
+        t.SetPixels32(px);
+        t.Apply();
+        _radarDisc = t;
+        return t;
+    }
+
+    /// <summary>
+    /// 舰载雷达：以本船为圆心，**船头朝上**，扫掠线转圈。
+    /// 红点 = 敌方舰艇，橙点 = 鱼雷（含己方的，用颜色区分），白点 = 己方。
+    /// 只给船用 —— 坦克/飞机没有对海雷达。
+    /// </summary>
+    void DrawRadar(MatchManager mm)
+    {
+        var p = mm.Player;
+        if (p == null || p.Def == null || p.Def.domain != Domain.Sea) return;
+        if (Cursor.lockState != CursorLockMode.Locked) return;
+
+        const float R = 112f;
+        float cx = _vw - R - 42f;
+        float cy = VH - R - 42f;
+
+        // 底盘
+        var oldC = GUI.color;
+        GUI.color = new Color(0.02f, 0.08f, 0.09f, 0.78f);
+        GUI.DrawTexture(new Rect(cx - R, cy - R, R * 2f, R * 2f), RadarDisc());
+        GUI.color = oldC;
+
+        // 外圈 + 距离环 + 十字
+        var ring = new Color(0.35f, 0.85f, 0.75f, 0.55f);
+        for (int i = 0; i < 72; i++)
+        {
+            float a = i / 72f * Mathf.PI * 2f;
+            Fill(new Rect(cx + Mathf.Cos(a) * R - 1.5f, cy + Mathf.Sin(a) * R - 1.5f, 3f, 3f), ring);
+        }
+        var dim = new Color(0.35f, 0.85f, 0.75f, 0.22f);
+        for (int i = 0; i < 48; i++)
+        {
+            float a = i / 48f * Mathf.PI * 2f;
+            Fill(new Rect(cx + Mathf.Cos(a) * R * 0.66f - 1f, cy + Mathf.Sin(a) * R * 0.66f - 1f, 2f, 2f), dim);
+            Fill(new Rect(cx + Mathf.Cos(a) * R * 0.33f - 1f, cy + Mathf.Sin(a) * R * 0.33f - 1f, 2f, 2f), dim);
+        }
+        Fill(new Rect(cx - R, cy - 0.5f, R * 2f, 1f), dim);
+        Fill(new Rect(cx - 0.5f, cy - R, 1f, R * 2f), dim);
+
+        // 扫掠线（转一圈 3 秒）
+        float sweep = (Time.time * 120f) % 360f;
+        for (int i = 0; i < 26; i++)
+        {
+            float f = i / 26f;
+            float a = (sweep - f * 22f) * Mathf.Deg2Rad;
+            var c = new Color(0.45f, 1f, 0.85f, 0.30f * (1f - f));
+            Fill(new Rect(cx + Mathf.Sin(a) * R * f * 0.98f - 1.5f,
+                          cy - Mathf.Cos(a) * R * f * 0.98f - 1.5f, 3f, 3f), c);
+        }
+
+        // 本船：中心的小箭头，**指向船头方向**（雷达是北朝上的，不跟船转）
+        float shipYaw = p.transform.eulerAngles.y;
+        var me = new Color(0.55f, 0.95f, 1f, 0.95f);
+        for (int i = 1; i <= 9; i++)
+        {
+            float f = i / 9f;
+            float a = shipYaw * Mathf.Deg2Rad;
+            float px = cx + Mathf.Sin(a) * 10f * f;
+            float py = cy - Mathf.Cos(a) * 10f * f;
+            float w = 4.2f * (1f - f * 0.55f);
+            Fill(new Rect(px - w * 0.5f, py - w * 0.5f, w, w), me);
+        }
+        Fill(new Rect(cx - 2f, cy - 2f, 4f, 4f), new Color(1f, 1f, 1f, 0.95f));
+
+        // 北向标记
+        Text(new Rect(cx - 12f, cy - R - 22f, 24f, 20f), "北", _s18,
+             new Color(0.55f, 0.95f, 0.85f, 0.8f), TextAnchor.MiddleCenter);
+
+        // 目标点：世界方向直接换算（北朝上，所以参考角恒为 0）
+        const float yaw = 0f;
+        var pos = p.transform.position;
+
+        // 鱼雷先画（在船下面，别被船点盖住）
+        for (int i = Torpedo.All.Count - 1; i >= 0; i--)
+        {
+            var t = Torpedo.All[i];
+            if (t == null) continue;
+            Vector3 d = t.transform.position - pos;
+            float dist = new Vector2(d.x, d.z).magnitude;
+            if (dist > radarRange) continue;
+            float rel = Mathf.DeltaAngle(yaw, Mathf.Atan2(d.x, d.z) * Mathf.Rad2Deg);
+            float k = dist / radarRange;
+            float px = cx + Mathf.Sin(rel * Mathf.Deg2Rad) * k * R;
+            float py = cy - Mathf.Cos(rel * Mathf.Deg2Rad) * k * R;
+            bool hostile = t.Team != p.Team;
+            var tc = hostile ? new Color(1f, 0.62f, 0.18f, 0.95f) : new Color(0.75f, 0.95f, 0.75f, 0.6f);
+            Fill(new Rect(px - 2.5f, py - 2.5f, 5f, 5f), tc);
+            // 来向短线：鱼雷的航向
+            Vector3 tv = t.transform.forward;
+            float tAng = Mathf.DeltaAngle(yaw, Mathf.Atan2(tv.x, tv.z) * Mathf.Rad2Deg);
+            Fill(new Rect(px + Mathf.Sin(tAng * Mathf.Deg2Rad) * 7f - 1f,
+                          py - Mathf.Cos(tAng * Mathf.Deg2Rad) * 7f - 1f, 2f, 2f), tc);
+        }
+
+        // 舰艇
+        foreach (var v in _radarVehicles)
+        {
+            if (v == null || v == p || !v.Alive) continue;
+            Vector3 d = v.transform.position - pos;
+            float dist = new Vector2(d.x, d.z).magnitude;
+            if (dist > radarRange) continue;
+            float rel = Mathf.DeltaAngle(yaw, Mathf.Atan2(d.x, d.z) * Mathf.Rad2Deg);
+            float k = dist / radarRange;
+            float px = cx + Mathf.Sin(rel * Mathf.Deg2Rad) * k * R;
+            float py = cy - Mathf.Cos(rel * Mathf.Deg2Rad) * k * R;
+            bool enemy = v.team != p.team;
+            var c = enemy ? new Color(1f, 0.35f, 0.30f, 0.95f) : new Color(0.55f, 0.85f, 1f, 0.75f);
+            float s = enemy ? 5f : 4f;
+            Fill(new Rect(px - s * 0.5f, py - s * 0.5f, s, s), c);
+            if (enemy)
+                Fill(new Rect(px - 1f, py - 1f, 2f, 2f), new Color(1f, 1f, 1f, 0.9f));
+        }
+
+        Text(new Rect(cx - R, cy + R + 4f, R * 2f, 22f),
+             $"雷达 {Mathf.RoundToInt(radarRange)} m", _s18,
+             new Color(0.55f, 0.95f, 0.85f, 0.65f), TextAnchor.MiddleCenter);
+    }
+
+    // ---------------- 命中反馈（击穿 / 未击穿 / 跳弹） ----------------
+
+    static string _hitMsg = "";
+    static float _hitMsgUntil;
+
+    /// <summary>玩家打中敌人时由 Projectile / 机枪调用。</summary>
+    public static void ShowHitFeedback(HitResult r)
+    {
+        switch (r)
+        {
+            case HitResult.Penetrated: _hitMsg = "击穿"; break;
+            case HitResult.NonPenetrating: _hitMsg = "未击穿"; break;
+            case HitResult.Ricochet: _hitMsg = "跳弹"; break;
+            default: _hitMsg = ""; return;
+        }
+        _hitMsgUntil = Time.time + 0.7f;
+    }
+
+    void DrawHitFeedback()
+    {
+        if (string.IsNullOrEmpty(_hitMsg) || Time.time > _hitMsgUntil) return;
+        float a = Mathf.Clamp01((_hitMsgUntil - Time.time) / 0.7f);
+        var c = _hitMsg == "击穿" ? new Color(1f, 0.86f, 0.35f, a)
+                                  : new Color(1f, 0.42f, 0.34f, a);
+        Text(new Rect(0f, VH * 0.5f - 86f, _vw, 34f), _hitMsg, _s32, c, TextAnchor.MiddleCenter);
+    }
 
     static void Panel(Rect r, Color? c = null) => Fill(r, c ?? CPanel);
 

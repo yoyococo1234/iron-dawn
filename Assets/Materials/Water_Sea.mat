@@ -60,14 +60,21 @@ Material:
         m_Texture: {fileID: 0}
         m_Scale: {x: 1, y: 1}
         m_Offset: {x: 0, y: 0}
+    - _ReflectionTex:
+        m_Texture: {fileID: 0}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
     m_Ints: []
     m_Floats:
     - _BumpScale: 1
+    - _CrestFoam: 1.35
     - _Cutoff: 0.5
-    - _DepthFade: 30
+    - _DepthFade: 9
     - _DetailNormalMapScale: 1
+    - _Distortion: 0.006
     - _DstBlend: 10
-    - _FoamWidth: 6
+    - _FoamWidth: 2.2
+    - _Glitter: 1.6
     - _GlossMapScale: 1
     - _Glossiness: 0.92
     - _GlossyReflections: 1
@@ -75,21 +82,34 @@ Material:
     - _Mode: 3
     - _OcclusionStrength: 1
     - _Parallax: 0.02
+    - _PatchRadius: 0
+    - _Reflectivity: 0.72
+    - _Refract: 0.06
+    - _RippleScale: 0.9
+    - _RippleSpeed: 0.3
+    - _RippleStrength: 0.045
     - _SmoothnessTextureChannel: 0
-    - _SpecIntensity: 1.3
-    - _SpecPower: 90
+    - _SpecIntensity: 3.2
+    - _SpecPower: 260
     - _SpecularHighlights: 1
     - _SrcBlend: 1
+    - _SunPath: 3
+    - _SunSharp: 300
+    - _SunWidth: 0.35
     - _UVSec: 0
-    - _WaveScale: 0.18
-    - _WaveSpeed: 0.7
-    - _WaveStrength: 0.22
+    - _WaveAmp: 1.55
+    - _WaveScale: 0.38
+    - _WaveSpeed: 0.85
+    - _WaveStrength: 0.45
     - _ZWrite: 0
     m_Colors:
     - _Color: {r: 0.09, g: 0.31, b: 0.42, a: 0.62}
-    - _DeepColor: {r: 0.03, g: 0.12, b: 0.24, a: 0.95}
+    - _DeepColor: {r: 0.035, g: 0.1, b: 0.2, a: 1}
     - _EmissionColor: {r: 0, g: 0, b: 0, a: 1}
-    - _ShallowColor: {r: 0.3, g: 0.55, b: 0.52, a: 0.75}
-    - _SkyColor: {r: 0.58, g: 0.72, b: 0.86, a: 1}
+    - _HorizonColor: {r: 0.16, g: 0.28, b: 0.4, a: 1}
+    - _PatchCenter: {r: 0, g: 0, b: 0, a: 0}
+    - _ShallowColor: {r: 0.13, g: 0.4, b: 0.44, a: 0.8}
+    - _SkyColor: {r: 0.56, g: 0.71, b: 0.86, a: 1}
+    - _SunColor: {r: 1, g: 0.95, b: 0.82, a: 1}
   m_BuildTextureStacks: []
   m_AllowLocking: 1

@@ -35,3 +35,37 @@ CC-BY 的条目**必须在报告书/游戏内标注作者**，下面这份就是
   - 备选：`work/gen_sfx.py` 里的 `gen_track()`（纯合成）、
     `work/gen_track_from_samples.py`（用 CC0 金属撞击录音编排，已跑通，产物被覆盖了）
 
+
+---
+
+## 2026-11-05 新增：命中反馈音效（穿透系统）
+
+来源：**Red Eclipse** 官方音效包，OpenGameArt 分发
+https://opengameart.org/content/red-eclipse-sounds
+
+| 文件 | 用途 | 包内原始文件 | 授权 |
+|---|---|---|---|
+| `Resources/Audio/hit_ricochet.ogg` | 跳弹 | `sounds/weapons/ricochet.ogg` | CC-BY-SA 3.0 |
+| `Resources/Audio/hit_nonpen.ogg` | 未击穿 | `sounds/sfx/bounce.ogg` | CC-BY-SA 3.0 |
+| `Resources/Audio/hit_pen.ogg` | 击穿 | `sounds/weapons/explode2.ogg` | CC-BY-SA 3.0 |
+
+⚠️ **CC-BY-SA 3.0 要求署名 + 相同方式共享**。提交前二选一：
+1. 在报告书/游戏内保留署名（"Sound effects from Red Eclipse, CC-BY-SA 3.0"）；
+2. 换成 CC0 素材（Freesound 的 CC0 下载需要登录，本次没走通）。
+---
+
+## 2026-11-05 修订：命中音效换成 Freesound CC0
+
+上一版用的 Red Eclipse 包（CC-BY-SA）声音太"轻武器"，换成 Freesound 上 **CC0** 的坦克/金属素材：
+
+| 文件 | 内容 | 来源 | 授权 |
+|---|---|---|---|
+| `Resources/Audio/hit_ricochet.wav` | 跳弹（截 0.40~0.80 s，单一金属跳弹声） | https://freesound.org/s/148827/ | CC0 |
+| `Resources/Audio/hit_nonpen.wav` | 未击穿（截 0.15~1.00 s，金属撞击余响） | https://freesound.org/s/697758/ | CC0 |
+| `Resources/Audio/hit_pen.wav` | 击穿（截 0.00~1.50 s，坦克炮击发/命中爆响） | https://freesound.org/s/127845/ | CC0 |
+
+选段用 earshot 打分（跳弹 z+4.6、未击穿 z+3.3、击穿 z+5.5），
+ffmpeg 裁切 + 淡出 + 48 kHz/单声道归一。
+
+**注**：这些是 Freesound 的**预览 mp3**（未登录无法下原始 wav），码率 54~71 kbps，
+当短音效用没问题；要更高音质需要登录后下原文件。

@@ -15,6 +15,7 @@ MonoBehaviour:
   id: land_main
   displayName: "\u4E3B\u6218\u5766\u514B"
   domain: 0
+  engineLoopName: 
   price: 200
   respawnBaseCost: 80
   maxHp: 1200
@@ -22,6 +23,9 @@ MonoBehaviour:
   armorFront: 0.7
   armorSide: 0.9
   armorRear: 1.1
+  armorThicknessFront: 220
+  armorThicknessSide: 80
+  armorThicknessRear: 50
   uniformMultiplier: 0
   speed: 12
   turnSpeed: 60
@@ -52,6 +56,7 @@ MonoBehaviour:
   trackRoadWheelR: 0.4
   trackRoadWheelCount: 6
   trackGroundLift: 0
+  trackDrop: 0
   bakedTurretWell: 1
   modelBarrelPrefab: {fileID: 919132149155446097, guid: 45493eb3e103daa4facd3e7971b24620, type: 3}
   modelBarrelPivot: {x: 0, y: 0.673, z: 1.758}
@@ -60,8 +65,18 @@ MonoBehaviour:
   autoTurretWellPatch: 0
   autoTurretSkirt: 0
   modelDeckGunPivot: {x: 0, y: 0, z: 0}
+  deckGunScale: 0.7
+  oscillatingTurret: 0
+  modelTurretLowerPrefab: {fileID: 0}
+  modelElevatingPivot: {x: 0, y: 0, z: 0}
+  elevatingFollow: 1
+  maxElevationOverride: 0
+  maxDepressionOverride: 0
+  turretYawLimit: 180
   turretBoneName: Turret
   muzzleBoneName: Muzzle
   modelYawOffset: 0
   modelScale: 1
+  intakeFans: []
+  intakeFanRadius: 0.5
   description: "\u5747\u8861\uFF0C\u80FD\u722C 29\xB0"

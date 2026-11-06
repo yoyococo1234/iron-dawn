@@ -15,6 +15,7 @@ MonoBehaviour:
   id: land_heavy
   displayName: "\u91CD\u88C5\u5766\u514B"
   domain: 0
+  engineLoopName: 
   price: 220
   respawnBaseCost: 90
   maxHp: 1600
@@ -22,6 +23,9 @@ MonoBehaviour:
   armorFront: 0.6
   armorSide: 0.8
   armorRear: 1.05
+  armorThicknessFront: 300
+  armorThicknessSide: 120
+  armorThicknessRear: 60
   uniformMultiplier: 0
   speed: 8
   turnSpeed: 40
@@ -61,8 +65,18 @@ MonoBehaviour:
   autoTurretWellPatch: 0
   autoTurretSkirt: 0
   modelDeckGunPivot: {x: 0, y: 0, z: 0}
+  deckGunScale: 0.7
+  oscillatingTurret: 0
+  modelTurretLowerPrefab: {fileID: 0}
+  modelElevatingPivot: {x: 0, y: 0, z: 0}
+  elevatingFollow: 1
+  maxElevationOverride: 0
+  maxDepressionOverride: 0
+  turretYawLimit: 180
   turretBoneName: Turret
   muzzleBoneName: Muzzle
   modelYawOffset: 0
   modelScale: 1
+  intakeFans: []
+  intakeFanRadius: 0.5
   description: "\u6B63\u9762\u6781\u786C\uFF0C\u53EA\u80FD\u722C 22\xB0"

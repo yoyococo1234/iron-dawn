@@ -104,11 +104,30 @@ public class VehiclePhysics : MonoBehaviour
     [Tooltip("抬/压炮速度（度/秒）")]
     public float pitchSpeed = 25f;
     [System.NonSerialized] public Transform barrelBone;
+    /// <summary>摇摆炮塔：整块上部塔体的俯仰节点（塔体按 elevatingFollow 比例跟随炮管角度）。</summary>
+    [System.NonSerialized] public Transform elevatingBone;
+    [Tooltip("塔体跟随炮管俯仰的比例（0 = 塔体不动，1 = 整块塔体 1:1 跟随）。" +
+             "1:1 时塔体底面扫过量很大，需要大间隙或底座；0.25 左右最自然")]
+    public float elevatingFollow = 1f;
     [System.NonSerialized] public float barrelPitch;
 
     [Header("甲板/车顶机枪（独立俯仰，能打飞机）")]
-    [Tooltip("机枪挂点（由 VehicleModelBinder 生成，挂在炮塔顶上）")]
+    [Tooltip("机枪挂点（由 VehicleModelBinder 生成；指摇架，绕耳轴俯仰）")]
     [System.NonSerialized] public Transform mgBone;
+    [Tooltip("机枪回转座（绕 Y 偏航，独立于炮塔 —— 枪架自己能转，不用拖着炮塔一起甩）")]
+    [System.NonSerialized] public Transform mgYawBone;
+    [Tooltip("机枪相对炮塔的偏航角（度）")]
+    [System.NonSerialized] public float mgYaw;
+    [Tooltip("机枪回转限位（±度）。枪架转不到炮塔正后方 —— 免得对着自己船体扫")]
+    public float mgYawLimit = 120f;
+    [Tooltip("机枪枪口节点（出膛点，由 VehicleModelBinder 生成）")]
+    [System.NonSerialized] public Transform mgMuzzle;
+
+    [Tooltip("鱼雷发射管管口（左舷 / 右舷，由 VehicleModelBinder 生成）")]
+    [System.NonSerialized] public Transform torpedoTubeL;
+    [System.NonSerialized] public Transform torpedoTubeR;
+    /// <summary>这艘船有没有可见的鱼雷发射管。</summary>
+    public bool HasTorpedoTubes => torpedoTubeL != null || torpedoTubeR != null;
     [Tooltip("机枪当前仰角（度，正 = 抬高）")]
     [System.NonSerialized] public float mgPitch;
     [Tooltip("机枪最大仰角（度）")]
@@ -122,6 +141,14 @@ public class VehiclePhysics : MonoBehaviour
 
     // ---- 运行时状态（给 HUD 看）----
     [System.NonSerialized] public float speed;
+    /// <summary>重伤减速倍率（由 VehicleDamageFx 按血量设置：低于 25% 血时降到 0.6）。</summary>
+    [System.NonSerialized] public float damageSpeedMul = 1f;
+    /// <summary>部位损坏造成的减速（发动机被打坏 0.25、履带断 0.05）。</summary>
+    [System.NonSerialized] public float moduleSpeedMul = 1f;
+    /// <summary>炮塔转速倍率（炮塔环被打坏 ×0.25）。</summary>
+    [System.NonSerialized] public float turretSpeedMul = 1f;
+    /// <summary>两个减速倍率合起来用。</summary>
+    public float SpeedMul => Mathf.Clamp01(damageSpeedMul * moduleSpeedMul);
     [System.NonSerialized] public float slopeDeg;
     [System.NonSerialized] public float waterDepth;
     [System.NonSerialized] public float maxClimbDeg;
@@ -225,7 +252,7 @@ public class VehiclePhysics : MonoBehaviour
 
         transform.Rotate(0f, steer * def.turnSpeed * Time.deltaTime, 0f, Space.World);
 
-        float target = throttle * def.speed * slopeFactor * waterFactor;
+        float target = throttle * def.speed * slopeFactor * waterFactor * SpeedMul;
         float rate = Mathf.Abs(target) > Mathf.Abs(speed) ? acceleration : brakeDecel;
         speed = Mathf.MoveTowards(speed, target, rate * Time.deltaTime);
 
@@ -301,12 +328,12 @@ public class VehiclePhysics : MonoBehaviour
 
             // 倒车给满速（原来只有 40%，玩家经常退不出来）
             if (throttle < 0f)
-                speed = Mathf.MoveTowards(speed, throttle * def.speed, acceleration * Time.deltaTime);
+                speed = Mathf.MoveTowards(speed, throttle * def.speed * SpeedMul, acceleration * Time.deltaTime);
         }
         else
         {
             stateText = waterDepth > 3f ? "深水航行" : "航行";
-            float target = throttle * def.speed;
+            float target = throttle * def.speed * SpeedMul;
             float rate = Mathf.Abs(target) > Mathf.Abs(speed) ? acceleration * 0.7f : brakeDecel * 0.6f;
             speed = Mathf.MoveTowards(speed, target, rate * Time.deltaTime);
         }
@@ -413,7 +440,7 @@ public class VehiclePhysics : MonoBehaviour
         transform.rotation = Quaternion.Slerp(transform.rotation, targetRot, airResponse * dt);
 
         // ================= 速度 =================
-        float targetSpeed = Mathf.Lerp(def.speed * 0.45f, def.speed * 1.15f, airThrottle);
+        float targetSpeed = Mathf.Lerp(def.speed * 0.45f, def.speed * 1.15f, airThrottle) * SpeedMul;
         speed = Mathf.MoveTowards(speed, targetSpeed, acceleration * 1.5f * dt);
 
         // ================= 位移 =================
@@ -489,7 +516,7 @@ public class VehiclePhysics : MonoBehaviour
 
         float want = Mathf.Atan2(to.x, to.z) * Mathf.Rad2Deg - transform.eulerAngles.y;
         float delta = Mathf.DeltaAngle(turretYaw, want);
-        float limit = Mathf.Min(Mathf.Abs(delta), maxDegPerSec * Time.deltaTime);
+        float limit = Mathf.Min(Mathf.Abs(delta), maxDegPerSec * turretSpeedMul * Time.deltaTime);
         RotateTurret(Mathf.Sign(delta) * limit);
 
         AimBarrelAt(worldPoint);
@@ -507,7 +534,21 @@ public class VehiclePhysics : MonoBehaviour
             barrelPitch = Mathf.SmoothDamp(barrelPitch, want, ref _pitchVel, Mathf.Max(0.02f, 1f / Mathf.Max(1f, pitchSpeed)));
         }
         else barrelPitch = want;
-        barrelBone.localRotation = Quaternion.Euler(-barrelPitch, 0f, 0f);
+        ApplyPitch();
+    }
+
+    /// <summary>
+    /// 把当前 barrelPitch 分摊到「塔体」和「炮管」两个节点上。
+    /// 普通炮塔：只有炮管转（elevatingBone 为空）；摇摆炮塔：塔体按 elevatingFollow 比例跟随，
+    /// 炮管转剩下的部分，两者相加正好等于目标俯仰角。
+    /// </summary>
+    void ApplyPitch()
+    {
+        float follow = elevatingBone != null ? Mathf.Clamp01(elevatingFollow) : 0f;
+        if (elevatingBone != null)
+            elevatingBone.localRotation = Quaternion.Euler(-barrelPitch * follow, 0f, 0f);
+        if (barrelBone != null)
+            barrelBone.localRotation = Quaternion.Euler(-barrelPitch * (1f - follow), 0f, 0f);
     }
 
     float _pitchVel;
@@ -522,7 +563,7 @@ public class VehiclePhysics : MonoBehaviour
         {
             float want = Mathf.DeltaAngle(transform.eulerAngles.y, targetYawWorld);
             float delta = Mathf.DeltaAngle(turretYaw, want);
-            float limit = Mathf.Min(Mathf.Abs(delta), yawDegPerSec * Time.deltaTime);
+            float limit = Mathf.Min(Mathf.Abs(delta), yawDegPerSec * turretSpeedMul * Time.deltaTime);
             if (limit > 0f) RotateTurret(Mathf.Sign(delta) * limit);
         }
         SetBarrelPitch(targetPitch);
@@ -541,7 +582,7 @@ public class VehiclePhysics : MonoBehaviour
         float want = Mathf.Atan2(to.y, horiz) * Mathf.Rad2Deg;
         want = Mathf.Clamp(want, maxDepression, maxElevation);
         barrelPitch = Mathf.MoveTowards(barrelPitch, want, pitchSpeed * Time.deltaTime);
-        barrelBone.localRotation = Quaternion.Euler(-barrelPitch, 0f, 0f);
+        ApplyPitch();
     }
 
     /// <summary>炮口世界坐标（开火起点）。没有炮口节点时退化到车头前方。</summary>
@@ -582,6 +623,46 @@ public class VehiclePhysics : MonoBehaviour
         mgBone.localRotation = Quaternion.Euler(-mgPitch, 0f, 0f);
     }
 
+    /// <summary>
+    /// 机枪回转（相对炮塔的偏航角，度）。
+    /// 枪架是独立回转座：转机枪不用拖着整座炮塔一起甩 —— 炮塔转速只有 50°/s，
+    /// 用它带着机枪转，画面会明显跟不上鼠标。
+    /// </summary>
+    public void SetDeckGunYaw(float deg, float degPerSec, bool smooth = true)
+    {
+        if (mgYawBone == null) return;
+        deg = Mathf.Repeat(deg + 180f, 360f) - 180f;      // 折到 -180..180
+        deg = Mathf.Clamp(deg, -mgYawLimit, mgYawLimit);  // 回转限位（默认 ±120°）
+        if (smooth) mgYaw = Mathf.MoveTowardsAngle(mgYaw, deg, Mathf.Max(1f, degPerSec) * Time.deltaTime);
+        else mgYaw = deg;
+        mgYawBone.localRotation = Quaternion.Euler(0f, mgYaw, 0f);
+    }
+
+    // ==================== 外部冲量（撞击弹开） ====================
+
+    /// <summary>
+    /// 外部冲量（米/秒）。载具本来是"沿车头方向按 speed 前进"，没有横向速度，
+    /// 所以撞击弹开要单独存一个矢量，在 LateUpdate 里叠加位移并自己衰减。
+    /// </summary>
+    [System.NonSerialized] public Vector3 knockback;
+
+    /// <summary>撞一下：给一个反向冲量（世界坐标），车会真的被弹开一段。</summary>
+    public void ApplyKnockback(Vector3 v)
+    {
+        v.y = 0f;                       // 只弹水平方向，不然车会被顶上天
+        knockback += v;
+        float max = 14f;                // 别叠加到离谱
+        if (knockback.magnitude > max) knockback = knockback.normalized * max;
+    }
+
+    void LateUpdate()
+    {
+        if (knockback.sqrMagnitude < 0.0001f) return;
+        transform.position += knockback * Time.deltaTime;
+        knockback = Vector3.MoveTowards(knockback, Vector3.zero, 20f * Time.deltaTime);
+        if (knockback.sqrMagnitude < 0.0001f) knockback = Vector3.zero;
+    }
+
     /// <summary>按世界坐标点算机枪仰角（AI 用）。</summary>
     public void AimDeckGunAt(Vector3 worldPoint, float maxElev, float maxDepress, float degPerSec)
     {
@@ -595,6 +676,7 @@ public class VehiclePhysics : MonoBehaviour
     /// <summary>机枪枪口世界坐标（开火起点）。</summary>
     public Vector3 GetDeckGunMuzzle()
     {
+        if (mgMuzzle != null) return mgMuzzle.position;      // 模型自带枪口节点，最准
         if (mgBone == null) return GetMuzzlePosition();
         return mgBone.position + mgBone.forward * 1.15f;
     }

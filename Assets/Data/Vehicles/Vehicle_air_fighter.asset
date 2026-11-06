@@ -23,6 +23,9 @@ MonoBehaviour:
   armorFront: 1
   armorSide: 1
   armorRear: 1
+  armorThicknessFront: 20
+  armorThicknessSide: 15
+  armorThicknessRear: 10
   uniformMultiplier: 1
   speed: 45
   turnSpeed: 120
@@ -39,8 +42,37 @@ MonoBehaviour:
   modelPrefab: {fileID: 919132149155446097, guid: 1d5a822e16f8a754fa22f592bb7cc2c6, type: 3}
   modelMaterial: {fileID: 2100000, guid: 826a548583a238840a12d7e09202cede, type: 2}
   modelTurretPrefab: {fileID: 0}
+  useSplitTurret: 0
+  modelTracksPrefab: {fileID: 0}
+  modelTrackWellRef: {fileID: 0}
+  modelTurretMaterial: {fileID: 0}
+  modelTracksMaterial: {fileID: 0}
+  tracksTargetHeight: 0
+  proceduralTracks: 0
+  trackHalfSpan: 0
+  trackBandWidth: 0
+  trackLoopLength: 0
+  trackLoopHeight: 0
+  trackRoadWheelR: 0
+  trackRoadWheelCount: 0
+  trackGroundLift: 0.1
+  trackDrop: 0
+  bakedTurretWell: 0
+  modelBarrelPrefab: {fileID: 0}
+  modelBarrelPivot: {x: 0, y: 0, z: 0}
   modelTurretPivot: {x: 0, y: 0, z: 0}
-  showTurretRing: 0
+  modelTurretMeshOrigin: {x: 0, y: 0, z: 0}
+  autoTurretWellPatch: 1
+  autoTurretSkirt: 1
+  modelDeckGunPivot: {x: 0, y: 0, z: 0}
+  deckGunScale: 1
+  oscillatingTurret: 0
+  modelTurretLowerPrefab: {fileID: 0}
+  modelElevatingPivot: {x: 0, y: 0, z: 0}
+  elevatingFollow: 1
+  maxElevationOverride: 0
+  maxDepressionOverride: 0
+  turretYawLimit: 180
   turretBoneName: Turret
   muzzleBoneName: Muzzle
   modelYawOffset: 180

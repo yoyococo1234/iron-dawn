@@ -109,6 +109,11 @@ public static class VehicleModelBinder
             tracksRoot = tracks.transform;
         }
 
+        // ---------- 鱼雷发射管（只有船有）----------
+        if (def.domain == Domain.Sea && vp != null) BuildTorpedoTubes(root.transform, model.transform, def, vp);
+        // 攻击机：模型不带弹，机翼下挂 8 枚可消耗的导弹（战斗机没有挂弹，跳过）
+        if (def.domain == Domain.Air && HasLimitedAmmoWeapon(def)) BuildWingMissiles(root.transform, model.transform, def);
+
         // ---------- 炮塔（Lux3D 拆件）----------
         if (def.modelTurretPrefab != null)
         {
@@ -116,22 +121,47 @@ public static class VehicleModelBinder
             tp.transform.SetParent(root.transform, false);
             tp.transform.localPosition = def.modelTurretPivot;
 
-            var tm = Object.Instantiate(def.modelTurretPrefab, tp.transform);
+            // 摇摆炮塔：上部塔体绕耳轴整体俯仰，下部座圈只转方位（AMX-13 的 FL-10 那种机构）。
+            // 层级：Turret(yaw) → Ring(固定) + Elevating(pitch) → 上部塔体 + 炮管（刚性）
+            Transform el = tp.transform;
+            if (def.oscillatingTurret)
+            {
+                var elev = new GameObject("Elevating");
+                elev.transform.SetParent(tp.transform, false);
+                elev.transform.localPosition = def.modelElevatingPivot;
+                el = elev.transform;
+                // 下部座圈：同一套拆件坐标，直接摆在炮塔节点下，不俯仰
+                if (def.modelTurretLowerPrefab != null)
+                {
+                    var low = Object.Instantiate(def.modelTurretLowerPrefab, tp.transform);
+                    low.name = "TurretRing";
+                    low.transform.localPosition = def.modelTurretMeshOrigin - def.modelTurretPivot;
+                    StripColliders(low);
+                    var lm0 = def.modelTurretMaterial != null ? def.modelTurretMaterial : def.modelMaterial;
+                    if (lm0 != null) ApplyMaterial(low, lm0);
+                }
+            }
+
+            var tm = Object.Instantiate(def.modelTurretPrefab, el);
             tm.name = "TurretModel";
             // 炮塔网格的原点是 Blender 拆件时的切割面中心；转轴换成了炮塔本体中心，
             // 所以要把网格反向偏移回去：外观位置不变，只是转起来绕本体中心，不再甩。
-            tm.transform.localPosition = def.modelTurretMeshOrigin - def.modelTurretPivot;
+            // 摇摆炮塔时还要再减掉耳轴偏移（因为父节点 Elevating 已经挪到耳轴上了）。
+            tm.transform.localPosition = def.modelTurretMeshOrigin - def.modelTurretPivot
+                                         - (def.oscillatingTurret ? def.modelElevatingPivot : Vector3.zero);
             StripColliders(tm);
             var turMat = def.modelTurretMaterial != null ? def.modelTurretMaterial : def.modelMaterial;
             if (turMat != null) ApplyMaterial(tm, turMat);
 
-            // 炮管（从炮塔上切出来的，单独做俯仰）
+            // 炮管（从炮塔上切出来的）
+            // 普通炮塔：挂在炮塔下、自己俯仰；摇摆炮塔：刚性固定在上部塔体里，跟着塔体一起俯仰
             Transform barrelNode = null;
             if (def.modelBarrelPrefab != null)
             {
                 var bp = new GameObject("Barrel");
-                bp.transform.SetParent(tp.transform, false);
-                bp.transform.localPosition = def.modelBarrelPivot;
+                bp.transform.SetParent(el, false);
+                bp.transform.localPosition = def.modelBarrelPivot
+                                             - (def.oscillatingTurret ? def.modelElevatingPivot : Vector3.zero);
                 var bm = Object.Instantiate(def.modelBarrelPrefab, bp.transform);
                 bm.name = "BarrelModel";
                 bm.transform.localPosition = Vector3.zero;
@@ -150,11 +180,28 @@ public static class VehicleModelBinder
             }
             else
             {
-                mz.transform.SetParent(tp.transform, false);
-                var lb = LocalBounds(tp.transform);
+                mz.transform.SetParent(el, false);
+                var lb = LocalBounds(el);
                 mz.transform.localPosition = new Vector3(0f, 0f, lb.max.z * 0.95f);
             }
-            if (vp != null) vp.barrelBone = barrelNode;
+            if (vp != null)
+            {
+                // 摇摆炮塔：塔体按 elevatingFollow 比例跟随，炮管转剩下的部分（两者相加 = 目标俯仰角）。
+                // elevatingFollow=1 是整块塔体 1:1 跟随（真机构）；0.25 左右是"塔体微动"，
+                // 底面扫过只有几厘米，不需要底座也不需要大缝。
+                if (def.oscillatingTurret)
+                {
+                    vp.barrelBone = barrelNode;
+                    vp.elevatingBone = el;
+                    vp.elevatingFollow = Mathf.Clamp01(def.elevatingFollow);
+                }
+                else
+                {
+                    vp.barrelBone = barrelNode;
+                }
+                if (def.maxElevationOverride > 0f) vp.maxElevation = def.maxElevationOverride;
+                if (def.maxDepressionOverride < 0f) vp.maxDepression = def.maxDepressionOverride;
+            }
 
             // 炮塔井：车体被炮塔切开的破口，实测后拍平 + 补板（见 WellFixup）
             if (def.autoTurretWellPatch)
@@ -183,7 +230,8 @@ public static class VehicleModelBinder
 
             // 炮塔是从车体/船体里「挖」出来的：底部没有面、甲板上留了个切口。
             // 不补的话炮塔一转就看见内部。这里补封底盘 + 炮座板，再挂上车顶机枪。
-            AddTurretExtras(root.transform, tp.transform, def, vp);
+            // 摇摆炮塔把 el 传进去：甲板机枪要跟着上部塔体一起俯仰。
+            AddTurretExtras(root.transform, el, def, vp);
             return true;
         }
 
@@ -523,40 +571,313 @@ public static class VehicleModelBinder
         return false;
     }
 
-    /// <summary>车顶/甲板机枪：支架 + 枪身 + 枪管 + 弹箱，挂在炮塔顶上（跟着炮塔转，自己只做俯仰）。</summary>
+    /// <summary>
+    /// 鱼雷发射管：两舷各一根，斜向前方。
+    ///
+    /// 以前鱼雷是从"主炮炮口位置压到水线"凭空冒出来的，看着像从船肚子里吐出来的。
+    /// 现在给两根可见的发射管，鱼雷从管口出去（`VehicleCombat.FireTorpedo` 读这里的管口）。
+    /// </summary>
+    /// <summary>
+    /// 在模型网格里量某个翼展位置的**机翼下表面**，返回模型局部坐标。
+    /// Lux3D 的 FBX 轴向：X=翼展、Y=前后（-Y 是机头）、Z=高度（Z-up）。
+    /// 起落架/挂架会挂在更低的位置，所以低于 -1.6 的顶点直接忽略。
+    /// </summary>
+    static Vector3 WingUnderside(Transform model, float localX, float localZCenter)
+    {
+        var mf = model.GetComponentInChildren<MeshFilter>();
+        if (mf == null || mf.sharedMesh == null || !mf.sharedMesh.isReadable)
+            return new Vector3(localX, localZCenter, -1.0f);
+
+        float x = Mathf.Abs(localX);
+        float bestZ = float.MaxValue, bestY = 0f;
+        bool any = false;
+        foreach (var v in mf.sharedMesh.vertices)
+        {
+            if (Mathf.Abs(Mathf.Abs(v.x) - x) > 0.45f) continue;
+            if (Mathf.Abs(v.y) > 1.4f) continue;      // 只取机翼弦长范围
+            if (v.z < -1.6f) continue;                // 起落架/吊舱
+            if (v.z < bestZ) { bestZ = v.z; bestY = v.y; any = true; }
+        }
+        if (!any) return new Vector3(localX, localZCenter, -1.0f);
+        return new Vector3(Mathf.Sign(localX) * x, bestY, bestZ - 0.18f);   // 再往下 18 cm 挂弹
+    }
+
+    /// <summary>这把武器有没有备弹上限（= 机翼上要不要挂实弹）。</summary>
+    static bool HasLimitedAmmoWeapon(VehicleDef def)
+    {
+        if (def == null || def.weapons == null) return false;
+        foreach (var w in def.weapons)
+            if (w != null && w.ammoCapacity > 0) return true;
+        return false;
+    }
+
+    /// <summary>
+    /// 机翼挂架上的 8 枚导弹（左右各 4）。打一枚藏一枚，复活重挂。
+    /// 模型本身是"空挂架"版本，弹体全部是运行时拼的简易几何。
+    /// </summary>
+    static void BuildWingMissiles(Transform root, Transform model, VehicleDef def)
+    {
+        if (model == null || root == null) return;
+
+        // 这里**只登记**：真正的弹体由 WingStores.Start() 创建。
+        // 原因：模型实例化后还要经过 DropToGround 重新定位（localPosition.y = 1.68），
+        // 在 Attach 阶段算世界坐标会少掉这段偏移，弹会掉到机身下面一米多。
+        var stores = root.gameObject.GetComponent<WingStores>();
+        if (stores == null) stores = root.gameObject.AddComponent<WingStores>();
+        stores.model = model;
+        stores.perSide = 4;
+        stores.mat = def.modelMaterial != null ? def.modelMaterial : DarkMat();
+    }
+
+    static void BuildTorpedoTubes(Transform root, Transform model, VehicleDef def, VehiclePhysics vp)
+    {        if (model == null) return;
+
+        Bounds b = default;
+        bool any = false;
+        foreach (var r in model.GetComponentsInChildren<Renderer>())
+        {
+            if (!any) { b = r.bounds; any = true; }
+            else b.Encapsulate(r.bounds);
+        }
+        if (!any) return;
+
+        var mat = def.modelMaterial != null ? def.modelMaterial : DarkMat();
+        Vector3 c = root.InverseTransformPoint(b.center);
+        Vector3 size = root.InverseTransformVector(b.size);
+        size = new Vector3(Mathf.Abs(size.x), Mathf.Abs(size.y), Mathf.Abs(size.z));
+
+        float halfW = size.x * 0.5f;
+        // 发射管要贴水线：按**水面**算高度（离水面 1.1 m），不要按船体包围盒顶算 ——
+        // 包围盒把上层建筑也算进去了，管子会挂到驾驶舱高度（实测高水面 4 m，看着像朝天放）。
+        float deckY = (BattlefieldTerrain.WaterLevel - root.position.y) + 1.1f;
+        float zPos = c.z - size.z * 0.05f;             // 船体中后部
+
+        for (int side = -1; side <= 1; side += 2)
+        {
+            var tube = new GameObject(side < 0 ? "TorpedoTubeL" : "TorpedoTubeR");
+            tube.transform.SetParent(root, false);
+            tube.transform.localPosition = new Vector3(side * halfW * 0.62f, deckY, zPos);
+            tube.transform.localRotation = Quaternion.Euler(0f, side * 9f, 0f);   // 稍微外撇
+
+            // 管体（沿 +Z）
+            AddPart(tube.transform, "TubeBody", PrimitiveType.Cylinder,
+                    new Vector3(0.58f, 1.55f, 0.58f), new Vector3(0f, 0f, 0.85f), new Vector3(90f, 0f, 0f), mat);
+            // 管口加强环
+            AddPart(tube.transform, "TubeRim", PrimitiveType.Cylinder,
+                    new Vector3(0.68f, 0.10f, 0.68f), new Vector3(0f, 0f, 1.62f), new Vector3(90f, 0f, 0f), mat);
+            // 底座支架
+            AddPart(tube.transform, "TubeMount", PrimitiveType.Cube,
+                    new Vector3(0.42f, 0.34f, 0.85f), new Vector3(0f, -0.30f, 0.85f), Vector3.zero, mat);
+
+            // 管口节点（鱼雷从这里出去）
+            var mz = new GameObject("TubeMuzzle");
+            mz.transform.SetParent(tube.transform, false);
+            mz.transform.localPosition = new Vector3(0f, 0f, 1.72f);
+
+            if (side < 0) vp.torpedoTubeL = mz.transform;
+            else vp.torpedoTubeR = mz.transform;
+        }
+    }
+
+    /// <summary>
+    /// 车顶/甲板机枪（12.7mm 高射机枪座）：回转底座 + 立柱 + 摇架 + 枪身 + 散热套筒 + 枪管 + 消焰器
+    /// + 弹箱 + 提把 + 环形机械瞄具。
+    ///
+    /// 两条硬要求（用户 2026-11-05 提的）：
+    ///   1. **不能和塔顶有缝**：底座高度不是拿包围盒顶估的，而是给塔体网格临时挂 MeshCollider、
+    ///      从正上方往下打射线**实测塔顶曲面**，再压进去 2 cm。塔顶是斜的/有起伏也不会有缝。
+    ///   2. **俯仰绕耳轴转**：mgBone 指摇架（yoke），底座和立柱不动。旧版把整个挂点当转轴，
+    ///      一转就从底座上"翻"下去。
+    ///
+    /// 层级：DeckGun（底座，贴塔顶，不俯仰）
+    ///         └── MG_Yoke（耳轴，绕 X 俯仰 = mgBone）
+    ///               └── 枪身/枪管/弹箱/瞄具 …（MG_Muzzle 在枪口，出膛点用它）
+    /// </summary>
     static void BuildDeckGun(Transform turret, VehicleDef def, VehiclePhysics vp,
                              Vector3 center, Vector3 size, float top)
     {
         if (vp == null) return;
 
+        // ---------- 1. 落点：塔顶靠后一点（避开前面的炮盾），有手写 pivot 就用手写的 ----------
+        bool manual = def.modelDeckGunPivot != Vector3.zero;
+        Vector3 mountXZ = manual
+            ? def.modelDeckGunPivot
+            : new Vector3(center.x, 0f, center.z - size.z * 0.20f);
+
+        // ---------- 2. 实测塔顶高度（临时 MeshCollider + 竖直向下射线） ----------
+        float roofY = manual ? def.modelDeckGunPivot.y : top;
+        if (!manual) roofY = MeasureRoofY(turret, mountXZ, top);
+
         var mg = new GameObject("DeckGun");
         mg.transform.SetParent(turret, false);
-        mg.transform.localPosition = def.modelDeckGunPivot != Vector3.zero
-            ? def.modelDeckGunPivot
-            : new Vector3(center.x, top - 0.04f, center.z - size.z * 0.20f);
+        // 压进塔顶 2 cm：底座和塔面重叠一点，任何角度看都没有缝
+        mg.transform.localPosition = new Vector3(mountXZ.x, roofY - 0.02f, mountXZ.z);
 
-        vp.mgBone = mg.transform;
+        // 机枪整体尺寸：每台车在 asset 里指定（炮艇 1.0 = 12.7mm 原尺寸，坦克 0.7）。
+        // 别用包围盒自动算 —— 炮塔包围盒把炮管也算进去了，量出来的长度没有可比性。
+        float gunScale = Mathf.Clamp(def.deckGunScale, 0.3f, 1.5f);
+        mg.transform.localScale = Vector3.one * gunScale;
+
+        vp.mgBone = null;   // 下面指到摇架
         vp.mgMaxElevation = 85f;
         vp.mgMaxDepression = -12f;
 
-        var dark = new Material(Shader.Find("Standard"))
+        var gun = new Material(Shader.Find("Standard"))
         {
-            color = new Color(0.13f, 0.14f, 0.15f)
+            color = new Color(0.115f, 0.12f, 0.13f)
         };
-        dark.SetFloat("_Glossiness", 0.45f);
-        dark.SetFloat("_Metallic", 0.65f);
+        gun.SetFloat("_Glossiness", 0.42f);
+        gun.SetFloat("_Metallic", 0.72f);
 
-        AddPart(mg.transform, "MG_Post", PrimitiveType.Cylinder,
-                new Vector3(0.09f, 0.19f, 0.09f), new Vector3(0f, 0.19f, 0f), Vector3.zero, dark);
+        var steel = new Material(Shader.Find("Standard"))
+        {
+            color = new Color(0.17f, 0.175f, 0.18f)
+        };
+        steel.SetFloat("_Glossiness", 0.35f);
+        steel.SetFloat("_Metallic", 0.55f);
 
-        AddPart(mg.transform, "MG_Body", PrimitiveType.Cube,
-                new Vector3(0.17f, 0.19f, 0.62f), new Vector3(0f, 0.46f, 0.06f), Vector3.zero, dark);
+        // ---------- 3. 底座（不俯仰） ----------
+        // 底盘：一大片圆盘，压在塔顶上，盖住塔面的小起伏
+        AddPart(mg.transform, "MG_BasePlate", PrimitiveType.Cylinder,
+                new Vector3(0.54f, 0.06f, 0.54f), new Vector3(0f, 0.01f, 0f), Vector3.zero, steel);
+        // 座圈
+        AddPart(mg.transform, "MG_BaseRing", PrimitiveType.Cylinder,
+                new Vector3(0.34f, 0.07f, 0.34f), new Vector3(0f, 0.07f, 0f), Vector3.zero, gun);
+        // 立柱
+        AddPart(mg.transform, "MG_Pedestal", PrimitiveType.Cylinder,
+                new Vector3(0.22f, 0.32f, 0.22f), new Vector3(0f, 0.25f, 0f), Vector3.zero, gun);
 
-        AddPart(mg.transform, "MG_Barrel", PrimitiveType.Cylinder,
-                new Vector3(0.05f, 0.46f, 0.05f), new Vector3(0f, 0.47f, 0.72f), new Vector3(90f, 0f, 0f), dark);
+        // ---------- 4. 回转座 + 摇架 ----------
+        // MG_Yaw 绕 Y 转（枪架自己扫射，不用拖着炮塔）；MG_Yoke 绕 X 转（俯仰）= mgBone
+        var mgYaw = new GameObject("MG_Yaw");
+        mgYaw.transform.SetParent(mg.transform, false);
+        mgYaw.transform.localPosition = new Vector3(0f, 0.45f, 0f);
+        vp.mgYawBone = mgYaw.transform;
 
-        AddPart(mg.transform, "MG_Ammo", PrimitiveType.Cube,
-                new Vector3(0.13f, 0.2f, 0.26f), new Vector3(0.17f, 0.4f, 0.02f), Vector3.zero, dark);
+        var yoke = new GameObject("MG_Yoke");
+        yoke.transform.SetParent(mgYaw.transform, false);
+        yoke.transform.localPosition = Vector3.zero;
+        vp.mgBone = yoke.transform;
+
+        // 摇架两块侧板
+        AddPart(yoke.transform, "MG_CradleL", PrimitiveType.Cube,
+                new Vector3(0.055f, 0.26f, 0.30f), new Vector3(-0.115f, -0.02f, 0.02f), Vector3.zero, gun);
+        AddPart(yoke.transform, "MG_CradleR", PrimitiveType.Cube,
+                new Vector3(0.055f, 0.26f, 0.30f), new Vector3(0.115f, -0.02f, 0.02f), Vector3.zero, gun);
+
+        // 枪身（机匣）
+        AddPart(yoke.transform, "MG_Receiver", PrimitiveType.Cube,
+                new Vector3(0.17f, 0.19f, 0.66f), new Vector3(0f, 0f, 0.04f), Vector3.zero, gun);
+        // 机匣顶盖（薄一点，做出层次）
+        AddPart(yoke.transform, "MG_TopCover", PrimitiveType.Cube,
+                new Vector3(0.15f, 0.05f, 0.52f), new Vector3(0f, 0.11f, 0.02f), Vector3.zero, steel);
+
+        // 散热套筒（枪管外面那圈带筋的筒）
+        AddPart(yoke.transform, "MG_Jacket", PrimitiveType.Cylinder,
+                new Vector3(0.175f, 0.42f, 0.175f), new Vector3(0f, 0f, 0.58f), new Vector3(90f, 0f, 0f), gun);
+        // 套筒上的散热环（三圈）
+        for (int i = 0; i < 3; i++)
+            AddPart(yoke.transform, $"MG_JacketRib{i}", PrimitiveType.Cylinder,
+                    new Vector3(0.20f, 0.035f, 0.20f), new Vector3(0f, 0f, 0.44f + i * 0.14f),
+                    new Vector3(90f, 0f, 0f), steel);
+
+        // 枪管
+        AddPart(yoke.transform, "MG_Barrel", PrimitiveType.Cylinder,
+                new Vector3(0.072f, 0.78f, 0.072f), new Vector3(0f, 0f, 1.10f), new Vector3(90f, 0f, 0f), gun);
+        // 消焰器 / 制退器
+        AddPart(yoke.transform, "MG_Muzzle", PrimitiveType.Cylinder,
+                new Vector3(0.125f, 0.16f, 0.125f), new Vector3(0f, 0f, 1.53f), new Vector3(90f, 0f, 0f), steel);
+
+        // 弹箱（挂在机匣左侧，往枪身里喂弹）
+        AddPart(yoke.transform, "MG_AmmoBox", PrimitiveType.Cube,
+                new Vector3(0.21f, 0.27f, 0.35f), new Vector3(-0.235f, -0.06f, 0.0f), Vector3.zero, steel);
+        AddPart(yoke.transform, "MG_AmmoFeed", PrimitiveType.Cube,
+                new Vector3(0.14f, 0.09f, 0.12f), new Vector3(-0.13f, 0.06f, 0.10f), Vector3.zero, gun);
+
+        // 双手握把（短粗、贴着机匣尾部往下翘 —— 高射机枪的扳机握把）
+        AddPart(yoke.transform, "MG_GripL", PrimitiveType.Cylinder,
+                new Vector3(0.085f, 0.10f, 0.085f), new Vector3(-0.085f, -0.15f, -0.28f), new Vector3(100f, 0f, 0f), gun);
+        AddPart(yoke.transform, "MG_GripR", PrimitiveType.Cylinder,
+                new Vector3(0.085f, 0.10f, 0.085f), new Vector3(0.085f, -0.15f, -0.28f), new Vector3(100f, 0f, 0f), gun);
+        // 机匣尾板（把后面的方口堵上，不然像个空盒子）
+        AddPart(yoke.transform, "MG_BufferPlate", PrimitiveType.Cube,
+                new Vector3(0.15f, 0.17f, 0.04f), new Vector3(0f, 0f, -0.36f), Vector3.zero, steel);
+
+        // 机械瞄具：后环形照门（16 段小方块拼一个环，块放大到互相压住，看着是"环"不是"一串点"）
+        AddPart(yoke.transform, "MG_SightPost", PrimitiveType.Cube,
+                new Vector3(0.026f, 0.09f, 0.026f), new Vector3(0f, 0.155f, 0.26f), Vector3.zero, steel);
+        const float ringR = 0.062f;
+        for (int i = 0; i < 16; i++)
+        {
+            float a = i / 16f * Mathf.PI * 2f;
+            AddPart(yoke.transform, $"MG_SightRing{i}", PrimitiveType.Cube,
+                    new Vector3(0.030f, 0.030f, 0.016f),
+                    new Vector3(Mathf.Cos(a) * ringR, 0.215f + Mathf.Sin(a) * ringR, 0.26f),
+                    new Vector3(0f, 0f, a * Mathf.Rad2Deg), steel);
+        }
+        // 前准星（套筒前端一个小立柱）
+        AddPart(yoke.transform, "MG_FrontSight", PrimitiveType.Cube,
+                new Vector3(0.020f, 0.075f, 0.020f), new Vector3(0f, 0.115f, 0.74f), Vector3.zero, steel);
+
+        // ---------- 5. 枪口节点（出膛点；比几何上的消焰器口再往前 3 cm） ----------
+        var muzzle = new GameObject("MG_MuzzlePoint");
+        muzzle.transform.SetParent(yoke.transform, false);
+        muzzle.transform.localPosition = new Vector3(0f, 0f, 1.63f);
+        vp.mgMuzzle = muzzle.transform;
+    }
+
+    /// <summary>
+    /// 量炮塔顶面在某个水平位置的真实高度（塔体本地坐标），返回**底座应该坐的高度**。
+    ///
+    /// 关键：取 9 个采样点（中心 + 半径 0.26 一圈）里的**最低点**，不是最高点。
+    /// 塔顶基本都有坡度 —— 用最高点的话，底座在低的一侧会悬空（实测就是这个"缝"）。
+    /// 用最低点则上坡侧沉进塔体几厘米（看不出来），下坡侧正好贴住。
+    /// 再加个夹子：最多比最高点低 10 cm，免得塔顶有个大台阶时整个机枪陷进去。
+    ///
+    /// 做法和炮塔井补板一样：临时给塔体网格挂 MeshCollider，从正上方打射线，量完删掉。
+    /// </summary>
+    static float MeasureRoofY(Transform turret, Vector3 localXZ, float fallback)
+    {
+        var temp = new List<MeshCollider>();
+        foreach (var mf in turret.GetComponentsInChildren<MeshFilter>())
+        {
+            if (mf.sharedMesh == null || !mf.sharedMesh.isReadable) continue;
+            if (mf.GetComponent<Collider>() != null) continue;
+            var mc = mf.gameObject.AddComponent<MeshCollider>();
+            mc.sharedMesh = mf.sharedMesh;
+            temp.Add(mc);
+        }
+        if (temp.Count == 0) return fallback;
+
+        float minY = float.MaxValue, maxY = float.MinValue;
+        const float ring = 0.26f;
+        for (int i = 0; i < 9; i++)
+        {
+            float ox = 0f, oz = 0f;
+            if (i > 0)
+            {
+                float a = (i - 1) / 8f * Mathf.PI * 2f;
+                ox = Mathf.Cos(a) * ring;
+                oz = Mathf.Sin(a) * ring;
+            }
+            Vector3 from = turret.TransformPoint(new Vector3(localXZ.x + ox, 6f, localXZ.z + oz));
+            var hits = Physics.RaycastAll(from, Vector3.down, 14f, ~0, QueryTriggerInteraction.Ignore);
+            foreach (var h in hits)
+            {
+                if (h.collider == null) continue;
+                var mc = h.collider.GetComponent<MeshCollider>();
+                if (mc == null || !temp.Contains(mc)) continue;
+                float ly = turret.InverseTransformPoint(h.point).y;
+                if (ly < minY) minY = ly;
+                if (ly > maxY) maxY = ly;
+            }
+        }
+
+        foreach (var mc in temp) Object.Destroy(mc);
+        if (minY == float.MaxValue) return fallback;
+
+        // 最低点坐下，但最多比最高点低 10 cm（塔顶有台阶时不至于陷进去）
+        return Mathf.Max(minY, maxY - 0.10f);
     }
 
     static void AddPart(Transform parent, string name, PrimitiveType type,

@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 
 /// <summary>
@@ -50,6 +51,14 @@ public class Torpedo : MonoBehaviour
     /// <summary>调试用：最后一枚鱼雷是怎么没的（life / beached / hit / miss）。</summary>
     public static string LastKillReason = "";
 
+    /// <summary>场上所有活着的鱼雷（HUD 雷达用）。</summary>
+    public static readonly List<Torpedo> All = new List<Torpedo>();
+
+    /// <summary>这枚鱼雷属于哪个阵营（雷达上分辨敌我）。</summary>
+    public int Team => _owner != null ? _owner.team : -1;
+
+    void OnDestroy() => All.Remove(this);
+
     public void Launch(Vector3 origin, Vector3 dir, float speed, float damage, AmmoDef ammo,
                        VehicleCombat owner, float range, float depth, float waterLevel)
     {
@@ -78,6 +87,7 @@ public class Torpedo : MonoBehaviour
 
         transform.position = origin;
         transform.rotation = Quaternion.LookRotation(_dir);
+        if (!All.Contains(this)) All.Add(this);
 
         // 水下气泡尾迹：细而半透明，远处看是一道淡淡的白色水痕（太粗会像一块白板）
         _trail = gameObject.AddComponent<TrailRenderer>();
@@ -334,27 +344,10 @@ public class Torpedo : MonoBehaviour
     {
         if (string.IsNullOrEmpty(LastKillReason)) LastKillReason = hit ? "hit" : "miss";
         float r = hit ? 7f : 3.5f;
-        var boom = GameObject.CreatePrimitive(PrimitiveType.Sphere);
-        boom.name = "TorpedoBurst";
-        boom.transform.position = new Vector3(transform.position.x, _waterLevel + 0.4f, transform.position.z);
-        boom.transform.localScale = Vector3.one * 0.6f;
-        Object.Destroy(boom.GetComponent<Collider>());
 
-        var mat = new Material(Shader.Find("Standard"));
-        mat.color = new Color(1f, 0.85f, 0.6f, 0.75f);
-        mat.SetColor("_EmissionColor", new Color(1f, 0.7f, 0.35f));
-        mat.EnableKeyword("_EMISSION");
-        boom.GetComponent<Renderer>().sharedMaterial = mat;
-
-        var l = boom.AddComponent<Light>();
-        l.type = LightType.Point;
-        l.range = r * 4f;
-        l.intensity = hit ? 8f : 4f;
-        l.color = new Color(1f, 0.8f, 0.5f);
-
-        var fx = boom.AddComponent<ExplosionFx>();
-        fx.duration = 0.7f;
-        fx.maxScale = r;
+        // 和载具死亡用同一套分层爆炸（闪光/火球/烟/火星/冲击波），只是小一号
+        Vector3 pos = new Vector3(transform.position.x, _waterLevel + 0.4f, transform.position.z);
+        ExplosionFx.Spawn(pos, hit ? r * 0.8f : r * 0.45f);
 
         Sfx.PlayAt(Sfx.Explosion, transform.position, hit ? 0.9f : 0.6f,
                    Random.Range(0.9f, 1.05f), 25f, 900f);

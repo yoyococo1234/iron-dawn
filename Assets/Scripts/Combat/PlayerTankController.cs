@@ -13,10 +13,27 @@ public class PlayerTankController : MonoBehaviour
     [Tooltip("炮塔对准目标多少度以内才允许开火")]
     public float fireAngleTolerance = 4f;
 
+    [Header("机枪模式（V）")]
+    [Tooltip("机枪回转座转速（度/秒）。枪架是独立回转座，比炮塔快得多")]
+    public float mgTurnSpeed = 200f;
+
+    [Tooltip("出生后多少秒内不接受开火输入。开局点鼠标/按空格开始游戏时，这一下会被当成 Fire1，" +
+             "载具一生成就打一炮（用户报的 bug）")]
+    public float fireLockAfterSpawn = 0.4f;
+
+    float _fireLockUntil;
+
+    void OnEnable() => _fireLockUntil = Time.time + fireLockAfterSpawn;
+
     VehicleCombat _combat;
     Camera _cam;
     Vector3 _lastAimPoint;
     bool _hasAim;
+    bool _mgMode;
+
+    /// <summary>是否在「甲板/车顶机枪」模式（V 键切换）。机枪是独立一套：不占炮塔的 Q 循环，
+    /// 有自己的俯仰（能抬到 85° 打飞机）和自己的瞄准镜。</summary>
+    public bool MgMode => _mgMode;
 
     void Awake() => _combat = GetComponent<VehicleCombat>();
 
@@ -68,21 +85,53 @@ public class PlayerTankController : MonoBehaviour
             // 读相机就等于"炮口 → 相机 → 炮口"闭环 —— 瞄准会自己漂、鼠标推不动（用户报的 bug）。
             // 用 camFollow.pitch（只由鼠标改）就断开了这个环。
             float wantPitch = -(camFollow.tankLookDownDeg + (camFollow.pitch - 8f));
-            _combat.Physics.AimDirect(wantYawWorld, wantPitch, turn);
+            var dw = _combat.DeckWeapon;
 
-            // 切到车顶机枪时，机枪有自己的一套俯仰（能抬到 85° 打飞机），不受炮管 20° 的限制
-            var cw = _combat.Weapon;
-            if (cw != null && cw.deckMounted && _combat.Physics.HasDeckGun)
-                _combat.Physics.SetDeckGunPitch(wantPitch, cw.deckMaxElevation, cw.deckMaxDepression, cw.deckPitchSpeed);
+            if (_mgMode && dw != null && _combat.Physics.HasDeckGun)
+            {
+                // ---------- 机枪模式：炮塔不动，只转枪架 ----------
+                // 枪架是独立回转座（MG_Yaw），200°/s —— 炮塔只有 50°/s，用炮塔带着机枪转，
+                // 画面会明显跟不上鼠标（用户："移动鼠标视角转换很不自然"）。
+                float turretWorldYaw = _combat.transform.eulerAngles.y + _combat.Physics.turretYaw;
+                float relYaw = Mathf.DeltaAngle(turretWorldYaw, wantYawWorld);
+                _combat.Physics.SetDeckGunYaw(relYaw, mgTurnSpeed);
+                _combat.Physics.SetDeckGunPitch(wantPitch, dw.deckMaxElevation, dw.deckMaxDepression, dw.deckPitchSpeed);
+            }
+            else
+            {
+                _combat.Physics.AimDirect(wantYawWorld, wantPitch, turn);
+                // 不在机枪模式：枪架归位（对准炮塔正前方、水平），免得它歪着挂在塔顶
+                _combat.Physics.SetDeckGunYaw(0f, 120f);
+                _combat.Physics.SetDeckGunPitch(0f, 85f, -12f, 90f);
+            }
         }
 
-        // 开火
-        if (Input.GetButton("Fire1") || Input.GetKey(KeyCode.Space))
-            _combat.FireAt(aimPoint, turn);
+        // 开火：机枪模式打机枪，否则打当前炮塔武器
+        if ((Input.GetButton("Fire1") || Input.GetKey(KeyCode.Space)) && Time.time >= _fireLockUntil)
+        {
+            // 机枪不给瞄准点 —— 沿枪管方向打，准星就是枪管指向，不存在"准星和弹道对不上"
+            if (_mgMode) _combat.FireDeckGunAt(null);
+            else _combat.FireAt(aimPoint, turn);
+        }
 
-        // Q 切换武器（右键留给开镜）
+        // Q 切换炮塔武器（舰炮/鱼雷…，**永远切不到机枪**）
         if (Input.GetKeyDown(KeyCode.Q))
-            _combat.CycleWeapon();
+        {
+            if (_mgMode) _mgMode = false;       // 机枪模式下按 Q = 退回炮塔武器
+            else _combat.CycleWeapon();
+        }
+
+        // V 进/出机枪模式（只有装了独立挂点机枪的载具才有）
+        if (Input.GetKeyDown(KeyCode.V))
+        {
+            var dw2 = _combat.DeckWeapon;
+            if (dw2 != null && _combat.Physics != null && _combat.Physics.HasDeckGun)
+            {
+                _mgMode = !_mgMode;
+                // 万一当前武器正好是机枪（旧存档/旧逻辑留下的），退回一把炮塔武器
+                if (_mgMode && _combat.Weapon != null && _combat.Weapon.deckMounted) _combat.CycleWeapon();
+            }
+        }
 
         // G = 随时换载具（测试用：不用等阵亡，直接回车库重选）
         if (Input.GetKeyDown(KeyCode.G))

@@ -20,3 +20,6 @@ MonoBehaviour:
   vsSea: 0.1
   pricePerShot: 10
   isSupport: 0
+  penetration: 30
+  penFalloffPer100m: 0
+  isChemical: 0
