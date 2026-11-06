@@ -35,6 +35,9 @@ public class SeaBuoyancy : MonoBehaviour
         _baseLocalPos = _model.localPosition;
         _baseLocalRot = _model.localRotation;
         CreateWaterInteraction();
+
+        // 船尾泡沫尾迹（Crest 泡沫模拟的输入，和水变形是两套数据）
+        if (GetComponent<SeaFoamWake>() == null) gameObject.AddComponent<SeaFoamWake>();
     }
 
     /// <summary>
