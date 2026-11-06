@@ -1,0 +1,42 @@
+# Git LFS 追踪规则（2026-11-06）
+# 目的：模型 / 贴图 / 音频 / 场景这类二进制大文件走 LFS，
+# 避免每次改一点就整份重传，把仓库撑爆。
+#
+# 统计（2026-11-06 实测工作区）：
+#   .glb   57 个 / 507.5 MB
+#   .fbx  536 个 / 176.4 MB
+#   .png   34 个 / 102.0 MB
+#   .wav   53 个 /  30.9 MB
+#   .jpg   20 个 /  23.6 MB
+#   .unity  3 个 /  17.6 MB
+#   合计约 861 MB
+
+# ---- 3D 模型 ----
+*.fbx filter=lfs diff=lfs merge=lfs -text
+*.glb filter=lfs diff=lfs merge=lfs -text
+*.gltf filter=lfs diff=lfs merge=lfs -text
+*.obj filter=lfs diff=lfs merge=lfs -text
+*.blend filter=lfs diff=lfs merge=lfs -text
+
+# ---- 贴图 ----
+*.png filter=lfs diff=lfs merge=lfs -text
+*.jpg filter=lfs diff=lfs merge=lfs -text
+*.jpeg filter=lfs diff=lfs merge=lfs -text
+*.tga filter=lfs diff=lfs merge=lfs -text
+*.psd filter=lfs diff=lfs merge=lfs -text
+*.exr filter=lfs diff=lfs merge=lfs -text
+*.hdr filter=lfs diff=lfs merge=lfs -text
+
+# ---- 音频 ----
+*.wav filter=lfs diff=lfs merge=lfs -text
+*.mp3 filter=lfs diff=lfs merge=lfs -text
+*.ogg filter=lfs diff=lfs merge=lfs -text
+
+# ---- Unity 场景（YAML 但体积大、合并价值低）----
+*.unity filter=lfs diff=lfs merge=lfs -text
+
+# ---- 其它二进制 ----
+*.dll filter=lfs diff=lfs merge=lfs -text
+*.so filter=lfs diff=lfs merge=lfs -text
+*.dylib filter=lfs diff=lfs merge=lfs -text
+*.zip filter=lfs diff=lfs merge=lfs -text
