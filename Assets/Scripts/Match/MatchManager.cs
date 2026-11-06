@@ -374,6 +374,8 @@ public class MatchManager : MonoBehaviour
             if (t < 0.02f || t > 0.98f) continue;
             float z = Mathf.Lerp(zMin, zMax, t);
             if (!FitsDomain(x, z, domain)) continue;
+            // 别生在陡坡上（2026-11-06：边界加了山脉，出生线原来在 ±933 正好落进山里）
+            if (domain != Domain.Air && BattlefieldTerrain.SampleSteepness(x, z) > 12f) continue;
             if (!SpawnClear(new Vector3(x, 0f, z), minDist)) continue;
             bestZ = z; found = true; break;
         }

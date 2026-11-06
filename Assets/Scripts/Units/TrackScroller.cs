@@ -326,7 +326,7 @@ public class TrackScroller : MonoBehaviour
 
     void Update()
     {
-        float speed = vehicle != null ? vehicle.speed : 0f;
+        float speed = vehicle != null ? vehicle.trackSpeed : 0f;
         if (Mathf.Abs(speed) < 0.02f) return;
 
         // 履带贴图滚动

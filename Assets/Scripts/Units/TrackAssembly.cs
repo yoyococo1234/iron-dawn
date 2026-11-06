@@ -1129,7 +1129,7 @@ public partial class TrackAssembly : MonoBehaviour
     float CurrentSpeed()
     {
         float v = debugSpeed;
-        if (vehicle != null) v += vehicle.speed;
+        if (vehicle != null) v += vehicle.trackSpeed;
         return v;
     }
 

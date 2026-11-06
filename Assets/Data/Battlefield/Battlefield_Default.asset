@@ -13,8 +13,8 @@ MonoBehaviour:
   m_Name: Battlefield_Default
   m_EditorClassIdentifier: Assembly-CSharp::BattlefieldDef
   arenaSize: 2000
-  allySpawnLineX: -933
-  enemySpawnLineX: 933
+  allySpawnLineX: -640
+  enemySpawnLineX: 640
   spawnLineZMin: -967
   spawnLineZMax: 967
   zones:

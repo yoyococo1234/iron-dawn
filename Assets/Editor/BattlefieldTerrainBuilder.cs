@@ -266,6 +266,7 @@ public static class BattlefieldTerrainBuilder
 
         // ---------- 山脊鞍部 → 再削公路（顺序不能反：先鞍部后公路，否则两段抬升叠加成陡坡）----------
         float roadW;
+        land = GentleRamp(land, x, z);       // 先修缓坡（把山脚拉平），再压据点平台，平台优先
         land = FlattenSaddle(land, x, z);
         land = CarvePass(land, x, z, out roadW);
 
@@ -409,28 +410,10 @@ public static class BattlefieldTerrainBuilder
         return 1f - SStep(0.7f, 1.3f, d);
     }
 
-    // ---- 山口公路（两条）：从平原爬上山地，在山脊资源点 (0,−45) 汇合 ----
-    // 路基高度逐段给定，地形自动削/填到路基上。最大纵坡 ≈14°，重装（22.3°）也能上。
-    static readonly Vector2[][] PassPaths =
-    {
-        // A 我方侧：盘山路（S 形），避免把山直接切成一条直槽
-        new[]
-        {
-            new Vector2(-26f, -16f), new Vector2(-30f, -24f), new Vector2(-26f, -32f),
-            new Vector2(-16f, -38f), new Vector2(-6f, -43f),  new Vector2(0f, -45f)
-        },
-        // B 敌方侧：镜像
-        new[]
-        {
-            new Vector2( 26f, -16f), new Vector2( 30f, -24f), new Vector2( 26f, -32f),
-            new Vector2( 16f, -38f), new Vector2( 6f, -43f),  new Vector2(0f, -45f)
-        },
-    };
-    static readonly float[][] PassHeights =
-    {
-        new[] { 1.5f, 3.0f, 4.6f, 6.6f, 8.6f, 10.0f },
-        new[] { 1.5f, 3.0f, 4.6f, 6.6f, 8.6f, 10.0f },
-    };
+    // ---- 山口公路：2026-11-06 用户要求**全部去掉**（地上的土路带子看着像地裂，也不好看）。
+    // 保留 FlattenSaddle（山地据点的平地还要用），只是不再有公路削填和路面贴图。
+    static readonly Vector2[][] PassPaths = new Vector2[0][];
+    static readonly float[][] PassHeights = new float[0][];
 
     static float CarvePass(float h, float x, float z, out float roadW)
     {
@@ -472,6 +455,23 @@ public static class BattlefieldTerrainBuilder
         return Mathf.Lerp(h, target, fall);                    // 削高填低，路基是平的
     }
 
+    /// <summary>
+    /// 从平原通往山地据点（鞍部 (0,−45)）的**缓坡走廊**。
+    ///
+    /// 2026-11-06：用户要求把公路全去掉，但去掉之后山地据点就彻底上不去了
+    /// （实测正面坡度 49°，坦克最大爬 22~35°）。这里不是公路 —— 没有路面贴图，
+    /// 只是把山体在一条 200 m 宽的走廊里削成 ~11° 的缓坡，看上去就是一道天然山谷。
+    /// </summary>
+    static float GentleRamp(float h, float x, float z)
+    {
+        if (z > -18f || z < -46f) return h;
+        float t = Mathf.InverseLerp(-18f, -45f, z);
+        float target = Mathf.Lerp(1.0f, 5.0f, t);                  // 设计高度：平原 1.0 → 平台 6.0（≈10°，重装也能上）
+        float w = 1f - SStep(7f, 15f, Mathf.Abs(x));             // 走廊半宽 7~15 设计米（117~250 m）
+        if (w <= 0.001f) return h;
+        return Mathf.Lerp(h, target, w);                         // 削高也填低，走廊内是均匀的缓坡
+    }
+
     /// <summary>山脊鞍部：资源点③ 站人的那块高地（设计 (0,−45)），边缘过渡放宽，别做成坑。</summary>
     static float FlattenSaddle(float h, float x, float z)
     {
@@ -480,7 +480,7 @@ public static class BattlefieldTerrainBuilder
         // 2026-11-06：据点圈半径 168 m（设计 10），原来的 6~28 过渡带太窄，
         // 圈会顺着山体爬到断崖上。现在 11 设计米（183 m）内完全压平，11~24 再平滑过渡。
         float fall = 1f - SStep(11f, 24f, d);
-        return Mathf.Lerp(h, 10.0f, fall);
+        return Mathf.Lerp(h, 5.0f, fall);
     }
 
     /// <summary>山口公路的路面掩码（给地表贴图用，0~1）。</summary>

@@ -141,6 +141,11 @@ public class VehiclePhysics : MonoBehaviour
 
     // ---- 运行时状态（给 HUD 看）----
     [System.NonSerialized] public float speed;
+    /// <summary>
+    /// 履带视觉用的速度：上不去坡 / 被挡住时，履带照样按油门空转（打滑），
+    /// 而不是跟着 speed=0 一起停住（2026-11-06 用户反馈：上坡上不去时履带一动不动，不真实）。
+    /// </summary>
+    [System.NonSerialized] public float trackSpeed;
     /// <summary>重伤减速倍率（由 VehicleDamageFx 按血量设置：低于 25% 血时降到 0.6）。</summary>
     [System.NonSerialized] public float damageSpeedMul = 1f;
     /// <summary>部位损坏造成的减速（发动机被打坏 0.25、履带断 0.05）。</summary>
@@ -188,6 +193,8 @@ public class VehiclePhysics : MonoBehaviour
     void Update()
     {
         if (!alive || def == null) return;
+
+        trackSpeed = speed;          // 默认履带速度 = 实际速度；陆战在 UpdateLand 里会按"打滑"改写
 
         switch (def.domain)
         {
@@ -241,6 +248,29 @@ public class VehiclePhysics : MonoBehaviour
         bool tooSteep = slopeDeg > MaxClimbDeg;
         float slopeFactor = tooSteep ? 0f : Mathf.Lerp(1f, 0.35f, slopeDeg / Mathf.Max(1f, MaxClimbDeg));
 
+        // 下坡：坡太陡但方向是往下的，允许走（现实里下坡当然能下去）。
+        // 之前一律 slopeFactor = 0，上不去下也下不来，只能慢慢滑，很别扭。
+        if (tooSteep)
+        {
+            var g = SlopeGradient(pos.x, pos.z);                 // 上坡方向（水平分量）
+            Vector3 up = new Vector3(g.x, 0f, g.y);
+            if (up.sqrMagnitude > 1e-6f)
+            {
+                up.Normalize();
+                float downhillDot = Vector3.Dot(transform.forward, -up);
+                if (ThrottleInput > 0.05f && downhillDot > 0.25f)
+                {
+                    tooSteep = false;
+                    slopeFactor = 0.55f;                          // 下坡慢一点，但能走
+                }
+                else if (ThrottleInput < -0.05f && downhillDot < -0.25f)
+                {
+                    tooSteep = false;
+                    slopeFactor = 0.55f;
+                }
+            }
+        }
+
         if (tooSteep)
         {
             var grad = SlopeGradient(pos.x, pos.z);
@@ -269,6 +299,9 @@ public class VehiclePhysics : MonoBehaviour
             transform.position += delta;
         }
         blockedTime = blocked ? blockedTime + Time.deltaTime : 0f;
+
+        // 履带视觉：卡住 / 坡太陡时按油门空转，别停着
+        trackSpeed = (blocked || tooSteep) ? throttle * def.speed * 0.55f : speed;
         ClampToBounds();
 
         // 贴地 + 倾斜
