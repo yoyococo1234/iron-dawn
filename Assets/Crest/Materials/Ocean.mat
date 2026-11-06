@@ -18,7 +18,6 @@ Material:
   - _DEBUGVISUALISE_NONE
   - _FOAM3DLIGHTING_ON
   - _FOAM_ON
-  - _PLANARREFLECTIONS_ON
   - _TRANSPARENCY_ON
   m_InvalidKeywords:
   - _COMPILESHADERWITHDEBUGINFO_ON
@@ -142,7 +141,7 @@ Material:
     - _PlanarReflectionDistanceFactor: 0.15
     - _PlanarReflectionIntensity: 0.85
     - _PlanarReflectionNormalsStrength: 1
-    - _PlanarReflections: 1
+    - _PlanarReflections: 0
     - _ProceduralSky: 0
     - _Projection: 0
     - _RefractAmt: 0

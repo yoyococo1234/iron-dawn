@@ -28,6 +28,8 @@ public class SeaBuoyancy : MonoBehaviour
     float _pitch;
     float _roll;
 
+    bool _rockReady;
+
     void Start()
     {
         _model = transform.Find("Model");
@@ -38,6 +40,48 @@ public class SeaBuoyancy : MonoBehaviour
 
         // 船尾泡沫尾迹（Crest 泡沫模拟的输入，和水变形是两套数据）
         if (GetComponent<SeaFoamWake>() == null) gameObject.AddComponent<SeaFoamWake>();
+    }
+
+    /// <summary>
+    /// 把「会跟着船体一起摇」的部件收进一个视觉根：船体模型 + 炮塔 + 炮塔井 + 鱼雷发射管。
+    ///
+    /// 为什么要有这一步：炮塔、鱼雷管是 VehicleModelBinder 挂在**根节点**上的，
+    /// 而船体摇摆只动 Model 节点 —— 换成真实波形之后浪一大，就变成
+    /// 「船体在摇、炮塔和鱼雷管纹丝不动」，看着像三个东西各自动各自的。
+    /// 收进同一个父节点后一起摇，世界坐标不变（父节点是单位变换，SetParent(..., false) 保留局部变换）。
+    ///
+    /// 晚一帧再做：VehicleModelBinder 也在 Start 里建这些节点。
+    /// </summary>
+    void BuildRock()
+    {
+        _rockReady = true;
+        var vr = transform.Find("VisualRock");
+        if (vr == null)
+        {
+            var parts = new System.Collections.Generic.List<Transform>();
+            var model = transform.Find("Model");
+            if (model != null) parts.Add(model);
+            foreach (var nm in new[] { "Turret", "TurretWell" })
+            {
+                var t = transform.Find(nm);
+                if (t != null) parts.Add(t);
+            }
+            foreach (Transform c in transform)
+                if (c.name.StartsWith("TorpedoTube")) parts.Add(c);
+
+            if (parts.Count > 0)
+            {
+                var go = new GameObject("VisualRock");
+                go.transform.SetParent(transform, false);      // 单位变换，世界位置不变
+                vr = go.transform;
+                foreach (var p in parts) p.SetParent(vr, false);
+            }
+        }
+
+        _model = vr != null ? vr : transform.Find("Model");
+        if (_model == null) _model = transform;
+        _baseLocalPos = _model.localPosition;
+        _baseLocalRot = _model.localRotation;
     }
 
     /// <summary>
@@ -86,6 +130,7 @@ public class SeaBuoyancy : MonoBehaviour
 
     void LateUpdate()
     {
+        if (!_rockReady) BuildRock();
         if (_model == null) return;
 
         Vector3 p = transform.position;

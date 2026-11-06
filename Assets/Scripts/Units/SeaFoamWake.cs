@@ -102,7 +102,24 @@ public class SeaFoamWake : MonoBehaviour
         _mr.lightProbeUsage = LightProbeUsage.Off;
         _mr.reflectionProbeUsage = ReflectionProbeUsage.Off;
 
-        _mat = new Material(Shader.Find("Crest/Inputs/Foam/Add From Vert Colours"));
+        // 材质优先用 Resources 里的资产：打包时 Shader.Find 找到的 shader 有可能被剥离，
+        // 而 Resources 里被引用的 shader 一定会进包。
+        var baseMat = Resources.Load<Material>("Materials/FoamWake");
+        if (baseMat != null)
+        {
+            _mat = new Material(baseMat);
+        }
+        else
+        {
+            var sh = Shader.Find("Crest/Inputs/Foam/Add From Vert Colours");
+            if (sh == null)
+            {
+                Debug.LogWarning("[SeaFoamWake] 找不到泡沫输入着色器，尾迹关闭");
+                enabled = false;
+                return;
+            }
+            _mat = new Material(sh);
+        }
         _mat.SetFloat("_Strength", 1f);
         _mr.sharedMaterial = _mat;
 
