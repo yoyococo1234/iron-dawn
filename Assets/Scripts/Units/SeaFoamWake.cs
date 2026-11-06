@@ -26,11 +26,11 @@ public class SeaFoamWake : MonoBehaviour
     [Tooltip("船每前进这么多米记一个点")]
     public float sampleSpacing = 2.2f;
     [Tooltip("最多保留多少个点（决定尾巴最长多长）")]
-    public int maxSamples = 70;
+    public int maxSamples = 48;
     [Tooltip("一个点从产生到消失的时间（秒）")]
-    public float lifetime = 6.5f;
+    public float lifetime = 5f;
     [Tooltip("飘带初始宽度 = 船宽 × 这个系数")]
-    public float widthMul = 1.6f;
+    public float widthMul = 1.15f;
     [Tooltip("每秒向外扩散多少米（尾迹张角）")]
     public float spread = 1.1f;
     [Tooltip("边缘抖动（0 = 笔直的带子，1 = 毛边）")]
@@ -38,7 +38,7 @@ public class SeaFoamWake : MonoBehaviour
 
     [Header("强度")]
     [Tooltip("船尾最浓处的每帧写入量（0.01~0.06，给大了整条饱和成白带）")]
-    public float peak = 0.035f;
+    public float peak = 0.018f;
     [Tooltip("到这个速度泡沫最浓")]
     public float fullSpeed = 8f;
     [Tooltip("低于这个速度不产泡沫（停船就不该有尾迹）")]
