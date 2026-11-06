@@ -24,7 +24,7 @@ public class ZoneMarker : MonoBehaviour
     Material _beamMat;
 
     const int RingSegments = 128;
-    const float RingLift = 0.35f;      // 离地高度（够高避免 Z-fighting，又不显浮空）
+    const float RingLift = 0.5f;      // 离地高度（够高避免 Z-fighting，又不显浮空）
     const float BeamHeight = 300f;     // 光柱高度（用户要求再高一点）
 
     public static void BuildAll(List<ZoneState> zones)

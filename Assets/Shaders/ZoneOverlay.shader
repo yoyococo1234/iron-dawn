@@ -11,7 +11,8 @@ Shader "铁皮黎明/ZoneOverlay"
         Tags { "Queue"="Overlay" "RenderType"="Transparent" "IgnoreProjector"="True" }
         Cull Off
         ZWrite Off
-        ZTest Always
+        ZTest LEqual
+        Offset -1, -1
         Blend SrcAlpha OneMinusSrcAlpha
 
         Pass

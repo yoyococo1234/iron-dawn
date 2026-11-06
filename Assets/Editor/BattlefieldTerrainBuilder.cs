@@ -464,10 +464,18 @@ public static class BattlefieldTerrainBuilder
     /// </summary>
     static float GentleRamp(float h, float x, float z)
     {
-        if (z > -18f || z < -46f) return h;
-        float t = Mathf.InverseLerp(-18f, -45f, z);
-        float target = Mathf.Lerp(1.0f, 5.0f, t);                  // 设计高度：平原 1.0 → 平台 6.0（≈10°，重装也能上）
-        float w = 1f - SStep(7f, 15f, Mathf.Abs(x));             // 走廊半宽 7~15 设计米（117~250 m）
+        // 三个方向都做平滑过渡，不能有硬边界 ——
+        // 之前 z 两端是 if 直接切断，在 z=-18（世界 -300）切出一条 3~5 m 的直坎，
+        // 就是用户看到的"很明显的高低不平"。
+        float wzIn = 1f - SStep(-22f, -15f, z);        // 从平原进入：-22 → -15 渐入
+        float wzOut = 1f - SStep(-47f, -43f, z);       // 进平台前渐出
+        float wz = wzIn * wzOut;
+        if (wz <= 0.001f) return h;
+
+        float t = Mathf.Clamp01(Mathf.InverseLerp(-18f, -45f, z));
+        float target = Mathf.Lerp(1.0f, 5.0f, t);                 // 设计高度：平原 1.0 → 平台 5.0
+        float wx = 1f - SStep(7f, 15f, Mathf.Abs(x));             // 走廊半宽 7~15 设计米（117~250 m）
+        float w = wz * wx;
         if (w <= 0.001f) return h;
         return Mathf.Lerp(h, target, w);                         // 削高也填低，走廊内是均匀的缓坡
     }
@@ -476,10 +484,10 @@ public static class BattlefieldTerrainBuilder
     static float FlattenSaddle(float h, float x, float z)
     {
         float d = Vector2.Distance(new Vector2(x, z), new Vector2(0f, -45f));
-        if (d > 24f) return h;
+        if (d > 45f) return h;
         // 2026-11-06：据点圈半径 168 m（设计 10），原来的 6~28 过渡带太窄，
         // 圈会顺着山体爬到断崖上。现在 11 设计米（183 m）内完全压平，11~24 再平滑过渡。
-        float fall = 1f - SStep(11f, 24f, d);
+        float fall = 1f - SStep(10f, 45f, d);
         return Mathf.Lerp(h, 5.0f, fall);
     }
 
