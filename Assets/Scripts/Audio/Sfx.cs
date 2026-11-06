@@ -43,15 +43,55 @@ public static class Sfx
     /// <summary>最后播放的语音文件名（调试/自测用）。</summary>
     public static string LastVo = "";
 
+    // ---- 语音闸门（2026-11-06 用户要求：一句没播完之前不要再叠一句）----
+    // 机枪扫射时每 0.1 s 就有一次命中结算，每发都会想播"打穿了"，
+    // 不拦的话会变成一串叠在一起的语音。这里用一条独立的 AudioSource，
+    // 上一句没播完就直接丢弃新的（击杀可以插队打断）。
+    static AudioSource _voSource;
+    static float _voEndAt;
+    static float _voLastAt = -99f;
+
+    /// <summary>当前有没有语音还在播。</summary>
+    public static bool VoiceBusy => _voSource != null && _voSource.isPlaying && Time.time < _voEndAt;
+
     /// <summary>从一组语音里随机挑一句（尽量不连着重复同一句）。</summary>
-    public static void PlayRandomVo(string[] pool, float volume = 0.9f)
+    /// <param name="interrupt">true = 打断正在播的那句（击杀、被击中这种重要播报用）</param>
+    public static void PlayRandomVo(string[] pool, float volume = 0.9f, bool interrupt = false)
     {
         if (pool == null || pool.Length == 0) return;
+
+        // 上一句还在播 → 直接不播（除非是重要播报要插队）
+        if (!interrupt)
+        {
+            if (VoiceBusy) return;
+            if (Time.time - _voLastAt < 0.35f) return;      // 两句之间至少留 0.35 s，别接得太紧
+        }
+
         int i = Random.Range(0, pool.Length);
         if (pool.Length > 1 && i == _lastVo) i = (i + 1) % pool.Length;
         _lastVo = i;
+
+        var clip = Get(pool[i]);
+        if (clip == null) return;
+
+        if (_voSource == null)
+        {
+            var go = new GameObject("SfxVoice");
+            _voSource = go.AddComponent<AudioSource>();
+            _voSource.playOnAwake = false;
+            _voSource.spatialBlend = 0f;      // 2D：语音永远听得清
+            _voSource.loop = false;
+        }
+
+        _voSource.Stop();
+        _voSource.clip = clip;
+        _voSource.volume = Mathf.Clamp01(volume * MasterVolume);
+        _voSource.pitch = 1f;
+        _voSource.Play();
+
         LastVo = pool[i];
-        Play2D(pool[i], volume);
+        _voLastAt = Time.time;
+        _voEndAt = Time.time + clip.length;
     }
 
     public static float MasterVolume = 1f;

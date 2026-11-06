@@ -23,9 +23,9 @@ MonoBehaviour:
   armorFront: 0.85
   armorSide: 1
   armorRear: 1.15
-  armorThicknessFront: 60
-  armorThicknessSide: 40
-  armorThicknessRear: 30
+  armorThicknessFront: 45
+  armorThicknessSide: 30
+  armorThicknessRear: 20
   uniformMultiplier: 0
   speed: 24
   turnSpeed: 70

@@ -671,6 +671,18 @@ public class VehicleCombat : MonoBehaviour
             Vector3 shotDir = (hitPoint.Value - hitFrom).normalized;
             // 入射角：命中面法线 与 弹道反向 的夹角（0 = 垂直命中）
             float incidence = Vector3.Angle(hitNormal.Value, -shotDir);
+
+            // 顶面命中（甲板 / 炮塔顶 / 船面）：法线朝上，而弹道基本水平，
+            // 算出来的入射角必然接近 90°，照原样判就变成"打哪儿都跳弹"。
+            // 船又长又扁、船面还大，这个 bug 最明显（2026-11-06 用户反馈"敌方炮艇怎么这么硬"）。
+            // 顶面命中按侧面厚度算，并且不判跳弹。
+            bool deckHit = Mathf.Abs(hitNormal.Value.normalized.y) > 0.55f;
+            if (deckHit)
+            {
+                baseArmor = def != null ? def.armorThicknessSide : baseArmor;
+                incidence = Mathf.Min(incidence, 55f);
+            }
+
             float cos = Mathf.Max(0.2f, Mathf.Cos(incidence * Mathf.Deg2Rad));
             float effective = baseArmor / cos;
 
@@ -741,7 +753,7 @@ public class VehicleCombat : MonoBehaviour
 
         if (attacker != null && attacker.IsPlayer && attacker.Team != team)
         {
-            if (hp <= 0f) Sfx.PlayRandomVo(Sfx.VoKill, 1f);
+            if (hp <= 0f) Sfx.PlayRandomVo(Sfx.VoKill, 1f, true);      // 击杀插队
             else if (air) { /* 飞机不播穿透类 */ }
             else if (result == HitResult.Ricochet) Sfx.PlayRandomVo(Sfx.VoRicochet);
             else if (result == HitResult.NonPenetrating) Sfx.PlayRandomVo(Sfx.VoNonPen);
@@ -751,7 +763,7 @@ public class VehicleCombat : MonoBehaviour
         {
             _nextHitVoice = Time.time + 2.5f;
             // 军舰和飞机都不用"车体受损"（那是坦克的说法），只播另外两句
-            Sfx.PlayRandomVo((sea || air) ? Sfx.VoHitNoHull : Sfx.VoHit, 0.95f);
+            Sfx.PlayRandomVo((sea || air) ? Sfx.VoHitNoHull : Sfx.VoHit, 0.95f, true);   // 被打要插队
         }
 
         if (hp <= 0f) Die();
