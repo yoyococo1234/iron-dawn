@@ -45,3 +45,11 @@ crashlytics-build.properties
 /Assets/Terrain/
 # 中间产物 / 抓取的素材包
 /work/
+
+# ---------------------------------------------------------------
+# 2026-11-06: ArtSource 里的 .glb 是 Lux3D 生成的**源模型**，
+# Unity 实际用的是转出来的 .fbx。57 个 .glb 共 507 MB，
+# 留在仓库里会把体积撑爆（GitHub 免费 LFS 配额只有 1 GB）。
+# 本地保留，需要时重新从 Lux3D 生成或从备份恢复。
+/ArtSource/**/*.glb
+/ArtSource/**/*.zip
