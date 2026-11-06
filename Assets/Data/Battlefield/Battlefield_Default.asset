@@ -21,8 +21,6 @@ MonoBehaviour:
   - {fileID: 11400000, guid: 885d5b3dcf4919a4b8445a03227fcfcd, type: 2}
   - {fileID: 11400000, guid: cab65ac989a311a4dbb7134e2e6a8c82, type: 2}
   - {fileID: 11400000, guid: bc52ededd23dbe845ba798edbe15573f, type: 2}
-  - {fileID: 11400000, guid: a1869d4a90b44ae4680142d7858a48e7, type: 2}
-  - {fileID: 11400000, guid: 3a6c87812b511d64ba947586aa5a9b93, type: 2}
   coinBoxPoints:
   - {x: -667, y: 500}
   - {x: 667, y: 500}

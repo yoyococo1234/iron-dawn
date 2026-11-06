@@ -51,6 +51,19 @@ public class ZoneMarker : MonoBehaviour
         return Mathf.Max(h, BattlefieldTerrain.WaterLevel);
     }
 
+    /// <summary>
+    /// 据点专用材质：ZTest Always（画在最上层，被坦克/建筑压住也看得见）。
+    /// 优先从 Resources 取资产，保证打包时着色器不会被剥离。
+    /// </summary>
+    static Material NewOverlayMaterial()
+    {
+        var baseMat = Resources.Load<Material>("Materials/ZoneOverlay");
+        if (baseMat != null) return new Material(baseMat);
+        var sh = Shader.Find("铁皮黎明/ZoneOverlay");
+        if (sh != null) return new Material(sh);
+        return new Material(Shader.Find("Sprites/Default"));
+    }
+
     void Build()
     {
         var b = state.def.bounds;
@@ -104,7 +117,7 @@ public class ZoneMarker : MonoBehaviour
         go.transform.SetParent(transform, false);
         go.AddComponent<MeshFilter>().sharedMesh = _ringMesh;
 
-        _ringMat = new Material(Shader.Find("Sprites/Default"));
+        _ringMat = NewOverlayMaterial();
         _ringMat.color = Color.white;
         _ringRenderer = go.AddComponent<MeshRenderer>();
         _ringRenderer.sharedMaterial = _ringMat;
@@ -153,7 +166,7 @@ public class ZoneMarker : MonoBehaviour
         go.transform.SetParent(transform, false);
         go.AddComponent<MeshFilter>().sharedMesh = _beamMesh;
 
-        _beamMat = new Material(Shader.Find("Sprites/Default"));
+        _beamMat = NewOverlayMaterial();
         _beamMat.color = Color.white;
         _beamRenderer = go.AddComponent<MeshRenderer>();
         _beamRenderer.sharedMaterial = _beamMat;

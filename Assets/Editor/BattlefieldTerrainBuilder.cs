@@ -288,6 +288,10 @@ public static class BattlefieldTerrainBuilder
             {
                 float rimK = SStep(0f, 13f, edge);                   // 平滑抬升
                 rimK *= 1f - SStep(5f, 12f, z);                      // 靠海一侧取消
+                // 山地据点（鞍部 (0,-45)）正好在南边边界带上，边界山会把它顶成断崖 ——
+                // 据点圈半径 168 m，这里在鞍部 12 设计米内不抬边界山。
+                float dSaddle = Vector2.Distance(new Vector2(x, z), new Vector2(0f, -45f));
+                rimK *= SStep(11f, 20f, dSaddle);
                 if (rimK > 0.001f)
                 {
                     float rimH = 7f + 15f * Fbm(x * 0.021f + 3.1f, z * 0.021f + 7.7f, 3);
@@ -472,9 +476,11 @@ public static class BattlefieldTerrainBuilder
     static float FlattenSaddle(float h, float x, float z)
     {
         float d = Vector2.Distance(new Vector2(x, z), new Vector2(0f, -45f));
-        if (d > 28f) return h;
-        float fall = 1f - SStep(6f, 28f, d);       // 6~28 设计 m 渐入（世界 100~467 m）
-        return Mathf.Lerp(h, 10.0f, fall * 0.9f);
+        if (d > 24f) return h;
+        // 2026-11-06：据点圈半径 168 m（设计 10），原来的 6~28 过渡带太窄，
+        // 圈会顺着山体爬到断崖上。现在 11 设计米（183 m）内完全压平，11~24 再平滑过渡。
+        float fall = 1f - SStep(11f, 24f, d);
+        return Mathf.Lerp(h, 10.0f, fall);
     }
 
     /// <summary>山口公路的路面掩码（给地表贴图用，0~1）。</summary>
@@ -606,7 +612,7 @@ public static class BattlefieldTerrainBuilder
                 float dirt = SStep(1.8f, 5.5f, yd) * (1f - SStep(28f, 40f, slope)) * 0.8f
                            + CityRoadPaintMask(dx, dz) * cityW * 1.4f
                            + patch * 0.75f * (1f - cityW) * (1f - SStep(20f, 32f, slope))
-                           + PassRoadPaintMask(dx, dz) * 1.5f;     // 山口公路是土路
+                           + PassRoadPaintMask(dx, dz) * 0.75f;     // 山口公路是土路
 
                 // 噪声打散边界，别让贴图分界线像等高线
                 float n = Fbm(dx * 0.18f + 13f, dz * 0.18f + 7f, 3) - 0.5f;
