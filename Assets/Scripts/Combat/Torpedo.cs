@@ -225,6 +225,35 @@ public class Torpedo : MonoBehaviour
         transform.position += stepVec;
         _travelled += step;
 
+        // ---------- 近炸命中（2026-11-07）----------
+        // 只靠 SphereCast 打不中船：鱼雷在 1.6 m 深，而船的 BoxCollider 底面通常只到 -0.5 m 左右，
+        // 鱼雷从船底下穿过去了 —— 用户反馈"发了这么多次鱼雷，一次都没炸到"。
+        // 这里加一层水平面（XZ）近炸判定：只要和某条敌船的水平距离进了它的船体半径，就算命中。
+        foreach (var other in VehicleCombat.AllAlive())
+        {
+            if (other == null || other == _owner || !other.Alive) continue;
+            if (other.Def == null || other.Def.domain != Domain.Sea) continue;
+            if (_owner != null && other.team == _owner.team) continue;
+
+            Vector3 d = other.transform.position - transform.position;
+            d.y = 0f;
+            float hullRadius = 7f;
+            var col = other.GetComponent<Collider>();
+            if (col != null)
+            {
+                Vector3 b = col.bounds.extents;
+                hullRadius = Mathf.Max(4f, Mathf.Max(b.x, b.z));
+            }
+            if (d.sqrMagnitude <= (hullRadius + hitRadius) * (hullRadius + hitRadius))
+            {
+                LastKillReason = "hit:" + other.name;
+                other.TakeDamage(_damage, _ammo, transform.position, _owner);
+                VehicleCombat.ShotsHit++;
+                Explode(true);
+                return;
+            }
+        }
+
         // ---------- 水面泡沫航迹（每 0.12 秒留一个白点，慢慢淡掉）----------
         _foamTimer -= dt;
         if (_foamTimer <= 0f && _t > diveTime)

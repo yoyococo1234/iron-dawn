@@ -66,6 +66,51 @@ public class VehicleCombat : MonoBehaviour
     public static int ShotsFired;
     public static int ShotsHit;
     public static void ResetStats() { ShotsFired = 0; ShotsHit = 0; }
+
+    // ---- 存活载具登记表（鱼雷近炸、AI 找目标都用得上，避免每帧 FindObjectsByType）----
+    static readonly System.Collections.Generic.List<VehicleCombat> _all = new System.Collections.Generic.List<VehicleCombat>();
+    public static System.Collections.Generic.IReadOnlyList<VehicleCombat> AllAlive() => _all;
+
+    void OnEnable() { if (!_all.Contains(this)) _all.Add(this); }
+    void OnDisable() { _all.Remove(this); }
+
+    // ==================== 商店购买接口（2026-11-07）====================
+
+    /// <summary>维修包：回复 maxHp 的 fraction（用户要求顶多 30%）。</summary>
+    public void BuyHeal(float fraction)
+    {
+        if (!Alive) return;
+        hp = Mathf.Min(maxHp, hp + maxHp * Mathf.Clamp01(fraction));
+        BattleEvents.RaiseVehicleDamaged(this);
+    }
+
+    /// <summary>模块修复包：把所有被打坏的部位修好。</summary>
+    public void BuyModuleRepair()
+    {
+        if (_modules != null) _modules.RepairAll();
+    }
+
+    /// <summary>弹药补给：所有有备弹上限的武器补满（含飞机的导弹）。</summary>
+    public void BuyAmmoRefill()
+    {
+        if (def == null || def.weapons == null) return;
+        InitAmmo();
+        for (int i = 0; i < def.weapons.Length; i++)
+        {
+            var w = def.weapons[i];
+            if (w != null && w.ammoCapacity > 0) _ammoLeft[i] = w.ammoCapacity;
+        }
+        var ws = GetComponent<WingStores>();
+        if (ws != null) ws.Reset();
+    }
+
+    /// <summary>某种武器的当前备弹（商店/ HUD 显示用）。</summary>
+    public int AmmoOf(int index)
+    {
+        InitAmmo();
+        if (_ammoLeft == null || index < 0 || index >= _ammoLeft.Length) return 0;
+        return _ammoLeft[index];
+    }
     public static float HitRate => ShotsFired > 0 ? (float)ShotsHit / ShotsFired : 0f;
 
     public bool Alive => !dead && hp > 0f;

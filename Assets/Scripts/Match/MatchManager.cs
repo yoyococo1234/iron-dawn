@@ -68,6 +68,16 @@ public class MatchManager : MonoBehaviour
 
     public UnitState Human => _human;
     public int Gold => _human != null ? _human.gold : 0;
+
+    /// <summary>商店买东西：够钱就扣，返回是否成功。</summary>
+    public bool TrySpend(int amount)
+    {
+        if (_human == null) return false;
+        if (amount <= 0) return true;
+        if (_human.gold < amount) return false;
+        _human.gold -= amount;
+        return true;
+    }
     public int LivesLeft => _human != null ? _human.lives : 0;
     public VehicleCombat Player => _human != null ? _human.vehicle : null;
     public VehicleDef[] Roster => match != null ? match.roster : null;

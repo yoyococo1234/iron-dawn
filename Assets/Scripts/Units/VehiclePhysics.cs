@@ -333,6 +333,20 @@ public class VehiclePhysics : MonoBehaviour
         float throttle = ThrottleInput;
         float steer = SteerInput;
 
+        // ---------- 船头前探（2026-11-07）----------
+        // 原来只看船中心的水深，船身 18 m 长，等中心到浅水时船头已经插进沙滩里了，
+        // 观感就是"船撞进沙子里再退出来"。这里提前 14 m 探一次：前方水深不够就不许再往前。
+        if (waterDepth >= wadeDepth)
+        {
+            Vector3 ahead = pos + transform.forward * 14f;
+            float aheadDepth = WaterDepthAt(ahead.x, ahead.z);
+            if (aheadDepth < wadeDepth)
+            {
+                stateText = "前方浅滩";
+                if (speed > 0f) speed = Mathf.MoveTowards(speed, 0f, brakeDecel * 2.5f * Time.deltaTime);
+            }
+        }
+
         // 吃水不足 → 搁浅
         if (waterDepth < wadeDepth)
         {

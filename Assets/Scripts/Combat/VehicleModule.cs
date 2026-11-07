@@ -51,6 +51,19 @@ public class VehicleModule : MonoBehaviour
         return false;
     }
 
+    /// <summary>商店的"模块修复包"：把所有部位修回完好，并熄掉着火。</summary>
+    public void RepairAll()
+    {
+        if (!_built) Build();
+        foreach (var m in _mods)
+        {
+            m.integrity = 1f;
+            m.broken = false;
+            if (m.fx != null) m.fx.Stop();
+        }
+        _fuelFire = false;
+    }
+
     void Awake()
     {
         _vc = GetComponent<VehicleCombat>();

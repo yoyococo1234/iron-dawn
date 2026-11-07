@@ -105,6 +105,8 @@ public static class PropScatter
                 float jz = dz + (float)(rng.NextDouble() - 0.5) * 0.9f;
                 if (Mathf.Abs(jx) > 45f || jz < 0.8f || jz > 13.7f) continue;
                 if (BattlefieldTerrainBuilder.CityRoadPaintMask(jx, jz) > 0.25f) continue;
+                // 2026-11-07：离水线太近的楼不要 —— 底座会露在沙滩/水面外，观感很怪
+                if (BattlefieldTerrain.WaterDepth(jx * S, jz * S) > -3.0f) continue;
                 if (rng.NextDouble() > 0.55) continue;
 
                 var model = models[rng.Next(models.Length)];

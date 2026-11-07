@@ -14,7 +14,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::WeaponDef
   id: torpedo_launcher
   displayName: "\u9C7C\u96F7\u7BA1"
-  baseDamage: 850
+  baseDamage: 5500
   reloadTime: 9
   range: 600
   projectileSpeed: 50
@@ -26,4 +26,4 @@ MonoBehaviour:
   deckMaxDepression: -12
   deckPitchSpeed: 140
   isTorpedo: 1
-  torpedoDepth: 1.6
+  torpedoDepth: 1.2
