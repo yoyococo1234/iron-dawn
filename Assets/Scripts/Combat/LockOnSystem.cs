@@ -110,12 +110,31 @@ public class LockOnSystem : MonoBehaviour
                 if (hitVc != v) continue;
             }
 
-            float score = d * 0.01f + (sx + sy) * 6f;
+            // 用户要求：**优先锁准星方向能打到的最近的** —— 夹角为主、距离为辅
+            float ang = Vector3.Angle(cam.transform.forward, aim - cam.transform.position);
+            if (ang > 22f) continue;                       // 只在准星附近 22° 内找
+            float score = ang * 12f + d * 0.02f;
             if (score < bestScore) { bestScore = score; best = v; }
         }
         return best;
     }
 
+    /// <summary>
+    /// 锁定时给玩家用的瞄准点：目标位置 + 提前量（按自己武器的弹速估算飞行时间）。
+    /// 这样炮弹是**按物理规则**飞过去的，只是瞄得准（所见即攻击），不是制导。
+    /// </summary>
+    public static Vector3 AimPointFor(VehicleCombat player)
+    {
+        if (Target == null) return Vector3.zero;
+        Vector3 aim = Target.transform.position + Vector3.up * 1.2f;
+        if (player == null) return aim;
+
+        var tvp = Target.GetComponent<VehiclePhysics>();
+        Vector3 vel = tvp != null ? tvp.Velocity : Vector3.zero;
+        float speed = player.Weapon != null ? Mathf.Max(150f, player.Weapon.projectileSpeed) : 900f;
+        float tof = Vector3.Distance(player.transform.position, aim) / speed;
+        return aim + vel * tof;
+    }
     void OnGUI()
     {
         if (!Active) return;

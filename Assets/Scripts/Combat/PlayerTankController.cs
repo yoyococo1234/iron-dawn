@@ -107,7 +107,7 @@ public class PlayerTankController : MonoBehaviour
         }
 
         // 开火：机枪模式打机枪，否则打当前炮塔武器
-        if ((Input.GetButton("Fire1") || Input.GetKey(KeyCode.Space)) && Time.time >= _fireLockUntil)
+        if ((Input.GetMouseButton(0) || Input.GetKey(KeyCode.Space)) && Time.time >= _fireLockUntil)
         {
             // 机枪不给瞄准点 —— 沿枪管方向打，准星就是枪管指向，不存在"准星和弹道对不上"
             if (_mgMode) _combat.FireDeckGunAt(null);
@@ -204,7 +204,7 @@ public class PlayerTankController : MonoBehaviour
     {
         // Ctrl 锁定：直接把锁定目标当瞄准点（炮塔/机头会自己转过去）
         if (LockOnSystem.Active && LockOnSystem.Target != null && LockOnSystem.Target.Alive)
-            return LockOnSystem.Target.transform.position + Vector3.up * 1.2f;
+            return LockOnSystem.AimPointFor(_combat);
         bool air = _combat != null && _combat.Def != null && _combat.Def.domain == Domain.Air;
 
         if (air)
