@@ -80,6 +80,14 @@ public class LockOnSystem : MonoBehaviour
     /// <summary>挑"屏幕里、有视线、最近"的敌人。</summary>
     VehicleCombat PickTarget(VehicleCombat player)
     {
+        // 先在准星附近 22° 找；找不到放宽到 45°（不然稍微偏一点就锁不上）
+        var t = PickTargetInCone(player, 22f);
+        if (t == null) t = PickTargetInCone(player, 45f);
+        return t;
+    }
+
+    VehicleCombat PickTargetInCone(VehicleCombat player, float coneDeg)
+    {
         var cam = Camera.main;
         if (cam == null) return null;
 
@@ -104,7 +112,13 @@ public class LockOnSystem : MonoBehaviour
             if (sx > 0.45f || sy > 0.45f) continue;
 
             // 有视线（被山挡住的不锁）
-            if (Physics.Linecast(from, aim, out var hit, ~0, QueryTriggerInteraction.Ignore))
+            // 注意：起点要先从自己车体里推出去，否则第一根射线打到自己 → 永远锁不上
+            Vector3 dirL = (aim - from);
+            float distL = dirL.magnitude;
+            if (distL < 1f) continue;
+            dirL /= distL;
+            Vector3 fromL = from + dirL * 4f;
+            if (Physics.Raycast(fromL, dirL, out var hit, distL, ~0, QueryTriggerInteraction.Ignore))
             {
                 var hitVc = hit.collider.GetComponentInParent<VehicleCombat>();
                 if (hitVc != v) continue;
@@ -112,7 +126,7 @@ public class LockOnSystem : MonoBehaviour
 
             // 用户要求：**优先锁准星方向能打到的最近的** —— 夹角为主、距离为辅
             float ang = Vector3.Angle(cam.transform.forward, aim - cam.transform.position);
-            if (ang > 22f) continue;                       // 只在准星附近 22° 内找
+            if (ang > coneDeg) continue;                    // 只在准星附近这个夹角内找
             float score = ang * 12f + d * 0.02f;
             if (score < bestScore) { bestScore = score; best = v; }
         }

@@ -87,6 +87,20 @@ public class PlayerTankController : MonoBehaviour
             float wantPitch = -(camFollow.tankLookDownDeg + (camFollow.pitch - 8f));
             var dw = _combat.DeckWeapon;
 
+            // ---------- Ctrl 锁定：炮塔/枪架**直接对准锁定目标**（2026-11-07）----------
+            // 之前只把 GetAimPoint 换成了目标位置，但那只是"开火点"，炮塔还是跟着鼠标走，
+            // 所以看着像"不会瞄准"。这里直接算目标的世界偏航 + 弹道俯仰，喂给 AimDirect。
+            if (LockOnSystem.Active && LockOnSystem.Target != null && LockOnSystem.Target.Alive)
+            {
+                Vector3 lockAim = LockOnSystem.AimPointFor(_combat);
+                Vector3 muzzle = _combat.Physics.GetMuzzlePosition();
+                float bspd = _combat.Weapon != null ? Mathf.Max(150f, _combat.Weapon.projectileSpeed) : 900f;
+                Vector3 bdir = VehicleCombat.BallisticDir(muzzle, lockAim, bspd);
+
+                wantYawWorld = Mathf.Atan2(bdir.x, bdir.z) * Mathf.Rad2Deg;
+                wantPitch = Mathf.Asin(Mathf.Clamp(bdir.y, -1f, 1f)) * Mathf.Rad2Deg;
+            }
+
             if (_mgMode && dw != null && _combat.Physics.HasDeckGun)
             {
                 // ---------- 机枪模式：炮塔不动，只转枪架 ----------
