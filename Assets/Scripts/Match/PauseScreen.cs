@@ -66,6 +66,6 @@ public class PauseScreen : MonoBehaviour
         style.fontSize = Mathf.Max(14, Mathf.RoundToInt(h * 0.025f));
         style.fontStyle = FontStyle.Normal;
         style.normal.textColor = new Color(1f, 1f, 1f, 0.75f);
-        GUI.Label(new Rect(0, h * 0.52f, w, h * 0.08f), "按 P 继续 · 按 T 打开补给商店", style);
+        GUI.Label(new Rect(0, h * 0.52f, w, h * 0.08f), "按 P 继续 · 按 TAB 打开补给商店", style);
     }
 }

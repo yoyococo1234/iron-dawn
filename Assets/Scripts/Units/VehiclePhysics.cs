@@ -29,7 +29,7 @@ public class VehiclePhysics : MonoBehaviour
 
     [Header("空中")]
     [Tooltip("AI 巡逻/保持的飞行高度（离地面）")]
-    public float flightAltitude = 420f;
+    public float flightAltitude = 220f;
     [Tooltip("转向时的侧倾角度（AI 用）")]
     public float bankAngle = 30f;
 
@@ -334,16 +334,25 @@ public class VehiclePhysics : MonoBehaviour
         float steer = SteerInput;
 
         // ---------- 船头前探（2026-11-07）----------
-        // 原来只看船中心的水深，船身 18 m 长，等中心到浅水时船头已经插进沙滩里了，
-        // 观感就是"船撞进沙子里再退出来"。这里提前 14 m 探一次：前方水深不够就不许再往前。
+        // 用户要的是"快碰到浅滩就先自己拐出去"，而不是撞进沙子里再退出来。
+        // 所以在船头前方 16 m 探一次水深：不够就**提前转向深水**（不刹车），船头一偏就绕开了。
         if (waterDepth >= wadeDepth)
         {
-            Vector3 ahead = pos + transform.forward * 14f;
+            Vector3 ahead = pos + transform.forward * 16f;
             float aheadDepth = WaterDepthAt(ahead.x, ahead.z);
-            if (aheadDepth < wadeDepth)
+            if (aheadDepth < wadeDepth + 0.25f)
             {
-                stateText = "前方浅滩";
-                if (speed > 0f) speed = Mathf.MoveTowards(speed, 0f, brakeDecel * 2.5f * Time.deltaTime);
+                Vector3 deeper = DeeperDirection(ahead, 9f, out float deepDepth);
+                if (deeper.sqrMagnitude > 0.01f && deepDepth > aheadDepth)
+                {
+                    float wantYaw = Mathf.Atan2(deeper.x, deeper.z) * Mathf.Rad2Deg;
+                    float curYaw = transform.eulerAngles.y;
+                    float newYaw = Mathf.MoveTowardsAngle(curYaw, wantYaw, 55f * Time.deltaTime);
+                    transform.rotation = Quaternion.Euler(0f, newYaw, 0f);
+                    stateText = "避让浅滩";
+                    // 只压一点速度，保证"拐出去"而不是"怼进去"
+                    speed = Mathf.Min(speed, def.speed * 0.6f);
+                }
             }
         }
 

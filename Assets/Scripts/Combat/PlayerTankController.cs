@@ -189,7 +189,7 @@ public class PlayerTankController : MonoBehaviour
 
         // 放在船尾后面一点：往前丢的话自己会先撞上自己的诱饵
         Vector3 pos = _combat.transform.position - _combat.transform.forward * 6f;
-        Decoy.Deploy(pos, BattlefieldTerrain.WaterLevel, decoyRadius, decoyLife);
+        Decoy.Deploy(pos, BattlefieldTerrain.WaterLevel, 6f, 12f, _combat != null ? _combat.team : -1);
         Sfx.PlayAt(Sfx.MgFire, pos, 0.5f, 1.6f, 20f, 300f);   // 先拿机炮声顶一下，后面再换专门音效
     }
 

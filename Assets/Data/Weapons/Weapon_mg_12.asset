@@ -16,7 +16,7 @@ MonoBehaviour:
   displayName: "12mm \u673A\u67AA"
   baseDamage: 25
   reloadTime: 0.12
-  range: 400
+  range: 700
   projectileSpeed: 850
   ammoTypes:
   - {fileID: 11400000, guid: 8ec15d407009f244592e1f152ea927ad, type: 2}

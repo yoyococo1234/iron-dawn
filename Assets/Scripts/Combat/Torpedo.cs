@@ -369,6 +369,13 @@ public class Torpedo : MonoBehaviour
         Explode(false);
     }
 
+    /// <summary>被反鱼雷拦截弹打掉（2026-11-07）。</summary>
+    public void Intercept()
+    {
+        LastKillReason = "intercepted";
+        Explode(false);
+    }
+
     void Explode(bool hit)
     {
         if (string.IsNullOrEmpty(LastKillReason)) LastKillReason = hit ? "hit" : "miss";

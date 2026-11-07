@@ -174,7 +174,11 @@ public class CameraFollow : MonoBehaviour
     void Update()
     {
         // 开局封面 / 车库界面要能点鼠标，这时放开光标
-        bool uiWantsCursor = !GameStartScreen.Started || (GarageScreen.Instance != null && GarageScreen.Instance.IsOpen);
+        // 2026-11-07：暂停（P）和商店（TAB）也要放开，否则鼠标还被锁着当准星，点不了东西
+        bool uiWantsCursor = !GameStartScreen.Started
+                             || (GarageScreen.Instance != null && GarageScreen.Instance.IsOpen)
+                             || PauseScreen.Paused
+                             || ShopScreen.Open;
 
         if (uiWantsCursor)
         {

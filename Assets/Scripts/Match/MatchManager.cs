@@ -400,7 +400,7 @@ public class MatchManager : MonoBehaviour
         float y;
         switch (domain)
         {
-            case Domain.Air: y = Mathf.Max(ground, BattlefieldTerrain.WaterLevel) + 420f; break;
+            case Domain.Air: y = Mathf.Max(ground, BattlefieldTerrain.WaterLevel) + 220f; break;
             default: y = ground + 1.2f; break;
         }
         return new Vector3(x, y, bestZ);
