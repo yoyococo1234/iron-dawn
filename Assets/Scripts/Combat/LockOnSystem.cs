@@ -138,16 +138,19 @@ public class LockOnSystem : MonoBehaviour
             Vector3 aim = v.transform.position + Vector3.up * 1.2f;
             float d = Vector3.Distance(from, aim);
 
-            // 只锁"当前武器打得到"的目标：机枪模式下按机枪射程算，
-            // 不然会锁到天上很远的飞机、弹速又跟不上（用户反馈"锁得到打不到"）。
+            // 锁定距离：
+            //   · 机枪（V 模式）→ 固定 600 m（弹速慢，再远锁了也打不中）
+            //   · 舰炮 / 主炮   → 直接等于武器射程（炮弹快，全射程都能锁）
             float wRange = player.Weapon != null ? player.Weapon.range : 800f;
+            bool mgModeR = false;
             var ptcR = player.GetComponent<PlayerTankController>();
             if (ptcR != null && ptcR.MgMode)
             {
                 var dwR = player.DeckWeapon;
-                if (dwR != null) wRange = dwR.range;
+                if (dwR != null) { wRange = dwR.range; mgModeR = true; }
             }
-            if (d > Mathf.Min(maxRange, wRange * 0.5f)) continue;   // 锁定距离 ≈ 射程一半（弹速原因）
+            float lockRange = mgModeR ? Mathf.Min(wRange, 600f) : wRange;
+            if (d > Mathf.Min(maxRange, lockRange)) continue;
 
             // 必须在屏幕中间区域（避免锁到视野外的东西）
             Vector3 sp = cam.WorldToScreenPoint(aim);
