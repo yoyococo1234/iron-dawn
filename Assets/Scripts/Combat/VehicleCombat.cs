@@ -169,7 +169,9 @@ public class VehicleCombat : MonoBehaviour
         var w = DeckWeapon;
         if (w == null || !Alive || _phys == null || !_phys.HasDeckGun) return false;
         if (Time.time < _nextMgFireTime) return false;
-        var ammo = AmmoFor(w);
+        // 机枪固定用自己第一种子弹（防空弹），不跟主炮的弹药选择走 ——
+        // 原来用 AmmoFor(w) 会跟着主炮的 ammoIndex 变，机枪打到坦克身上时伤害/穿深会莫名其妙地变。
+        var ammo = (w.ammoTypes != null && w.ammoTypes.Length > 0) ? w.ammoTypes[0] : null;
         if (ammo == null) return false;
         _nextMgFireTime = Time.time + w.reloadTime;
         return FireDeckGun(w, ammo, aimPoint);

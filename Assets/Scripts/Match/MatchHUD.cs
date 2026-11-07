@@ -441,9 +441,10 @@ public class MatchHUD : MonoBehaviour
             return;
         }
 
-        Vector3 muzzle = p.Physics.GetDeckGunMuzzle();
-        Vector3 dir = p.Physics.GetDeckGunForward();
-        Vector3 world = muzzle + dir * 400f;
+        // 2026-11-07：机枪弹道已经改成"按准星方向打"（FireDeckGunAt(aimPoint)），
+        // 准星也必须画在**准星方向**上。原来准星跟着枪管走、子弹跟着准星走，两边对不上，
+        // 玩家按准星瞄却打不中 —— 这就是"机枪打不中"的观感来源。
+        Vector3 world = cam.transform.position + cam.transform.forward * 400f;
         Vector3 sp = cam.WorldToScreenPoint(world);
 
         float x = sp.x / _scale, y = (Screen.height - sp.y) / _scale;
