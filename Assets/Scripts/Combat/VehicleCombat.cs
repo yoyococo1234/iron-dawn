@@ -545,31 +545,23 @@ public class VehicleCombat : MonoBehaviour
         origin = PushOutsideOwnCollider(origin, dir);
 
         ShotsFired++;
-        float maxRange = Mathf.Max(10f, w.range);
-        Vector3 endPoint = origin + dir * maxRange;
 
-        var hits = UnityEngine.Physics.RaycastAll(origin, dir, maxRange, ~0, QueryTriggerInteraction.Ignore);
-        if (hits != null && hits.Length > 0)
-        {
-            System.Array.Sort(hits, (a, b) => a.distance.CompareTo(b.distance));
-            foreach (var h in hits)
-            {
-                if (h.collider == null) continue;
-                var t = h.collider.GetComponentInParent<VehicleCombat>();
-                if (t == this) continue;                       // 不打自己
-                endPoint = h.point;
-                if (t != null && t.Alive)
-                {
-                    var res = t.TakeHit(w.baseDamage, ammo, origin, this, h.point, h.normal);
-                    if (IsPlayer) MatchHUD.ShowHitFeedback(res);
-                    ShotsHit++;
-                }
-                SpawnImpactSpark(h.point);
-                break;
-            }
-        }
+        // 2026-11-07 用户要求：机枪手感对齐飞机的机炮 —— 不再用 hitscan，
+        // 改成**真的打出弹丸**（有飞行时间、有曳光、有落点火花），
+        // 这样和飞机 20mm 机炮是同一套表现。
+        var go = new GameObject("MgRound");
+        go.transform.position = origin;
+        go.transform.rotation = Quaternion.LookRotation(dir);
+        var shell = go.AddComponent<Projectile>();
+        shell.Launch(dir, Mathf.Max(300f, w.projectileSpeed), w.baseDamage, ammo, this, w.range);
 
-        SpawnTracer(origin, endPoint);
+        // 枪口闪光（很小，机枪连射不该晃镜头）
+        var light = go.AddComponent<Light>();
+        light.type = LightType.Point;
+        light.range = 8f;
+        light.intensity = 2.2f;
+        light.color = new Color(1f, 0.8f, 0.4f);
+        Object.Destroy(light, 0.05f);
 
         // 机枪连射：短促、音高随机，不抖镜头（否则连射没法瞄）
         Sfx.PlayAt(Sfx.MgFire, origin, 0.5f, Random.Range(0.88f, 1.14f), 8f, 300f);

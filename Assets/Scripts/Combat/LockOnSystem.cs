@@ -100,12 +100,21 @@ public class LockOnSystem : MonoBehaviour
     VehicleCombat PickTarget(VehicleCombat player)
     {
         // 先在准星附近 22° 找；找不到放宽到 45°（不然稍微偏一点就锁不上）
-        var t = PickTargetInCone(player, 22f);
-        if (t == null) t = PickTargetInCone(player, 45f);
+        // 优先锁谁：飞机（自己在开飞机 / 正在用机枪）优先锁敌机，其余优先锁地面/海面
+        bool preferAir = false;
+        if (player.Def != null && player.Def.domain == Domain.Air) preferAir = true;
+        else
+        {
+            var ptc = player.GetComponent<PlayerTankController>();
+            if (ptc != null && ptc.MgMode) preferAir = true;
+        }
+
+        var t = PickTargetInCone(player, 22f, preferAir);
+        if (t == null) t = PickTargetInCone(player, 45f, preferAir);
         return t;
     }
 
-    VehicleCombat PickTargetInCone(VehicleCombat player, float coneDeg)
+    VehicleCombat PickTargetInCone(VehicleCombat player, float coneDeg, bool preferAir)
     {
         var cam = Camera.main;
         if (cam == null) return null;
@@ -146,7 +155,10 @@ public class LockOnSystem : MonoBehaviour
             // 用户要求：**优先锁准星方向能打到的最近的** —— 夹角为主、距离为辅
             float ang = Vector3.Angle(cam.transform.forward, aim - cam.transform.position);
             if (ang > coneDeg) continue;                    // 只在准星附近这个夹角内找
-            float score = ang * 12f + d * 0.02f;
+            // 偏好类型加权：不是偏好类型的目标分数放大，排到后面去
+            bool isAirTarget = v.Def != null && v.Def.domain == Domain.Air;
+            float domainMul = (isAirTarget == preferAir) ? 1f : 3.5f;
+            float score = (ang * 12f + d * 0.02f) * domainMul;
             if (score < bestScore) { bestScore = score; best = v; }
         }
         return best;
