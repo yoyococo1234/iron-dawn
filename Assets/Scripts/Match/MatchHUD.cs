@@ -225,10 +225,70 @@ public class MatchHUD : MonoBehaviour
 
     // ---------------- 准星 ----------------
 
+    Vector2 _lockCrossPos;
+    bool _lockCrossInit;
+
+    /// <summary>锁定准星：画在目标身上（绿色），带一圈断开的锁定弧。</summary>
+    void DrawLockCrosshair(Vector2 pos)
+    {
+        var c = new Color(0.45f, 1f, 0.6f, 0.95f);
+        float x = pos.x, y = pos.y;
+        float r = 20f, t = 2.5f;
+
+        Fill(new Rect(x - r, y - t * 0.5f, r * 0.6f, t), c);
+        Fill(new Rect(x + r * 0.4f, y - t * 0.5f, r * 0.6f, t), c);
+        Fill(new Rect(x - t * 0.5f, y - r, t, r * 0.6f), c);
+        Fill(new Rect(x - t * 0.5f, y + r * 0.4f, t, r * 0.6f), c);
+        Fill(new Rect(x - 2f, y - 2f, 4f, 4f), new Color(1f, 1f, 1f, 0.95f));
+
+        float R = 34f;
+        for (int i = 0; i < 32; i++)
+        {
+            if (i % 8 < 4) continue;                     // 断成 4 段弧
+            float a0 = i / 32f * Mathf.PI * 2f;
+            float a1 = (i + 1) / 32f * Mathf.PI * 2f;
+            DrawSeg(new Vector2(x + Mathf.Cos(a0) * R, y + Mathf.Sin(a0) * R),
+                    new Vector2(x + Mathf.Cos(a1) * R, y + Mathf.Sin(a1) * R), c, 2f);
+        }
+    }
+
+    void DrawSeg(Vector2 a, Vector2 b, Color c, float w)
+    {
+        Vector2 d = b - a;
+        float len = d.magnitude;
+        if (len < 0.5f) return;
+        var m = GUI.matrix;
+        GUI.color = c;
+        GUIUtility.RotateAroundPivot(Mathf.Atan2(d.y, d.x) * Mathf.Rad2Deg, a);
+        GUI.DrawTexture(new Rect(a.x, a.y - w * 0.5f, len, w), Texture2D.whiteTexture);
+        GUI.matrix = m;
+        GUI.color = Color.white;
+    }
+
     void DrawCrosshair(MatchManager mm)
     {
         if (Cursor.lockState != CursorLockMode.Locked) return;   // 光标放开时不画准星
         if (IsScoped()) return;                                   // 开镜时用炮镜分划，不画这个
+
+        // ---------- Ctrl 锁定且目标进入射程 → 准星平滑移到目标身上（2026-11-07）----------
+        if (LockOnSystem.Active && LockOnSystem.Target != null && LockOnSystem.Target.Alive && LockOnSystem.InRange)
+        {
+            var camL = Camera.main;
+            if (camL != null)
+            {
+                Vector3 spL = camL.WorldToScreenPoint(LockOnSystem.Target.transform.position + Vector3.up * 1.2f);
+                if (spL.z > 0f)
+                {
+                    Vector2 want = new Vector2(spL.x / _scale, (Screen.height - spL.y) / _scale);
+                    if (!_lockCrossInit) { _lockCrossPos = want; _lockCrossInit = true; }
+                    float k = 1f - Mathf.Exp(-14f * Time.unscaledDeltaTime);
+                    _lockCrossPos = Vector2.Lerp(_lockCrossPos, want, k);
+                    DrawLockCrosshair(_lockCrossPos);
+                    return;
+                }
+            }
+        }
+        else _lockCrossInit = false;
 
         var p = mm.Player;
 

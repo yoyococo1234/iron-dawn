@@ -539,6 +539,9 @@ public class VehicleCombat : MonoBehaviour
             : _phys.GetDeckGunForward();
         if (dir.sqrMagnitude < 0.001f) dir = _phys.GetDeckGunForward();
 
+        // 出膛点推到自身碰撞盒外，免得贴着车体开火时第一根射线打到自己
+        origin = PushOutsideOwnCollider(origin, dir);
+
         ShotsFired++;
         float maxRange = Mathf.Max(10f, w.range);
         Vector3 endPoint = origin + dir * maxRange;

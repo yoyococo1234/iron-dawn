@@ -109,8 +109,9 @@ public class PlayerTankController : MonoBehaviour
         // 开火：机枪模式打机枪，否则打当前炮塔武器
         if ((Input.GetMouseButton(0) || Input.GetKey(KeyCode.Space)) && Time.time >= _fireLockUntil)
         {
-            // 机枪不给瞄准点 —— 沿枪管方向打，准星就是枪管指向，不存在"准星和弹道对不上"
-            if (_mgMode) _combat.FireDeckGunAt(null);
+            // 2026-11-07：机枪改成**按准星方向打**。原来沿枪管方向打，
+            // 而枪架只能绕炮塔 ±120° 转，视角一偏子弹就飞到别处去了（用户："机枪打不中"）。
+            if (_mgMode) _combat.FireDeckGunAt(aimPoint);
             else _combat.FireAt(aimPoint, turn);
         }
 
