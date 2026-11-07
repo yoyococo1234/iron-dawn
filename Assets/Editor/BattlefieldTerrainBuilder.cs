@@ -190,7 +190,38 @@ public static class BattlefieldTerrainBuilder
         }
 
         Despike(heights, res);
+        SmoothHeightmap(heights, res, 2);
         data.SetHeights(0, 0, heights);
+    }
+
+    /// <summary>
+    /// 高度图平滑（3×3 均值，边界用夹取索引，保证四块地形的接缝仍然连续）。
+    ///
+    /// 为什么需要：山体阴影图上能看到一条条虚线状的细脊/细沟（用户反复反馈的"沟壑"），
+    /// 那是高频噪声和削填边界留下的 1~2 格窄特征。3×3 平滑两遍刚好抹掉单格特征，
+    /// 又不会动到大尺度地形（山脊、山谷还在）。
+    /// </summary>
+    static void SmoothHeightmap(float[,] h, int res, int passes)
+    {
+        var tmp = new float[res, res];
+        for (int p = 0; p < passes; p++)
+        {
+            System.Array.Copy(h, tmp, h.Length);
+            for (int j = 0; j < res; j++)
+            {
+                int jm = j > 0 ? j - 1 : 0;
+                int jp = j < res - 1 ? j + 1 : res - 1;
+                for (int i = 0; i < res; i++)
+                {
+                    int im = i > 0 ? i - 1 : 0;
+                    int ip = i < res - 1 ? i + 1 : res - 1;
+                    float sum = tmp[jm, im] + tmp[jm, i] + tmp[jm, ip]
+                              + tmp[j, im] + tmp[j, i] + tmp[j, ip]
+                              + tmp[jp, im] + tmp[jp, i] + tmp[jp, ip];
+                    h[j, i] = sum / 9f;
+                }
+            }
+        }
     }
 
     /// <summary>
@@ -239,7 +270,7 @@ public static class BattlefieldTerrainBuilder
         // 世界尺度的细颗粒（设计尺度放大 16.7 倍后近看偏光，补一层 3 m 级起伏）
         // 公路上要压掉，否则路基会被细噪声顶得坑坑洼洼、纵坡超标
         float road = PassRoadMask(x / Scale, z / Scale);
-        y += 0.45f * (Fbm(x * 0.32f + 61f, z * 0.32f + 37f, 2) - 0.5f) * (1f - 0.9f * road);
+        y += 0.45f * (Fbm(x * 0.32f + 61f, z * 0.32f + 37f, 2) - 0.5f);
         return y;
     }
 
@@ -348,7 +379,7 @@ public static class BattlefieldTerrainBuilder
 
         // 山体分组：2~3 座山包，别做成一条等高的墙
         float massif = 0.55f + 0.80f * Fbm(x * 0.013f + 9f, z * 0.013f + 21f, 2);
-        return Mathf.Clamp(h * massif, 0f, 18f) * ramp;
+        return SmoothClamp(h * massif, 0f, 18f, 1.2f) * ramp;
     }
 
     // ---- 两翼低丘（1~4 m）：坦克能直接翻过去 ----
@@ -357,7 +388,7 @@ public static class BattlefieldTerrainBuilder
         float n = Fbm(x * 0.045f + 29f, z * 0.045f + 7f, 4);
         float h = 0.9f + 2.6f * n;
         h += (Fbm(x * 0.13f + 11f, z * 0.13f + 3f, 3) - 0.5f) * 0.5f;
-        return Mathf.Clamp(h, 0.8f, 4f);
+        return SmoothClamp(h, 0.8f, 4f, 0.5f);
     }
 
     // ---- 平原（0.5~2 m）：大缓坡 + 中尺度起伏 ----
@@ -367,7 +398,7 @@ public static class BattlefieldTerrainBuilder
         float h = 0.6f + 1.3f * n;
         h += (Fbm(x * 0.07f + 5f, z * 0.07f + 23f, 3) - 0.5f) * 0.5f;
         h += (Fbm(x * 0.2f, z * 0.2f, 2) - 0.5f) * 0.15f;
-        return Mathf.Clamp(h, 0.5f, 2f);
+        return SmoothClamp(h, 0.5f, 2f, 0.4f);
     }
 
     // ---- 中央城区（0.5~2 m，街道网格压平，能开坦克）----
@@ -379,7 +410,7 @@ public static class BattlefieldTerrainBuilder
         float road = RoadMask(x, z);                     // 街道网格压平
         h = Mathf.Lerp(h, 1.0f, road * 0.85f);
         h += (Fbm(x * 0.22f, z * 0.22f, 2) - 0.5f) * 0.12f * (1f - road);
-        return Mathf.Clamp(h, 0.5f, 2f);
+        return SmoothClamp(h, 0.5f, 2f, 0.4f);
     }
 
     // ---- 街道网格（设计坐标 12 m 一条 → 世界 200 m 一条）----
@@ -459,7 +490,7 @@ public static class BattlefieldTerrainBuilder
                 float d = Vector2.Distance(p, a + ab * t);
                 if (d < bestD) bestD = d;
                 if (d >= W) continue;
-                float w = 1f / (d * d + 0.05f);
+                float w = (1f / (d * d + 0.05f)) * (1f - SStep(W * 0.6f, W, d));
                 wSum += w;
                 hSum += w * Mathf.Lerp(hh[i], hh[i + 1], t);
             }
@@ -852,6 +883,20 @@ public static class BattlefieldTerrainBuilder
     }
 
     // ================= 噪声与插值 =================
+    /// <summary>
+    /// 平滑钳制：把 v 压进 [lo, hi]，但边界处是**渐变**而不是硬折角。
+    ///
+    /// 为什么需要（2026-11-07 找到的"沟壑"真凶）：原来 PlainField / LowHillField /
+    /// MountainField 用 Mathf.Clamp 硬压上下限，被压住的那一片边界是一条**等值线**，
+    /// 法线在那里突然折断 —— 山体阴影/光照上就是一条细长的"沟"，
+    /// 地图上十几条弧形细线全是它。
+    /// </summary>
+    static float SmoothClamp(float v, float lo, float hi, float soft)
+    {
+        if (v < lo) return lo - (lo - v) * soft / (soft + (lo - v));   // 低于下限：渐近贴回 lo
+        if (v > hi) return hi + (v - hi) * soft / (soft + (v - hi));   // 高于上限：渐近贴回 hi
+        return v;
+    }
     static float SStep(float edge0, float edge1, float x)
     {
         float t = Mathf.Clamp01((x - edge0) / (edge1 - edge0));

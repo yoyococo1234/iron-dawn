@@ -18,7 +18,7 @@ MonoBehaviour:
   engineLoopName: engine_loop_boat
   price: 180
   respawnBaseCost: 80
-  maxHp: 1400
+  maxHp: 7003
   armorMode: 0
   armorFront: 0.85
   armorSide: 1

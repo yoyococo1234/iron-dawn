@@ -103,6 +103,16 @@ public class VehicleAI : MonoBehaviour
         {
             float dist = Vector3.Distance(transform.position, Target.transform.position);
 
+            // 用户 2026-11-07：**第一优先级是占点，第二才是击杀**。
+            // 只有敌人贴脸（150 m 内，纯自保）时才放下抢点去交战；
+            // 其余情况一律先往没占下来的点走（路上能打就打）。
+            if (captureZones && dist > 150f && HasCapturableZone())
+            {
+                StateText = "抢点";
+                _goal = ChooseGoal();
+                return;
+            }
+
             // 能打到 + 看得见才算交战。被地形挡住还傻站着会死锁（两辆车隔着山对望，谁也不动），
             // 所以通视一断就改成"接近"，逼它挪位置找射界。留 1.5 秒缓冲避免来回抖。
             bool los = HasLineOfSight(_phys != null ? _phys.GetMuzzlePosition() : transform.position,
@@ -126,8 +136,9 @@ public class VehicleAI : MonoBehaviour
     }
 
     /// <summary>
-    /// 选下一个要去的地方：最近的、本域能占的、还不属于自己队的资源点。
+    /// 选下一个要去的地方：最近的、还不属于自己队的资源点。
     /// 找不到就退回 objective，再退回地图中心。
+    /// 2026-11-07：不再按 domain 过滤 —— 飞机也能占点（用户要求）。
     /// </summary>
     Vector3 ChooseGoal()
     {
@@ -139,7 +150,6 @@ public class VehicleAI : MonoBehaviour
             foreach (var z in mm.zones)
             {
                 if (z == null || z.def == null) continue;
-                if (z.def.domain != _self.Def.domain) continue;   // 船不抢陆地点，坦克不抢海点
                 if (z.owner == _self.Team) continue;              // 自己队的不用抢
                 var c = new Vector3(z.def.bounds.center.x, 0f, z.def.bounds.center.y);
                 float d = Vector3.Distance(transform.position, c);
@@ -150,6 +160,16 @@ public class VehicleAI : MonoBehaviour
         }
 
         return objective != null ? objective.position : Vector3.zero;
+    }
+
+    /// <summary>场上还有没有"不属于我队"的可占点。</summary>
+    bool HasCapturableZone()
+    {
+        var mm = MatchManager.Instance;
+        if (mm == null) return false;
+        foreach (var z in mm.zones)
+            if (z != null && z.def != null && z.owner != _self.Team) return true;
+        return false;
     }
 
     VehicleCombat FindTarget()
