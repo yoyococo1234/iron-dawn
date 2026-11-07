@@ -20,6 +20,9 @@ public class LockOnSystem : MonoBehaviour
     /// <summary>锁定搜索半径（米）。</summary>
     public float maxRange = 1600f;
 
+    /// <summary>调试用：设成某个敌人就强制锁定（不影响正常 Ctrl 逻辑）。</summary>
+    public static VehicleCombat DebugTarget;
+
     static LockOnSystem _inst;
     float _lockTime;
     float _flash;
@@ -43,6 +46,22 @@ public class LockOnSystem : MonoBehaviour
     {
         var mm = MatchManager.Instance;
         var player = mm != null ? mm.Player : null;
+
+        // 调试用：DebugTarget 不为空就强制锁定（编辑器里验证瞄准链路用）
+        if (DebugTarget != null && DebugTarget.Alive)
+        {
+            Active = true;
+            Target = DebugTarget;
+            var pc = mm != null ? mm.Player : null;
+            if (pc != null)
+            {
+                Distance = Vector3.Distance(pc.transform.position, Target.transform.position);
+                InRange = Distance <= (pc.Weapon != null ? pc.Weapon.range : 800f);
+            }
+            _lockTime += Time.deltaTime;
+            _flash = Mathf.Max(0f, _flash - Time.deltaTime * 3f);
+            return;
+        }
 
         bool want = Input.GetKey(KeyCode.LeftControl) || Input.GetKey(KeyCode.RightControl);
         if (!want || player == null || !player.Alive || PauseScreen.Paused || ShopScreen.Open)

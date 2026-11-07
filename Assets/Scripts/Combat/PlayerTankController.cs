@@ -99,6 +99,12 @@ public class PlayerTankController : MonoBehaviour
 
                 wantYawWorld = Mathf.Atan2(bdir.x, bdir.z) * Mathf.Rad2Deg;
                 wantPitch = Mathf.Asin(Mathf.Clamp(bdir.y, -1f, 1f)) * Mathf.Rad2Deg;
+
+                // 镜头也跟过去（用户要求"镜头不晃、正好瞄到他身上"）：
+                // 用鼠标那套 pitch 换算反过来推 camFollow.pitch，这样镜头和炮管是同一套解算。
+                camFollow.yaw = Mathf.MoveTowardsAngle(camFollow.yaw, wantYawWorld, 150f * Time.deltaTime);
+                float wantCamPitch = -wantPitch - camFollow.tankLookDownDeg + 8f;
+                camFollow.pitch = Mathf.MoveTowards(camFollow.pitch, wantCamPitch, 110f * Time.deltaTime);
             }
 
             if (_mgMode && dw != null && _combat.Physics.HasDeckGun)
