@@ -147,7 +147,7 @@ public class LockOnSystem : MonoBehaviour
                 var dwR = player.DeckWeapon;
                 if (dwR != null) wRange = dwR.range;
             }
-            if (d > Mathf.Min(maxRange, wRange * 1.1f)) continue;
+            if (d > Mathf.Min(maxRange, wRange)) continue;
 
             // 必须在屏幕中间区域（避免锁到视野外的东西）
             Vector3 sp = cam.WorldToScreenPoint(aim);

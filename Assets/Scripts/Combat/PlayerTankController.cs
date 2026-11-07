@@ -141,9 +141,16 @@ public class PlayerTankController : MonoBehaviour
         // 开火：机枪模式打机枪，否则打当前炮塔武器
         if ((Input.GetMouseButton(0) || Input.GetKey(KeyCode.Space)) && Time.time >= _fireLockUntil)
         {
-            // 2026-11-07：机枪改成**按准星方向打**。原来沿枪管方向打，
-            // 而枪架只能绕炮塔 ±120° 转，视角一偏子弹就飞到别处去了（用户："机枪打不中"）。
-            if (_mgMode) _combat.FireDeckGunAt(aimPoint);
+            if (_mgMode)
+            {
+                // 2026-11-07：机枪**永远按准星方向打**。
+                // 锁定目标时打锁定点；没有锁定就直接用屏幕中心（准星）射线打 ——
+                // 不能再用炮口方向的 aimPoint，那样准星和弹道是两条线，永远打不中。
+                Vector3 mgAim = (LockOnSystem.Active && LockOnSystem.Target != null && LockOnSystem.Target.Alive)
+                    ? LockOnSystem.AimPointFor(_combat)
+                    : CameraAimPoint();
+                _combat.FireDeckGunAt(mgAim);
+            }
             else _combat.FireAt(aimPoint, turn);
         }
 
@@ -233,6 +240,30 @@ public class PlayerTankController : MonoBehaviour
     /// 用屏幕中心的话子弹会打向地面，和机头指向对不上，准星也就成了没意义的装饰。
     /// 现在准星画在机头指向的屏幕投影上（MatchHUD.DrawCrosshair），子弹也沿机头飞，两边一致。
     /// </summary>
+    /// <summary>
+    /// 屏幕中心（准星）射线打到哪 —— 机枪不开锁定时就打这个点。
+    /// 这样"准星指哪、弹打哪"，不会再出现准星和弹道两条线的情况。
+    /// </summary>
+    Vector3 CameraAimPoint()
+    {
+        if (_cam == null) return transform.position + transform.forward * 500f;
+
+        var ray = _cam.ScreenPointToRay(new Vector3(Screen.width * 0.5f, Screen.height * 0.5f, 0f));
+        var hits = Physics.RaycastAll(ray, 1600f, ~0, QueryTriggerInteraction.Ignore);
+        if (hits != null && hits.Length > 0)
+        {
+            System.Array.Sort(hits, (a, b) => a.distance.CompareTo(b.distance));
+            foreach (var h in hits)
+            {
+                if (h.collider == null) continue;
+                var vc = h.collider.GetComponentInParent<VehicleCombat>();
+                if (vc == _combat) continue;         // 自己身上的碰撞盒跳过
+                return h.point;
+            }
+        }
+        return ray.origin + ray.direction * 1600f;
+    }
+
     Vector3 GetAimPoint()
     {
         // Ctrl 锁定：直接把锁定目标当瞄准点（炮塔/机头会自己转过去）
