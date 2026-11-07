@@ -340,7 +340,11 @@ public class MatchHUD : MonoBehaviour
         var camG = Camera.main;
         if (vpG == null || camG == null) return;
 
-        Vector3 gunPoint = vpG.GetMuzzlePosition() + vpG.GetMuzzleForward() * 500f;
+        // 2026-11-07：炮口节点挂在会随浪摇摆的 Model 上，用它画准星会跟着上下抖（用户反复反馈）。
+        // 改成"车体/船体根部 + 炮塔偏航 + 炮管俯仰"算一个**稳定**的指向，准星就不晃了。
+        float yawStable = vpG.transform.eulerAngles.y + vpG.turretYaw;
+        Vector3 dirStable = Quaternion.Euler(-vpG.barrelPitch, yawStable, 0f) * Vector3.forward;
+        Vector3 gunPoint = vpG.transform.position + Vector3.up * 2.5f + dirStable * 500f;
         Vector3 local = camG.transform.InverseTransformPoint(gunPoint);   // z>0 = 在镜头前方
 
         // 方向（屏幕坐标系：右 +x、上 +y）；在镜头背后时整体翻转，指回真实方向

@@ -36,6 +36,7 @@ public class Torpedo : MonoBehaviour
     float _waterLevel;
     float _travelled;
     float _life;
+    float _shallowTime;      // 连续处于浅水的时间（秒）
     float _t;
     float _startY;
     float _foamTimer;
@@ -266,11 +267,19 @@ public class Torpedo : MonoBehaviour
         // 注意：地图边缘的分块地形可能没有数据，SampleHeight 会返回 0（远高于水面），
         // 用它做判定会让鱼雷一进边界就自爆 —— 所以只认「水深数据明确为 0 且地形确实高于水面」。
         float depthHere = BattlefieldTerrain.WaterDepth(transform.position.x, transform.position.z);
-        if (_t > 1.2f && depthHere < 0.05f)
+        // 2026-11-07：原来只要路过一处浅水就自爆，鱼雷拐弯时经常扫过沙洲直接没了。
+        // 现在要**连续**在浅水待 0.6 秒才算搁浅。
+        if (_t > 1.2f && depthHere < 0.3f)
         {
             float ground = BattlefieldTerrain.SampleHeight(transform.position.x, transform.position.z);
-            if (ground > _waterLevel - 0.05f) { Beached(); return; }
+            if (ground > _waterLevel + 0.3f)
+            {
+                _shallowTime += dt;
+                if (_shallowTime > 0.6f) { Beached(); return; }
+            }
+            else _shallowTime = 0f;
         }
+        else _shallowTime = 0f;
 
         if (_travelled >= _range)
         {
