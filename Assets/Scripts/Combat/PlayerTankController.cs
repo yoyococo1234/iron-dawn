@@ -22,6 +22,7 @@ public class PlayerTankController : MonoBehaviour
     public float fireLockAfterSpawn = 0.4f;
 
     float _fireLockUntil;
+    float _lockPitch;          // 锁定时的俯仰低通状态
 
     void OnEnable() => _fireLockUntil = Time.time + fireLockAfterSpawn;
 
@@ -93,12 +94,23 @@ public class PlayerTankController : MonoBehaviour
             if (LockOnSystem.Active && LockOnSystem.Target != null && LockOnSystem.Target.Alive)
             {
                 Vector3 lockAim = LockOnSystem.AimPointFor(_combat);
-                Vector3 muzzle = _combat.Physics.GetMuzzlePosition();
-                float bspd = _combat.Weapon != null ? Mathf.Max(150f, _combat.Weapon.projectileSpeed) : 900f;
-                Vector3 bdir = VehicleCombat.BallisticDir(muzzle, lockAim, bspd);
+                // 用**船体/车体根部**当基准，不用炮口节点：炮口节点挂在 Model 上，
+                // 船随浪起伏时它会上下动，解出来的俯仰角跟着抖 —— 就是"锁定后炮管上下晃"的来源。
+                Vector3 muzzle = _combat.transform.position + Vector3.up * 2.5f;
+                // 只有"正常弹速的炮弹"才做弹道解算。鱼雷/导弹这种慢速或制导武器直接指向，
+                // 否则解出来的抛射角是几十度的高抛，镜头会直接飘到天上（用户报的 bug）。
+                var lw = _combat.Weapon;
+                bool ballistic = lw != null && !lw.isTorpedo && lw.projectileSpeed >= 300f;
+                float bspd = lw != null ? Mathf.Max(150f, lw.projectileSpeed) : 900f;
+                Vector3 bdir = ballistic
+                    ? VehicleCombat.BallisticDir(muzzle, lockAim, bspd)
+                    : (lockAim - muzzle).normalized;
 
                 wantYawWorld = Mathf.Atan2(bdir.x, bdir.z) * Mathf.Rad2Deg;
-                wantPitch = Mathf.Asin(Mathf.Clamp(bdir.y, -1f, 1f)) * Mathf.Rad2Deg;
+                float rawPitch = Mathf.Asin(Mathf.Clamp(bdir.y, -1f, 1f)) * Mathf.Rad2Deg;
+                // 低通：残余的小抖动直接抹掉（时间常数 ~0.12 s）
+                _lockPitch = Mathf.Lerp(_lockPitch, rawPitch, 1f - Mathf.Exp(-8f * Time.deltaTime));
+                wantPitch = _lockPitch;
 
                 // 镜头也跟过去（用户要求"镜头不晃、正好瞄到他身上"）：
                 // 用鼠标那套 pitch 换算反过来推 camFollow.pitch，这样镜头和炮管是同一套解算。

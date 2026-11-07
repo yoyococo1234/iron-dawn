@@ -84,7 +84,14 @@ public class LockOnSystem : MonoBehaviour
         {
             _lockTime += Time.deltaTime;
             Distance = Vector3.Distance(player.transform.position, Target.transform.position);
+            // 机枪模式下按机枪射程算（不然准星移过去了却打不到）
             float range = player.Weapon != null ? player.Weapon.range : 800f;
+            var ptcU = player.GetComponent<PlayerTankController>();
+            if (ptcU != null && ptcU.MgMode)
+            {
+                var dwU = player.DeckWeapon;
+                if (dwU != null) range = dwU.range;
+            }
             InRange = Distance <= range;
         }
         else
@@ -130,7 +137,17 @@ public class LockOnSystem : MonoBehaviour
 
             Vector3 aim = v.transform.position + Vector3.up * 1.2f;
             float d = Vector3.Distance(from, aim);
-            if (d > maxRange) continue;
+
+            // 只锁"当前武器打得到"的目标：机枪模式下按机枪射程算，
+            // 不然会锁到天上很远的飞机、弹速又跟不上（用户反馈"锁得到打不到"）。
+            float wRange = player.Weapon != null ? player.Weapon.range : 800f;
+            var ptcR = player.GetComponent<PlayerTankController>();
+            if (ptcR != null && ptcR.MgMode)
+            {
+                var dwR = player.DeckWeapon;
+                if (dwR != null) wRange = dwR.range;
+            }
+            if (d > Mathf.Min(maxRange, wRange * 1.1f)) continue;
 
             // 必须在屏幕中间区域（避免锁到视野外的东西）
             Vector3 sp = cam.WorldToScreenPoint(aim);

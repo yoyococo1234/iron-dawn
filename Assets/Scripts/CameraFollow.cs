@@ -320,6 +320,9 @@ public class CameraFollow : MonoBehaviour
             float pitchFloor = 8f - tankLookDownDeg - upLimitDeg;
             float pitchLo = mgMode ? Mathf.Min(minPitch, pitchFloor)   // 机枪：放宽到 85°
                                    : Mathf.Max(minPitch, pitchFloor);  // 用炮：收紧到炮的仰角
+            // 锁定（Ctrl）时不受"炮管能抬多高"的限制：否则我们设的镜头角每帧被夹回来，
+            // 表现出来就是上下抖。锁定结束后自动恢复。
+            if (LockOnSystem.Active) pitchLo = minPitch;
             pitch = Mathf.Clamp(pitch, pitchLo, maxPitch);
         }
 
