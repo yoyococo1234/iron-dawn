@@ -19,6 +19,11 @@ public class Projectile : MonoBehaviour
     AmmoDef _ammo;
     VehicleCombat _owner;
 
+    // ---- 锁定制导（2026-11-07 用户要求的"Ctrl 锁定后左键必中"）----
+    VehicleCombat _homing;
+    float _homingTurn = 260f;      // 度/秒，够快就能拐过来
+    public void SetHoming(VehicleCombat target) => _homing = target;
+
     public void Launch(Vector3 dir, float speed, float damage, AmmoDef ammo, VehicleCombat owner, float maxRange = 0f)
     {
         _vel = dir.normalized * Mathf.Max(1f, speed);
@@ -46,6 +51,19 @@ public class Projectile : MonoBehaviour
         if (_life <= 0f) { Destroy(gameObject); return; }
 
         _vel += Vector3.down * Gravity * Time.deltaTime;
+
+        // 锁定制导：把速度方向慢慢拐向目标（速度大小不变），保证"锁定后按左键必中"
+        if (_homing != null && _homing.Alive)
+        {
+            Vector3 aim = _homing.transform.position + Vector3.up * 1.2f;
+            Vector3 want = (aim - transform.position);
+            if (want.sqrMagnitude > 0.01f)
+            {
+                float spd = _vel.magnitude;
+                _vel = Vector3.RotateTowards(_vel, want.normalized * spd, _homingTurn * Mathf.Deg2Rad * Time.deltaTime, 0f);
+                _vel = _vel.normalized * spd;
+            }
+        }
 
         Vector3 stepVec = _vel * Time.deltaTime;
         float step = stepVec.magnitude;

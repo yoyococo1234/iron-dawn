@@ -37,12 +37,12 @@ public class ShopScreen : MonoBehaviour
         if (player == null || !player.Alive) return;
 
         if (!Open) { Open = true; _savedScale = Time.timeScale > 0f ? Time.timeScale : 1f; Time.timeScale = 0f; }
-        else { Open = false; Time.timeScale = _savedScale; }
+        else { Open = false; Time.timeScale = _savedScale; RelockCursor(); }
     }
 
     void OnDisable()
     {
-        if (Open) { Open = false; Time.timeScale = 1f; }
+        if (Open) { Open = false; Time.timeScale = 1f; RelockCursor(); }
     }
 
     struct Item
@@ -78,6 +78,13 @@ public class ShopScreen : MonoBehaviour
                 canBuy = p2 => true,
             },
         };
+    }
+
+    /// <summary>关掉商店立刻把光标锁回准星（用户要求：不要还得点一下才恢复）。</summary>
+    static void RelockCursor()
+    {
+        Cursor.lockState = CursorLockMode.Locked;
+        Cursor.visible = false;
     }
 
     void OnGUI()

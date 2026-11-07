@@ -455,6 +455,9 @@ public class VehicleCombat : MonoBehaviour
         ShotsFired++;
         var shell = go.AddComponent<Projectile>();
         shell.Launch(dir, w.projectileSpeed, w.baseDamage, ammo, this, w.range);
+        // Ctrl 锁定后开火：给炮弹加轻微制导，保证打得中（用户要求"左键必中"）
+        if (IsPlayer && LockOnSystem.Active && LockOnSystem.Target != null && LockOnSystem.Target.Alive)
+            shell.SetHoming(LockOnSystem.Target);
 
         // 玩家开炮：镜头抖一下 + 炮口闪光
         ShakeCamera(0.55f);

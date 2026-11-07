@@ -39,6 +39,8 @@ public class PauseScreen : MonoBehaviour
             Paused = false;
             Time.timeScale = _savedScale;
             AudioListener.pause = false;
+            Cursor.lockState = CursorLockMode.Locked;   // 立刻回到准星
+            Cursor.visible = false;
         }
     }
 

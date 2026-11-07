@@ -202,6 +202,9 @@ public class PlayerTankController : MonoBehaviour
     /// </summary>
     Vector3 GetAimPoint()
     {
+        // Ctrl 锁定：直接把锁定目标当瞄准点（炮塔/机头会自己转过去）
+        if (LockOnSystem.Active && LockOnSystem.Target != null && LockOnSystem.Target.Alive)
+            return LockOnSystem.Target.transform.position + Vector3.up * 1.2f;
         bool air = _combat != null && _combat.Def != null && _combat.Def.domain == Domain.Air;
 
         if (air)
