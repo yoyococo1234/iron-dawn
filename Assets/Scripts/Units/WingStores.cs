@@ -46,9 +46,11 @@ public class WingStores : MonoBehaviour
         var useMat = mat != null ? mat : MakeMat();
 
         int idx = 0;
-        for (int side = -1; side <= 1; side += 2)
+        // 按「左1 右1 左2 右2…」交替登记，发射时 ConsumeOne 顺序取，
+        // 这样打出去的是左右交替的，不会先把一侧打空（原来 side 在外层，左翼 4 枚打完才轮到右翼）。
+        for (int i = 0; i < perSide; i++)
         {
-            for (int i = 0; i < perSide; i++)
+            for (int side = -1; side <= 1; side += 2)
             {
                 float t = 0.34f + i * 0.14f;
                 float mx = side * halfSpan * t;

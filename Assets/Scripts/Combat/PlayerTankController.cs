@@ -49,6 +49,11 @@ public class PlayerTankController : MonoBehaviour
         if (_combat == null || !_combat.Alive) return;
         if (_cam == null) { _cam = Camera.main; if (_cam == null) return; }
 
+        // 有界面挡在战斗前面（开局封面 / 车库 / 商店 / 暂停，或刚关掉界面的 0.3 秒）时，
+        // 整段战斗输入直接跳过：以前在商店里点「购买」，鼠标一动炮塔就跟着拧；
+        // 点完「出击」那一下左键还按着，车一出来立刻开一炮（2026-11-10）。
+        if (UiKit.Blocking) return;
+
         // 按住 C = 自由视角（战雷那套）：镜头随便转，炮塔保持不动。
         // 这时继续用「按下 C 之前的瞄准点」，所以开火还是打在炮口指的方向上。
         bool freeLook = Input.GetKey(KeyCode.C);

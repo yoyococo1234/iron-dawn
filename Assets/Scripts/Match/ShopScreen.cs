@@ -15,6 +15,7 @@ public class ShopScreen : MonoBehaviour
     float _savedScale = 1f;
     string _toast = "";
     float _toastUntil;
+    float _anim;                 // 开合进度（0 = 关 / 1 = 开）
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
     static void Boot()
@@ -36,8 +37,8 @@ public class ShopScreen : MonoBehaviour
         var player = Player;
         if (player == null || !player.Alive) return;
 
-        if (!Open) { Open = true; _savedScale = Time.timeScale > 0f ? Time.timeScale : 1f; Time.timeScale = 0f; }
-        else { Open = false; Time.timeScale = _savedScale; RelockCursor(); }
+        if (!Open) { Open = true; _savedScale = Time.timeScale > 0f ? Time.timeScale : 1f; Time.timeScale = 0f; UiSound.Play(UiSound.Kind.Open); }
+        else { Open = false; Time.timeScale = _savedScale; RelockCursor(); UiSound.Play(UiSound.Kind.Close); UiKit.SwallowInput(0.3f); }
     }
 
     void OnDisable()
@@ -89,85 +90,102 @@ public class ShopScreen : MonoBehaviour
 
     void OnGUI()
     {
-        if (!Open) return;
+        // 开合动画：关掉以后还要多画 0.15 秒淡出，所以先推进进度再决定要不要画
+        float k = UiKit.Anim(ref _anim, Open);
+        if (!Open && k <= 0.001f) return;
 
         var p = Player;
         var mm = MM;
         if (p == null || mm == null) { Open = false; Time.timeScale = _savedScale; return; }
 
-        float w = Screen.width, h = Screen.height;
-        float panelW = Mathf.Min(760f, w * 0.78f);
-        float rowH = 74f;
+        var oldMatrix = UiKit.BeginScaled(out float scale, out float vw);
+        var mouse = UiKit.Mouse(scale);
+        bool live = Open;                     // 淡出过程中不再响应点击
         var items = BuildItems(p);
-        float panelH = 150f + items.Length * rowH + 40f;
-        var panel = new Rect((w - panelW) * 0.5f, (h - panelH) * 0.5f, panelW, panelH);
 
-        GUI.color = new Color(0f, 0f, 0f, 0.55f);
-        GUI.DrawTexture(new Rect(0, 0, w, h), Texture2D.whiteTexture);
-        GUI.color = Color.white;
+        UiKit.Fade(k);
+        // 半透明压暗，能看到身后的战场
+        UiKit.Box(new Rect(0, 0, vw, 1080f), new Color(0.01f, 0.015f, 0.025f, 0.62f));
 
-        GUI.color = new Color(0.06f, 0.08f, 0.11f, 0.97f);
-        GUI.DrawTexture(panel, Texture2D.whiteTexture);
-        GUI.color = Color.white;
+        float panelW = 760f;
+        float rowH = 92f;
+        // 140 = 标题/金币血量/分隔线占的高度；46 = 底部 toast 的位置。
+        // 原来写成 168 + … + 56，面板底下空出 80 px（2026-11-10 截图里很明显）
+        float panelH = 140f + items.Length * rowH + 46f;
+        var panel = UiKit.PopIn(new Rect(vw * 0.5f - panelW * 0.5f, 540f - panelH * 0.5f, panelW, panelH), k);
+        UiKit.Card(panel);
 
-        var title = new GUIStyle(GUI.skin.label) { fontSize = 26, fontStyle = FontStyle.Bold, alignment = TextAnchor.MiddleLeft };
-        title.normal.textColor = Color.white;
-        GUI.Label(new Rect(panel.x + 24, panel.y + 18, panel.width - 48, 36), "补给商店", title);
+        // 标题 + 右上角 TAB 提示
+        UiKit.Label(new Rect(panel.x + 30f, panel.y + 20f, 300f, 40f), "补给商店", 30, UiKit.Text, TextAnchor.MiddleLeft, true);
+        UiKit.KeyCap(new Rect(panel.xMax - 30f - 64f, panel.y + 27f, 64f, 26f), "TAB", 15);
+        UiKit.Label(new Rect(panel.xMax - 30f - 64f - 110f, panel.y + 27f, 100f, 26f), "关闭", 15, UiKit.Dim, TextAnchor.MiddleRight);
 
-        var small = new GUIStyle(GUI.skin.label) { fontSize = 16, alignment = TextAnchor.MiddleLeft };
-        small.normal.textColor = new Color(1f, 1f, 1f, 0.7f);
-        GUI.Label(new Rect(panel.x + 24, panel.y + 56, panel.width - 48, 24),
-            $"金币 {mm.Gold}　·　HP {p.hp:F0} / {p.maxHp:F0}　·　按 TAB 关闭继续战斗", small);
+        // 金币 + 血量
+        float iy = panel.y + 76f;
+        UiKit.Label(new Rect(panel.x + 30f, iy, 60f, 28f), "金币", 16, UiKit.Dim);
+        UiKit.Label(new Rect(panel.x + 76f, iy, 160f, 28f), mm.Gold.ToString(), 24, UiKit.Gold, TextAnchor.MiddleLeft, true);
+        float hpT = p.maxHp > 0f ? p.hp / p.maxHp : 0f;
+        UiKit.Label(new Rect(panel.x + 260f, iy, 50f, 28f), "血量", 16, UiKit.Dim);
+        UiKit.Bar(new Rect(panel.x + 310f, iy + 11f, 260f, 7f), hpT, hpT > 0.35f ? UiKit.Good : UiKit.Bad);
+        UiKit.Label(new Rect(panel.x + 580f, iy, 150f, 28f), $"{p.hp:F0} / {p.maxHp:F0}", 16, UiKit.Text, TextAnchor.MiddleRight, true);
+
+        UiKit.HLine(panel.x + 24f, panel.y + 124f, panel.width - 48f);
 
         for (int i = 0; i < items.Length; i++)
         {
             var it = items[i];
-            var row = new Rect(panel.x + 24, panel.y + 96 + i * rowH, panel.width - 48, rowH - 10);
+            var row = new Rect(panel.x + 24f, panel.y + 140f + i * rowH, panel.width - 48f, rowH - 14f);
             bool affordable = mm.Gold >= it.price;
             bool useful = it.canBuy == null || it.canBuy(p);
             bool canClick = affordable && useful;
 
-            var mouse = new Vector2(Input.mousePosition.x, Screen.height - Input.mousePosition.y);
-            bool hover = row.Contains(mouse) && canClick;
+            // 交互交给 UiKit：悬停平滑、按下位移、点不了时抖动 + 拒绝音、点成功出涟漪
+            var hit = UiKit.Button("shop_" + it.name, row, mouse, canClick && live);
+            row = UiKit.Lift(row, hit);
+            bool hover = hit.hover01 > 0.5f;
 
-            GUI.color = hover ? new Color(0.16f, 0.22f, 0.30f, 1f) : new Color(0.10f, 0.13f, 0.18f, 1f);
-            GUI.DrawTexture(row, Texture2D.whiteTexture);
-            GUI.color = Color.white;
+            UiKit.Glow(row, hit.hover01, UiKit.Gold);
+            UiKit.Box(row, hover ? new Color(1f, 0.84f, 0.35f, 0.10f) : new Color(1f, 1f, 1f, 0.03f));
+            UiKit.Frame(row, hover ? new Color(1f, 0.84f, 0.35f, 0.45f) : new Color(0.35f, 0.75f, 1f, 0.14f));
+            UiKit.Box(new Rect(row.x, row.y, 3f, row.height), canClick ? UiKit.Ally : new Color(1f, 1f, 1f, 0.15f));
 
-            var nameStyle = new GUIStyle(GUI.skin.label) { fontSize = 19, fontStyle = FontStyle.Bold, alignment = TextAnchor.MiddleLeft };
-            nameStyle.normal.textColor = canClick ? Color.white : new Color(1f, 1f, 1f, 0.4f);
-            GUI.Label(new Rect(row.x + 16, row.y + 8, row.width * 0.55f, 26), it.name, nameStyle);
+            UiKit.Label(new Rect(row.x + 20f, row.y + 8f, row.width * 0.6f, 30f), it.name, 21,
+                canClick ? UiKit.Text : UiKit.Mute, TextAnchor.MiddleLeft, true);
+            UiKit.Label(new Rect(row.x + 20f, row.y + 40f, row.width * 0.68f, 24f), it.desc, 15,
+                canClick ? UiKit.Dim : UiKit.Mute);
 
-            var descStyle = new GUIStyle(GUI.skin.label) { fontSize = 14, alignment = TextAnchor.MiddleLeft };
-            descStyle.normal.textColor = new Color(1f, 1f, 1f, 0.6f);
-            GUI.Label(new Rect(row.x + 16, row.y + 34, row.width * 0.62f, 22), it.desc, descStyle);
+            string priceTxt = !useful ? "不需要" : $"{it.price} 金币";
+            Color priceC = !useful ? UiKit.Mute : affordable ? UiKit.Gold : UiKit.Bad;
+            UiKit.Label(new Rect(row.xMax - 200f, row.y + 6f, 180f, 30f), priceTxt, 20, priceC, TextAnchor.MiddleRight, true);
+            string act = !useful ? "" : !affordable ? "金币不足" : hover ? "点击购买 ›" : "购买";
+            UiKit.Label(new Rect(row.xMax - 200f, row.y + 38f, 180f, 24f), act, 15,
+                !affordable ? UiKit.Bad : hover ? UiKit.Gold : UiKit.Desc, TextAnchor.MiddleRight);
 
-            var priceStyle = new GUIStyle(GUI.skin.label) { fontSize = 18, fontStyle = FontStyle.Bold, alignment = TextAnchor.MiddleRight };
-            priceStyle.normal.textColor = affordable ? new Color(1f, 0.85f, 0.35f) : new Color(1f, 0.4f, 0.35f);
-            string priceTxt = useful ? $"{it.price} 金币" : "不需要";
-            GUI.Label(new Rect(row.x + row.width - 190, row.y + 20, 170, 28), priceTxt, priceStyle);
-
-            if (hover && Input.GetMouseButtonDown(0))
+            if (hit.clicked)
             {
                 if (mm.TrySpend(it.price))
                 {
                     it.buy(p);
                     _toast = "已购买：" + it.name;
-                    _toastUntil = Time.unscaledTime + 2f;
+                    UiSound.Play(UiSound.Kind.Coin);
+                    UiKit.Float("-" + it.price, new Vector2(row.center.x, row.y + 20f), UiKit.Gold);
                 }
-                else
-                {
-                    _toast = "金币不够";
-                    _toastUntil = Time.unscaledTime + 2f;
-                }
+                else _toast = "金币不够";
+                _toastUntil = Time.unscaledTime + 2f;
+            }
+            else if (hit.denied)
+            {
+                UiKit.Float(useful ? "金币不够" : "不需要", new Vector2(row.center.x, row.y + 20f), UiKit.Bad);
             }
         }
 
         if (Time.unscaledTime < _toastUntil)
         {
-            var toastStyle = new GUIStyle(GUI.skin.label) { fontSize = 18, alignment = TextAnchor.MiddleCenter, fontStyle = FontStyle.Bold };
-            toastStyle.normal.textColor = new Color(0.6f, 1f, 0.6f);
-            GUI.Label(new Rect(panel.x, panel.y + panelH - 34, panel.width, 26), _toast, toastStyle);
+            bool ok = _toast.StartsWith("已购买");
+            UiKit.Chip(new Rect(panel.x + panel.width * 0.5f - 130f, panel.yMax - 46f, 260f, 30f), _toast, ok ? UiKit.Good : UiKit.Bad, 16);
         }
+
+        UiKit.EndScreen();          // 涟漪 + 浮字压在最上层，并复位透明度
+        GUI.matrix = oldMatrix;
     }
 }

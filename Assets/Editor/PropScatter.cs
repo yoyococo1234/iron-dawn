@@ -24,14 +24,13 @@ public static class PropScatter
     static System.Random rng;
 
     // ---- 模型清单 ----
+    // 2026-11-09：树和建筑全部换成 Lux3D 生成的模型（Assets/Models/Props/Lux3D）。
+    // 老的 Kenney/Polygon 资源包形状太糙、楼体尺寸和格子对不上，一直在穿模。
+    // Lux3D 的模型统一归一化到「最长边 = 1.0、原点在几何中心」，所以 scale 直接等于目标高度（米）。
     static readonly string[] TreeModels =
     {
-        "Nature/tree_detailed", "Nature/tree_detailed_dark",
-        "Nature/tree_oak", "Nature/tree_plateau", "Nature/tree_blocks",
-        "Nature/tree_pineTallA_detailed", "Nature/tree_pineTallB_detailed",
-        "Nature/tree_pineTallC_detailed", "Nature/tree_pineTallD_detailed",
-        "Nature/tree_pineRoundA", "Nature/tree_pineRoundC", "Nature/tree_pineRoundE",
-        "Nature/tree_pineGroundA", "Nature/tree_fat", "Nature/tree_small",
+        "Lux3D/tree_pine_tall", "Lux3D/tree_pine_round", "Lux3D/tree_oak_broad",
+        "Lux3D/tree_plateau_acacia", "Lux3D/tree_dead", "Lux3D/tree_palm",
     };
     static readonly string[] RockModels =
     {
@@ -46,11 +45,8 @@ public static class PropScatter
     };
     static readonly string[] BuildingModels =
     {
-        "City/building-a", "City/building-b", "City/building-c", "City/building-d",
-        "City/building-e", "City/building-f", "City/building-g",
-        "City/low-detail-building-a", "City/low-detail-building-c",
-        "City/low-detail-building-e", "City/low-detail-building-g",
-        "City/building-skyscraper-a", "City/building-skyscraper-c",
+        "Lux3D/building_apartment", "Lux3D/building_shop", "Lux3D/building_warehouse",
+        "Lux3D/building_office", "Lux3D/building_skyscraper", "Lux3D/building_ruin",
     };
     static readonly string[] PropModels =
     {
@@ -68,6 +64,7 @@ public static class PropScatter
         var root = new GameObject(RootName);
 
         rng = new System.Random(20261030);
+        ResetOccupancy();
 
         var trees = LoadAll(TreeModels);
         var rocks = LoadAll(RockModels);
@@ -80,6 +77,9 @@ public static class PropScatter
         int nr = ScatterRocks(root.transform, rocks);
         int nbu = ScatterBushes(root.transform, bushes);
         int np = ScatterProps(root.transform, props);
+
+        // 排查开关：运行时可用命令行参数关掉部分物件（见 PropDebugToggle）
+        if (root.GetComponent<PropDebugToggle>() == null) root.AddComponent<PropDebugToggle>();
 
         EditorSceneManager.MarkSceneDirty(scene);
         EditorSceneManager.SaveScene(scene, ScenePath);
@@ -96,25 +96,28 @@ public static class PropScatter
         holder.SetParent(parent, false);
         int n = 0;
 
-        // 城区：设计 z 0~14、|x|<46；按 1.7 m 设计网格撒（世界 28 m），避开路面
-        for (float dz = 1.0f; dz < 13.7f; dz += 1.7f)
+        // 城区：设计 z −13~13.7、|x| < 45（2026-11-09 扩大：原来只有 z 0~13.7）。
+        // 随机撒 + 按真实占地互斥；网格方式下格子（28~40 m）和楼体尺寸互相打架，要么重叠要么稀稀拉拉。
+        const int target = 320;
+        const float xzStretch = 1.45f;   // 用户反馈"建筑的长宽小了" —— 横向拉宽，楼变敦实
+        for (int i = 0; i < 40000 && n < target; i++)
         {
-            for (float dx = -45f; dx < 45f; dx += 1.7f)
-            {
-                float jx = dx + (float)(rng.NextDouble() - 0.5) * 0.9f;
-                float jz = dz + (float)(rng.NextDouble() - 0.5) * 0.9f;
-                if (Mathf.Abs(jx) > 45f || jz < 0.8f || jz > 13.7f) continue;
-                if (BattlefieldTerrainBuilder.CityRoadPaintMask(jx, jz) > 0.25f) continue;
-                // 2026-11-07：离水线太近的楼不要 —— 底座会露在沙滩/水面外，观感很怪
-                if (BattlefieldTerrain.WaterDepth(jx * S, jz * S) > -3.0f) continue;
-                if (rng.NextDouble() > 0.55) continue;
+            float jx = -45f + (float)rng.NextDouble() * 90f;
+            float jz = -13f + (float)rng.NextDouble() * 26.7f;
+            if (BattlefieldTerrainBuilder.CityRoadPaintMask(jx, jz) > 0.25f) continue;
+            // 离水线太近的楼不要 —— 底座会露在沙滩/水面外，观感很怪
+            if (BattlefieldTerrain.WaterDepth(jx * S, jz * S) > -3.0f) continue;
+            // 出生线（x = ±640 世界）两侧留 45 m 走廊，免得车生在楼里
+            float wx = jx * S;
+            if (Mathf.Abs(wx - 640f) < 45f || Mathf.Abs(wx + 640f) < 45f) continue;
 
-                var model = models[rng.Next(models.Length)];
-                float scale = BuildingScale(model);
-                float yaw = rng.Next(2) == 0 ? 0f : 90f;
-                Place(holder, model, jx * S, jz * S, scale, yaw, solid: true);
-                n++;
-            }
+            var model = models[rng.Next(models.Length)];
+            float scale = BuildingScale(model);
+            // 楼体占位：按模型真实水平半径判重，避免两栋楼互相插进去
+            if (!TryReserve(jx * S, jz * S, ModelFootprint(model).x * scale * xzStretch * 1.04f)) continue;
+            float yaw = rng.Next(2) == 0 ? 0f : 90f;
+            Place(holder, model, jx * S, jz * S, scale, yaw, solid: true, xzMul: xzStretch);
+            n++;
         }
         return n;
     }
@@ -146,8 +149,14 @@ public static class PropScatter
             if (rng.NextDouble() > 0.32) continue;
 
             var model = models[rng.Next(models.Length)];
-            float scale = 9f + (float)rng.NextDouble() * 7f;      // 树高 13~27 m（原来 8~17 m 太矮）
-            Place(holder, model, x, z, scale, (float)rng.NextDouble() * 360f);
+            // Lux3D 的树归一化到「高度 = 1.0」，所以 scale 直接就是米：12~25 m
+            float scale = 12f + (float)rng.NextDouble() * 13f;
+            // 树冠允许轻微交叠（天然林相就是这样），但树干/主干不许叠
+            if (!TryReserve(x, z, ModelFootprint(model).x * scale * 0.55f)) continue;
+            // sinkFrac 0.13：把 Lux3D 树自带的土台整圈压进地面以下（用户反馈"树下面的土露出来了"）。
+            // 之前用 Blender 删土台面 + 下沉 5%，结果 D3D12 下必崩（改过的树网格触发驱动 bug），
+            // 所以退回原始网格，只靠下沉把土埋掉 —— 不动几何最安全。
+            Place(holder, model, x, z, scale, (float)rng.NextDouble() * 360f, sinkFrac: 0.13f);
             n++;
             if (n >= 650) break;
         }
@@ -174,9 +183,10 @@ public static class PropScatter
 
             var model = models[rng.Next(models.Length)];
             float scale = 4f + (float)rng.NextDouble() * 7f;
+            if (!TryReserve(x, z, ModelFootprint(model).x * scale * 0.7f)) continue;
             Place(holder, model, x, z, scale, (float)rng.NextDouble() * 360f);
             n++;
-            if (n >= 600) break;
+            if (n >= 260) break;
         }
         return n;
     }
@@ -200,9 +210,10 @@ public static class PropScatter
 
             var model = models[rng.Next(models.Length)];
             float scale = 3f + (float)rng.NextDouble() * 4f;
+            if (!TryReserve(x, z, ModelFootprint(model).x * scale * 0.8f)) continue;
             Place(holder, model, x, z, scale, (float)rng.NextDouble() * 360f);
             n++;
-            if (n >= 700) break;
+            if (n >= 220) break;
         }
         return n;
     }
@@ -226,6 +237,7 @@ public static class PropScatter
 
             var model = models[rng.Next(models.Length)];
             float scale = 2.4f + (float)rng.NextDouble() * 1.6f;
+            if (!TryReserve(dx * S, dz * S, ModelFootprint(model).x * scale)) continue;
             Place(holder, model, dx * S, dz * S, scale, (float)rng.NextDouble() * 360f);
             n++;
             if (n >= 120) break;
@@ -235,7 +247,96 @@ public static class PropScatter
 
     // ================= 工具 =================
 
-    static bool IsCity(float dx, float dz) => dz >= 0f && dz <= 14f && Mathf.Abs(dx) < 46f;
+    static bool IsCity(float dx, float dz) => dz >= -14f && dz <= 14f && Mathf.Abs(dx) < 46f;
+
+    // ================= 占位索引：不许两个物件叠在一起 =================
+    //
+    // 2026-11-09 用户反馈「所有树和建筑物都会穿模」。原因：原来树是 9000 次纯随机撒点、
+    // 没有任何最小间距；建筑按 1.7 设计格（世界 28 m）撒，但楼体本身远大于格子 —— 必然互相穿插。
+    // 这里用一张空间哈希表记录已放置物件的 (x, z, 半径)，每次撒点先查冲突。
+
+    const float OccCell = 24f;
+    static readonly List<Vector4> _occ = new List<Vector4>();          // x, z, radius, spare
+    static readonly Dictionary<long, List<int>> _occCells = new Dictionary<long, List<int>>();
+
+    static long CellKey(int cx, int cz) => (long)cx * 1000003L + cz;
+
+    static void ResetOccupancy()
+    {
+        _occ.Clear();
+        _occCells.Clear();
+    }
+
+    /// <summary>试着占一块圆形地盘；被占就返回 false。</summary>
+    static bool TryReserve(float x, float z, float radius)
+    {
+        if (radius < 0.01f) radius = 0.01f;
+        int cx0 = Mathf.FloorToInt((x - radius) / OccCell), cx1 = Mathf.FloorToInt((x + radius) / OccCell);
+        int cz0 = Mathf.FloorToInt((z - radius) / OccCell), cz1 = Mathf.FloorToInt((z + radius) / OccCell);
+
+        for (int cx = cx0; cx <= cx1; cx++)
+        {
+            for (int cz = cz0; cz <= cz1; cz++)
+            {
+                if (!_occCells.TryGetValue(CellKey(cx, cz), out var list)) continue;
+                for (int k = 0; k < list.Count; k++)
+                {
+                    var o = _occ[list[k]];
+                    float need = o.z + radius;
+                    float dx = o.x - x, dz = o.y - z;
+                    if (dx * dx + dz * dz < need * need) return false;
+                }
+            }
+        }
+
+        int idx = _occ.Count;
+        _occ.Add(new Vector4(x, z, radius, 0f));
+        for (int cx = cx0; cx <= cx1; cx++)
+        {
+            for (int cz = cz0; cz <= cz1; cz++)
+            {
+                long key = CellKey(cx, cz);
+                if (!_occCells.TryGetValue(key, out var lst)) { lst = new List<int>(); _occCells[key] = lst; }
+                lst.Add(idx);
+            }
+        }
+        return true;
+    }
+
+    static readonly Dictionary<GameObject, Vector2> _modelFootprint = new Dictionary<GameObject, Vector2>();
+
+    /// <summary>
+    /// 模型在**自身局部空间**的水平半径（x/z 里较大的那半边）和最低点 y。
+    /// 半径用来做占地去重，最低点用来把模型底面贴着地形放（Lux3D 出的模型原点在几何中心，
+    /// 直接放在地面高度会半埋进土里）。
+    /// </summary>
+    static Vector2 ModelFootprint(GameObject model)
+    {
+        if (_modelFootprint.TryGetValue(model, out var cached) && cached.x > 0.001f) return cached;
+
+        float minX = float.MaxValue, maxX = float.MinValue, minZ = float.MaxValue, maxZ = float.MinValue, minY = float.MaxValue;
+        bool any = false;
+        foreach (var mf in model.GetComponentsInChildren<MeshFilter>())
+        {
+            var mesh = mf.sharedMesh;
+            if (mesh == null) continue;
+            var b = mesh.bounds;
+            Vector3 c = model.transform.InverseTransformPoint(mf.transform.TransformPoint(b.center));
+            Vector3 e = mf.transform.TransformVector(b.extents);
+            e = new Vector3(Mathf.Abs(e.x), Mathf.Abs(e.y), Mathf.Abs(e.z));
+            minX = Mathf.Min(minX, c.x - e.x); maxX = Mathf.Max(maxX, c.x + e.x);
+            minZ = Mathf.Min(minZ, c.z - e.z); maxZ = Mathf.Max(maxZ, c.z + e.z);
+            minY = Mathf.Min(minY, c.y - e.y);
+            any = true;
+        }
+        if (!any) { var v = new Vector2(1f, 0f); _modelFootprint[model] = v; return v; }
+
+        float radius = Mathf.Max(maxX - minX, maxZ - minZ) * 0.5f;
+        if (radius < 0.05f) radius = 1f;
+        var res = new Vector2(radius, minY);
+        _modelFootprint[model] = res;
+        return res;
+    }
 
     static readonly Dictionary<GameObject, float> _modelHeight = new Dictionary<GameObject, float>();
 
@@ -271,18 +372,71 @@ public static class PropScatter
         return list.ToArray();
     }
 
-    static void Place(Transform parent, GameObject model, float x, float z, float scale, float yaw, bool solid = false)
+    static void Place(Transform parent, GameObject model, float x, float z, float scale, float yaw,
+                      bool solid = false, float xzMul = 1f, float sinkFrac = 0f)
     {
-        float y = BattlefieldTerrain.SampleHeight(x, z);
+        var fp = ModelFootprint(model);
+        // 底面贴地：减去模型自身最低点。原来直接放在地形高度上，模型原点在几何中心的那种会半埋。
+        // sinkFrac：再往下沉"模型高度的百分比"，用来把 Lux3D 树模型自带的土台埋进地里
+        //（用户反馈"一些树下面的土露出来了"）。
+        float y = BattlefieldTerrain.SampleHeight(x, z) - fp.y * scale - sinkFrac * ModelHeight(model) * scale;
         var go = (GameObject)PrefabUtility.InstantiatePrefab(model);
+        // Lux3D 导出的 fbx 根节点带一个 270°(=-90°) 的 X 旋转（Blender Z-up → Unity Y-up 的轴向修正）。
+        // 以前这里直接 `rotation = Euler(0, yaw, 0)` 把它覆盖掉，模型就全躺地上了 —— 必须乘在基准姿态上。
+        var baseRot = go.transform.localRotation;
         go.transform.SetParent(parent, true);
         go.transform.position = new Vector3(x, y, z);
-        go.transform.rotation = Quaternion.Euler(0f, yaw, 0f);
-        go.transform.localScale = Vector3.one * scale;
+        go.transform.localRotation = Quaternion.Euler(0f, yaw, 0f) * baseRot;
+        go.transform.localScale = new Vector3(scale * xzMul, scale, scale * xzMul);
+        // 2026-11-09：恢复 static 批处理。
+        // 中间试过 isStatic=false + GPU Instancing，结果 D3D12 下驱动直接崩
+        //（nvwgf2umx → D3D12Core，Unrecoverable GPU device error）；D3D11 下能跑但很卡。
+        // 现在模型已经 decimate 到 1/6 面数，静态批处理的顶点缓冲完全吃得下，所以回到 static。
         go.isStatic = true;
-        ApplyPalette(go);
-        ApplyVariation(go);
+        ApplyPalette(go, model.name);
+        // Lux3D 的模型带贴图，且要享受 GPU Instancing ——
+        // ApplyVariation 会写 MaterialPropertyBlock（每个实例一个 _Color），
+        // 那会让 instancing 失效、每个实例变成独立 draw call。所以 Lux 模型不做逐实例调色。
+        if (!model.name.StartsWith("tree_") && !model.name.StartsWith("building_"))
+            ApplyVariation(go);
+        // 2026-11-09：非建筑（树/岩石/灌木）不投影。
+        // 1900+ 个物件全部参与阴影 pass 会把 D3D12 的显存预留吃干，实测直接
+        // "Unrecoverable GPU device error / AvailableForReservation: 0" 崩掉。
+        // 建筑保留投影（城区的立体感主要靠它）。
+        if (!solid)
+        {
+            foreach (var r in go.GetComponentsInChildren<MeshRenderer>(true))
+                r.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+        }
         if (solid) AddSolidCollider(go);
+        // 树也要有碰撞：以前树只有 Transform+Mesh，坦克开过去直接穿过、炮弹也打不中
+        if (model.name.StartsWith("tree_"))
+            AddTreeCollider(parent, x, z, BattlefieldTerrain.SampleHeight(x, z),
+                            ModelHeight(model) * scale, fp.x * scale);
+    }
+
+    /// <summary>
+    /// 树干碰撞：一根细胶囊。
+    /// ⚠️ 必须挂在一个**没有旋转/缩放**的独立物体上：Lux3D 的 fbx 根节点带 270° 的 X 轴修正旋转，
+    /// 胶囊挂在根上会跟着躺倒（变成横着的碰撞体，斜插在地里，撞不到东西）。
+    /// 树冠不做碰撞（代价太高、而且会挡视线）。
+    /// </summary>
+    static void AddTreeCollider(Transform parent, float x, float z, float baseY, float worldHeight, float worldFootRadius)
+    {
+        float r = Mathf.Clamp(worldFootRadius * 0.30f, 0.35f, 1.4f);
+        float h = Mathf.Max(2f, worldHeight * 0.55f);      // 树干到主枝分叉那一截
+
+        var go = new GameObject("TreeCollider");
+        go.transform.SetParent(parent, false);
+        go.transform.position = new Vector3(x, baseY, z);
+        go.transform.rotation = Quaternion.identity;
+        go.transform.localScale = Vector3.one;
+
+        // 用 BoxCollider 而不是 Capsule：方柱更简单、PhysX 里最稳，
+        // 而且树干碰撞本来就不需要圆角（实测胶囊在大量实例 + 频繁查询的组合下不稳）。
+        var c = go.AddComponent<BoxCollider>();
+        c.size = new Vector3(r * 2f, h, r * 2f);
+        c.center = new Vector3(0f, h * 0.5f, 0f);
     }
 
     /// <summary>
@@ -376,8 +530,9 @@ public static class PropScatter
 
     static readonly Dictionary<string, Material> MatCache = new Dictionary<string, Material>();
 
-    static void ApplyPalette(GameObject go)
+    static void ApplyPalette(GameObject go, string modelName)
     {
+        var lux = LuxMaterialFor(modelName);
         foreach (var r in go.GetComponentsInChildren<MeshRenderer>(true))
         {
             var mats = r.sharedMaterials;
@@ -386,12 +541,64 @@ public static class PropScatter
             {
                 var m = mats[i];
                 if (m == null) continue;
+                // Lux3D 出来的模型材质不带贴图（glb 的纹理被抽到 Textures/<模型名>/BaseColor.png），
+                // 这里换成我们自己的带贴图材质
+                if (lux != null && m.name.StartsWith("Designer_Logic"))
+                {
+                    mats[i] = lux;
+                    changed = true;
+                    continue;
+                }
                 if (!Palette.TryGetValue(m.name, out var c)) continue;
                 mats[i] = GetPaletteMat(m.name, c);
                 changed = true;
             }
             if (changed) r.sharedMaterials = mats;
         }
+    }
+
+    /// <summary>Lux3D 模型的共用材质（Standard + 提取出来的 BaseColor 贴图）。不是 Lux3D 模型返回 null。</summary>
+    static Material LuxMaterialFor(string modelName)
+    {
+        if (string.IsNullOrEmpty(modelName)) return null;
+        if (!modelName.StartsWith("tree_") && !modelName.StartsWith("building_")) return null;
+
+        string key = "LUX_" + modelName;
+        if (MatCache.TryGetValue(key, out var cached) && cached != null) return cached;
+
+        string matPath = $"Assets/Materials/Props/{key}.mat";
+        var mat = AssetDatabase.LoadAssetAtPath<Material>(matPath);
+        if (mat == null)
+        {
+            if (!AssetDatabase.IsValidFolder("Assets/Materials")) AssetDatabase.CreateFolder("Assets", "Materials");
+            if (!AssetDatabase.IsValidFolder("Assets/Materials/Props")) AssetDatabase.CreateFolder("Assets/Materials", "Props");
+
+            var sh = Shader.Find("Standard");
+            if (sh == null) sh = Shader.Find("Diffuse");
+            mat = new Material(sh) { color = Color.white };
+            if (mat.HasProperty("_Glossiness")) mat.SetFloat("_Glossiness", 0.18f);
+            if (mat.HasProperty("_Metallic")) mat.SetFloat("_Metallic", 0f);
+            var tex = AssetDatabase.LoadAssetAtPath<Texture2D>($"Assets/Models/Props/Lux3D/Textures/{modelName}/BaseColor.png");
+            if (tex != null)
+            {
+                mat.mainTexture = tex;
+                mat.SetFloat("_Glossiness", 0.15f);
+            }
+            else
+            {
+                // 没贴图就退成灰绿，别留白模
+                mat.color = new Color(0.42f, 0.46f, 0.38f);
+            }
+            mat.enableInstancing = false;   // D3D12 下 instancing 会触发驱动崩溃，用静态批处理代替
+            AssetDatabase.CreateAsset(mat, matPath);
+        }
+        MatCache[key] = mat;
+        if (mat.enableInstancing)
+        {
+            mat.enableInstancing = false;
+            EditorUtility.SetDirty(mat);
+        }
+        return mat;
     }
 
     static Material GetPaletteMat(string key, Color c)

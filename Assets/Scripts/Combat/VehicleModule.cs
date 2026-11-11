@@ -26,6 +26,13 @@ public class VehicleModule : MonoBehaviour
     /// <summary>一个部位的"耐久"（原始伤害单位；120mm 炮一发是 300）。</summary>
     public float moduleHp = 160f;
 
+    [Tooltip("炮管被打坏后多少秒自动修好。0 = 永不自动修复（只能去商店买模块修复）。" +
+             "2026-11-09：玩家报「按左键完全没反应」，根因是炮管被一发打坏后永久哑火，HUD 只有一个小红块，玩家根本不知道。")]
+    public float gunRepairSeconds = 15f;
+
+    [Tooltip("炮管耐久倍率：别的部位按 moduleHp 算，炮管乘这个数，避免一发就被打哑。")]
+    public float gunDurabilityMul = 3f;
+
     class Mod
     {
         public ModuleKind kind;
@@ -34,6 +41,7 @@ public class VehicleModule : MonoBehaviour
         public float integrity = 1f;
         public bool broken;
         public ParticleSystem fx;
+        public float repairAt;     // 自动修复的时刻（0 = 不排队）
     }
 
     readonly List<Mod> _mods = new List<Mod>();
@@ -59,9 +67,56 @@ public class VehicleModule : MonoBehaviour
         {
             m.integrity = 1f;
             m.broken = false;
+            m.repairAt = 0f;
             if (m.fx != null) m.fx.Stop();
         }
         _fuelFire = false;
+        if (_vc != null) _vc.gunBroken = false;
+    }
+
+    // ==================== 炮管自动修复 ====================
+
+    /// <summary>炮管是不是正在排队修复。</summary>
+    public bool GunRepairing
+    {
+        get
+        {
+            if (!_built) Build();
+            foreach (var m in _mods) if (m.kind == ModuleKind.Gun) return m.broken && m.repairAt > 0f;
+            return false;
+        }
+    }
+
+    /// <summary>炮管还有几秒修好（不修复时返回 -1）。</summary>
+    public float GunRepairRemaining
+    {
+        get
+        {
+            if (!_built) Build();
+            foreach (var m in _mods)
+                if (m.kind == ModuleKind.Gun)
+                    return (m.broken && m.repairAt > 0f) ? Mathf.Max(0f, m.repairAt - Time.time) : -1f;
+            return -1f;
+        }
+    }
+
+    void TickGunRepair()
+    {
+        if (_vc == null || !_vc.Alive) return;
+        if (!_built) return;
+        for (int i = 0; i < _mods.Count; i++)
+        {
+            var m = _mods[i];
+            if (m.kind != ModuleKind.Gun || !m.broken || m.repairAt <= 0f) continue;
+            if (Time.time < m.repairAt) continue;
+
+            m.broken = false;
+            m.integrity = 0.5f;      // 修好但只有半条命：还能再被打坏一次，比原版更经打
+            m.repairAt = 0f;
+            if (m.fx != null) m.fx.Stop();
+            _vc.gunBroken = false;
+            Debug.Log($"[Module] {name} 的 Gun 已修复（自动）");
+        }
     }
 
     void Awake()
@@ -92,7 +147,9 @@ public class VehicleModule : MonoBehaviour
 
         // 穿甲弹打模块更狠一点（用弹药对装甲的倍率近似"穿深")
         float mul = ammo != null ? Mathf.Clamp(ammo.vsArmor, 0.4f, 1.6f) : 1f;
-        hit.integrity -= rawDamage * mul / Mathf.Max(20f, moduleHp);
+        // 炮管更耐打：原来 120mm 一发（300）就超过 moduleHp=160，炮直接哑火到死
+        float hp = Mathf.Max(20f, moduleHp) * (hit.kind == ModuleKind.Gun ? Mathf.Max(1f, gunDurabilityMul) : 1f);
+        hit.integrity -= rawDamage * mul / hp;
 
         if (hit.integrity <= 0f) Break(hit);
     }
@@ -136,7 +193,23 @@ public class VehicleModule : MonoBehaviour
             tp = transform.InverseTransformPoint(_phys.turretBone.position);
 
         // 检查顺序有讲究：先小后大，先炮塔后车体（不然炮塔上的点会被车体盒子先吃掉）
-        Add(ModuleKind.Gun, tp + new Vector3(0f, 0f, len * 0.30f), new Vector3(wid * 0.10f, hei * 0.12f, len * 0.22f));
+        // 炮管盒子放在**炮塔到炮口的中点**：原来用 tp + len*0.30，炮艇算出来在船头前方 8.7 m 处，
+        // 打船头就判成"炮管被打坏"，而真正打炮管反而判不到。有炮口节点就按真实炮管长度算。
+        Vector3 gunCenter, gunHalf;
+        if (_phys != null && _phys.muzzleBone != null && _phys.turretBone != null)
+        {
+            Vector3 tLocal = transform.InverseTransformPoint(_phys.turretBone.position);
+            Vector3 mLocal = transform.InverseTransformPoint(_phys.muzzleBone.position);
+            gunCenter = (tLocal + mLocal) * 0.5f;
+            float halfLen = Mathf.Max(1.2f, Vector3.Distance(tLocal, mLocal) * 0.5f);
+            gunHalf = new Vector3(Mathf.Max(0.3f, wid * 0.10f), Mathf.Max(0.25f, hei * 0.10f), halfLen);
+        }
+        else
+        {
+            gunCenter = tp + new Vector3(0f, 0f, len * 0.18f);
+            gunHalf = new Vector3(wid * 0.10f, hei * 0.12f, Mathf.Max(1.5f, len * 0.14f));
+        }
+        Add(ModuleKind.Gun, gunCenter, gunHalf);
         Add(ModuleKind.AmmoRack, tp + new Vector3(0f, -hei * 0.05f, -len * 0.12f), new Vector3(wid * 0.22f, hei * 0.20f, len * 0.10f));
         Add(ModuleKind.TurretRing, tp, new Vector3(wid * 0.30f, hei * 0.16f, len * 0.16f));
         Add(ModuleKind.Engine, new Vector3(c.x, c.y + hei * 0.10f, c.z - len * 0.32f), new Vector3(wid * 0.30f, hei * 0.30f, len * 0.16f));
@@ -179,6 +252,7 @@ public class VehicleModule : MonoBehaviour
             case ModuleKind.Gun:
                 if (_vc != null) _vc.gunBroken = true;
                 m.fx = VehicleDamageFx.SpawnModuleFx(transform, m.center, false, 6f);
+                if (gunRepairSeconds > 0f) m.repairAt = Time.time + gunRepairSeconds;
                 break;
 
             case ModuleKind.AmmoRack:
@@ -201,6 +275,8 @@ public class VehicleModule : MonoBehaviour
 
     void Update()
     {
+        TickGunRepair();
+
         // 油箱起火：持续烧血（不给命中点，避免反复触发部位判定）
         if (!_fuelFire || _vc == null || !_vc.Alive) return;
         if (Time.time < _nextBurn) return;

@@ -777,41 +777,43 @@ public class VehiclePhysics : MonoBehaviour
         var col = GetComponent<Collider>();
         if (col == null) return false;
 
-        Vector3 center;
-        Vector3 half;
-        if (col is BoxCollider box)
-        {
-            var s = transform.lossyScale;
-            center = transform.TransformPoint(box.center);
-            half = Vector3.Scale(box.size, s) * 0.5f;
-            half = new Vector3(half.x * 0.85f, half.y * 0.6f, half.z * 0.85f);
-        }
-        else
-        {
-            var b = col.bounds;
-            center = b.center;
-            half = b.extents * 0.8f;
-        }
+        // 一律用世界包围盒算，别手算 half：手算要乘 lossyScale，缩放里一旦有 0/NaN
+        // 就会给 PhysX 喂非法尺寸 —— 实测那是会直接原生崩溃的（连 Mono 异常都没有）。
+        var bb = col.bounds;
+        Vector3 center = bb.center;
+        Vector3 half = bb.extents * 0.55f;
+        if (float.IsNaN(half.x) || float.IsNaN(half.y) || float.IsNaN(half.z)) return false;
+        if (half.x <= 0.01f || half.y <= 0.01f || half.z <= 0.01f) return false;
+        if (float.IsNaN(delta.x) || float.IsNaN(delta.y) || float.IsNaN(delta.z)) return false;
 
-        // 已经卡在障碍里了 → 不再阻挡，否则永远出不来（被建筑夹住的元凶）
-        var inside = UnityEngine.Physics.OverlapBox(center, half * 0.88f, transform.rotation,
+        // 已经卡在障碍里了 → **挡住这一帧**（车会停住，玩家可以倒车出来）。
+        // 2026-11-09 修：原来这里是 `return false`（当作没挡），本意是防止被建筑夹住出不来，
+        // 但建筑的 BoxCollider 是从地面到楼顶的整块实心盒 —— 车一开到楼底就落进盒子里，
+        // 于是被判定成"已经卡住"，直接穿楼而过（用户报的"车能开进楼里"）。
+        // 注意：不要在这里调 Physics.ComputePenetration 去把车挤出去 —— 实测会在打包版/Play 里
+        // 直接原生崩溃（PhysX 内部崩，连 Mono 异常都没有）。
+        var inside = UnityEngine.Physics.OverlapBox(center, half, Quaternion.identity,
                                                     ~0, QueryTriggerInteraction.Ignore);
         foreach (var h in inside)
         {
             if (h == null || h == col) continue;
             if (h is TerrainCollider) continue;
             if (h.GetComponentInParent<VehicleCombat>() != null) continue;
-            return false;
+            return true;      // 挡住，别往前走
         }
 
-        var hits = UnityEngine.Physics.BoxCastAll(center, half, delta.normalized, transform.rotation,
-                                                  delta.magnitude + 0.2f, ~0, QueryTriggerInteraction.Ignore);
-        foreach (var h in hits)
+        float step = delta.magnitude;
+        if (step > 0.01f)
         {
-            if (h.collider == null || h.collider == col) continue;
-            if (h.collider is TerrainCollider) continue;                       // 地形不挡
-            if (h.collider.GetComponentInParent<VehicleCombat>() != null) continue;  // 载具不挡
-            return true;
+            var hits = UnityEngine.Physics.BoxCastAll(center, half, delta / step, Quaternion.identity,
+                                                      step + 0.2f, ~0, QueryTriggerInteraction.Ignore);
+            foreach (var h in hits)
+            {
+                if (h.collider == null || h.collider == col) continue;
+                if (h.collider is TerrainCollider) continue;                       // 地形不挡
+                if (h.collider.GetComponentInParent<VehicleCombat>() != null) continue;  // 载具不挡
+                return true;
+            }
         }
         return false;
     }

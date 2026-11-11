@@ -283,9 +283,11 @@ public static class BattlefieldTerrainBuilder
         float mnt = MountainField(x, z);     // 山地中心 5~18 m
         float lowHill = LowHillField(x, z);  // 两翼低丘 1~4 m
 
-        // ---------- 城区只在 z 0~14、|x| < 46 的横带里 ----------
+        // ---------- 城区：|x| < 46，z 从 -14 一直到 14（2026-11-09 用户要求"减少中间平原、扩大城区"）----------
+        // 原来只占 z 0~14（世界 233 m 深），往南扩到 -14（世界 -233 m），深度变 3 倍，
+        // 把山脚和城区之间那条大平原吃掉。
         float cityX = 1f - SStep(40f, 50f, Mathf.Abs(x));
-        float cityZ = SStep(-5f, 1f, z) * (1f - SStep(12f, 16f, z));
+        float cityZ = SStep(-14f, -8f, z) * (1f - SStep(13f, 17f, z));
         float cityW = cityX * cityZ;
         float land = Mathf.Lerp(plain, city, cityW);
 
@@ -704,11 +706,11 @@ public static class BattlefieldTerrainBuilder
         EditorUtility.SetDirty(data);
     }
 
-    /// <summary>城区掩码（v2：z 0~14、|x| &lt; 46 的横带）。</summary>
+    /// <summary>城区掩码（2026-11-09：z −14~17、|x| &lt; 46，比原来深 3 倍）。</summary>
     static float CityMask(float x, float z)
     {
         float cityX = 1f - SStep(40f, 50f, Mathf.Abs(x));
-        float cityZ = SStep(-5f, 1f, z) * (1f - SStep(12f, 16f, z));
+        float cityZ = SStep(-14f, -8f, z) * (1f - SStep(13f, 17f, z));
         return cityX * cityZ;
     }
 

@@ -3,6 +3,7 @@ using UnityEngine;
 /// <summary>
 /// 车库：开局和每次阵亡后在这里选载具（花金币买）。
 /// 打开时游戏暂停（Time.timeScale = 0）、光标放开；选完自动关闭并恢复。
+/// 样式走 UiKit：深蓝底 + 蓝描边卡片 + 金色强调，与开局封面一致。
 /// </summary>
 public class GarageScreen : MonoBehaviour
 {
@@ -12,11 +13,7 @@ public class GarageScreen : MonoBehaviour
 
     string _title = "选择载具";
     string _subtitle = "";
-
-    GUIStyle _s14, _s18, _s22, _s30, _s46, _center;
-
-    static readonly Color CAlly = new Color(0.35f, 0.75f, 1f);
-    static readonly Color CGold = new Color(1f, 0.84f, 0.35f);
+    float _anim;                 // 开合进度（0 = 关 / 1 = 开），给淡入淡出和弹出用
 
     void Awake() => Instance = this;
 
@@ -28,6 +25,7 @@ public class GarageScreen : MonoBehaviour
         Time.timeScale = 0f;
         Cursor.lockState = CursorLockMode.None;
         Cursor.visible = true;
+        UiSound.Play(UiSound.Kind.Open);
     }
 
     public void Close()
@@ -39,61 +37,69 @@ public class GarageScreen : MonoBehaviour
             Cursor.lockState = CursorLockMode.Locked;
             Cursor.visible = false;
         }
+        // 关掉之后这一小段时间继续吞鼠标：否则点「出击」那一下左键还按着，车一出来就开一炮
+        UiKit.SwallowInput(0.35f);
     }
 
-    void EnsureStyles()
-    {
-        if (_s14 != null) return;
-        _s14 = Mk(14, TextAnchor.MiddleLeft);
-        _s18 = Mk(18, TextAnchor.MiddleLeft);
-        _s22 = Mk(22, TextAnchor.MiddleLeft);
-        _s30 = Mk(30, TextAnchor.MiddleCenter);
-        _s46 = Mk(46, TextAnchor.MiddleCenter);
-        _center = Mk(20, TextAnchor.MiddleCenter);
-    }
+    // 卡片里数值条的满格参考（只用于画条，不影响玩法）
+    const float HpRef = 12000f;
+    const float SpeedRef = 80f;
 
-    static GUIStyle Mk(int size, TextAnchor anchor)
+    // 车库背景：实景暮色图（低分辨率渲的，靠双线性放大出虚化景深），没有就退回渐变
+    static Texture2D _bg;
+    static bool _bgTried;
+
+    static Texture2D Bg()
     {
-        var st = new GUIStyle(GUI.skin.label) { fontSize = size, alignment = anchor, richText = true };
-        st.normal.textColor = Color.white;
-        return st;
+        if (!_bgTried) { _bgTried = true; _bg = Resources.Load<Texture2D>("UiBackdrops/garage"); }
+        return _bg;
     }
 
     void OnGUI()
     {
-        if (!IsOpen) return;
+        // 开合动画：关掉以后还要多画 0.15 秒淡出，所以先推进进度再决定要不要画
+        float k = UiKit.Anim(ref _anim, IsOpen);
+        if (!IsOpen && k <= 0.001f) return;
+
         var mm = MatchManager.Instance;
         if (mm == null) return;
 
-        EnsureStyles();
+        var oldMatrix = UiKit.BeginScaled(out float scale, out float vw);
+        var mouse = UiKit.Mouse(scale);
+        bool live = IsOpen;                  // 淡出过程中不再响应点击
 
-        float scale = Mathf.Max(0.35f, Screen.height / 1080f);
-        float vw = Screen.width / scale;
-        var oldMatrix = GUI.matrix;
-        GUI.matrix = Matrix4x4.Scale(new Vector3(scale, scale, 1f));
+        UiKit.Fade(k);
+        // 实景暮色背景（虚化）：压暗得多一些，卡片才压得住
+        UiKit.PhotoBackdrop(vw, Bg(), 0.62f, 0.58f, 0.88f, 0.40f);
 
-        Fill(new Rect(0, 0, vw, 1080f), new Color(0.03f, 0.04f, 0.06f, 0.94f));
+        float y = UiKit.Heading(vw, 34f, _title, _subtitle);
 
-        Text(new Rect(0, 40f, vw, 60f), _title, _s46, Color.white, TextAnchor.MiddleCenter);
-        if (!string.IsNullOrEmpty(_subtitle))
-            Text(new Rect(0, 100f, vw, 28f), _subtitle, _center, new Color(1f, 1f, 1f, 0.6f), TextAnchor.MiddleCenter);
+        // ---- 状态条：四个小格 ----
+        string[] statK = { "金币", "剩余部署", "敌方在场", "我方剩余命" };
+        string[] statV = { mm.Gold.ToString(), $"{mm.LivesLeft} 次", $"{mm.EnemiesLeft} 台", mm.TeamLives(0).ToString() };
+        Color[] statC = { UiKit.Gold, UiKit.Text, UiKit.Bad, UiKit.Ally };
+        float sw = 200f, sg = 14f;
+        float sx = vw * 0.5f - (sw * 4f + sg * 3f) * 0.5f;
+        float sy = y + 6f;
+        for (int i = 0; i < 4; i++)
+        {
+            var r = new Rect(sx + i * (sw + sg), sy, sw, 54f);
+            UiKit.Box(r, new Color(0.055f, 0.070f, 0.100f, 0.80f));
+            UiKit.Frame(r, UiKit.Edge);
+            UiKit.Label(new Rect(r.x + 14f, r.y + 4f, r.width - 28f, 22f), statK[i], 15, UiKit.Dim);
+            UiKit.Label(new Rect(r.x + 14f, r.y + 22f, r.width - 28f, 30f), statV[i], 22, statC[i], TextAnchor.MiddleLeft, true);
+        }
 
-        // 状态行
-        Text(new Rect(vw * 0.5f - 480f, 140f, 960f, 32f),
-            $"我的金币 <b>{mm.Gold}</b>　　剩余部署 <b>{mm.LivesLeft}</b> 次　　敌方在场 <b>{mm.EnemiesLeft}</b> 台　　我方剩余命 <b>{mm.TeamLives(0)}</b>",
-            _s22, CGold, TextAnchor.MiddleCenter);
-
-        // 卡片
+        // ---- 载具卡片 ----
         var roster = mm.Roster;
         if (roster != null && roster.Length > 0)
         {
             int cols = 3;
-            float cw = 400f, ch = 300f, gap = 26f;
+            // 卡片高度 330 → 370：顶部让出 120 给载具缩略图（2026-11-10）
+            float cw = 400f, ch = 370f, gap = 24f;
             float totalW = cols * cw + (cols - 1) * gap;
             float x0 = vw * 0.5f - totalW * 0.5f;
-            float y0 = 200f;
-
-            var mouse = new Vector2(Input.mousePosition.x / scale, (Screen.height - Input.mousePosition.y) / scale);
+            float y0 = sy + 80f;
 
             for (int i = 0; i < roster.Length; i++)
             {
@@ -101,68 +107,149 @@ public class GarageScreen : MonoBehaviour
                 if (def == null) continue;
 
                 int col = i % cols, row = i / cols;
-                var r = new Rect(x0 + col * (cw + gap), y0 + row * (ch + gap), cw, ch);
+                // slot 是命中区（不随动画移动），r 是实际画出来的位置（悬停上浮 / 按下下沉 / 拒绝抖动）
+                var slot = new Rect(x0 + col * (cw + gap), y0 + row * (ch + gap), cw, ch);
 
                 bool afford = mm.CanAfford(def);
                 bool free = afford && mm.Gold < def.price;
-                bool hover = r.Contains(mouse) && afford;
 
-                Fill(r, hover ? new Color(0.12f, 0.16f, 0.22f, 0.98f) : new Color(0.07f, 0.09f, 0.12f, 0.95f));
-                Fill(new Rect(r.x, r.y, 4f, r.height), afford ? CAlly : new Color(0.4f, 0.4f, 0.4f));
+                var hit = UiKit.Button("garage_" + def.displayName, slot, mouse, afford && live);
+                var r = UiKit.Lift(slot, hit);
+                float hv = hit.hover01;
+                bool hover = hv > 0.5f;
 
-                Text(new Rect(r.x + 20f, r.y + 14f, r.width - 40f, 40f), def.displayName, _s30, afford ? Color.white : new Color(1f, 1f, 1f, 0.45f), TextAnchor.MiddleLeft);
-                Text(new Rect(r.x + 20f, r.y + 56f, r.width - 40f, 24f), DomainText(def.domain), _s18, new Color(1f, 1f, 1f, 0.55f), TextAnchor.MiddleLeft);
+                UiKit.Glow(r, hv, UiKit.Gold);        // 悬停外发光，画在卡片下面
+                UiKit.Card(r, hover);
+                if (!afford) UiKit.Box(r, new Color(0f, 0f, 0f, 0.35f));
 
-                Text(new Rect(r.x + 20f, r.y + 92f, r.width - 40f, 26f), $"血量 {def.maxHp:F0}　　速度 {def.speed:F0} m/s", _s18, new Color(1f, 1f, 1f, 0.8f), TextAnchor.MiddleLeft);
+                float ix = r.x + 22f, iw = r.width - 44f;
+                Color nameC = afford ? UiKit.Text : UiKit.Mute;
+
+                // ---- 载具缩略图（2026-11-10）----
+                // 六张纯文字卡片看着像表格，加一张车图立刻变成"游戏界面"。
+                // 图是 Assets/Editor/UiThumbGen.cs 渲出来的透明底 PNG，底部压一层渐变融进卡片底色。
+                var band = new Rect(r.x + 1f, r.y + 1f, r.width - 2f, 120f);
+                DrawThumb(band, def, afford, hover);
+
+                // 名称 + 域标签
+                UiKit.Label(new Rect(ix, r.y + 126f, iw - 90f, 36f), def.displayName, 26, nameC, TextAnchor.MiddleLeft, true);
+                UiKit.Chip(new Rect(r.xMax - 22f - 76f, r.y + 130f, 76f, 26f), DomainText(def.domain), DomainColor(def.domain), 15);
+
+                UiKit.HLine(ix, r.y + 168f, iw);
+
+                // 两条数值
+                StatRow(ix, r.y + 178f, iw, "血量", $"{def.maxHp:F0}", def.maxHp / HpRef, afford);
+                StatRow(ix, r.y + 208f, iw, "速度", $"{def.speed:F0} m/s", def.speed / SpeedRef, afford);
+
+                // 武器
                 string weapon = "无武器";
                 if (def.weapons != null && def.weapons.Length > 0 && def.weapons[0] != null)
                 {
                     weapon = $"{def.weapons[0].displayName}（{def.weapons[0].baseDamage:F0} 伤害 / {def.weapons[0].range:F0} m）";
                     if (def.weapons.Length > 1 && def.weapons[1] != null)
-                        weapon += $" + {def.weapons[1].displayName}";
+                    weapon += $" + {def.weapons[1].displayName}";
                 }
-                Text(new Rect(r.x + 20f, r.y + 122f, r.width - 40f, 24f), weapon, _s14, new Color(1f, 1f, 1f, 0.65f), TextAnchor.MiddleLeft);
+                // 武器（最多两行：主炮 + 同轴机枪这种长串会换行，所以给它 36 px 高）
+                UiKit.Label(new Rect(ix, r.y + 236f, iw, 36f), weapon, 15, afford ? UiKit.Desc : UiKit.Mute);
 
-                Text(new Rect(r.x + 20f, r.y + 158f, r.width - 40f, 60f), def.description, _s14, new Color(1f, 1f, 1f, 0.55f), TextAnchor.UpperLeft);
+                // 简介
+                UiKit.Label(new Rect(ix, r.y + 274f, iw, 34f), def.description, 15,
+                    afford ? UiKit.Dim : UiKit.Mute, TextAnchor.UpperLeft);
 
-                Text(new Rect(r.x + 20f, r.y + ch - 56f, r.width - 40f, 40f),
-                    afford ? (free ? "<b>免费补充</b>　点击出击" : $"<b>￥{def.price}</b>　点击出击") : $"￥{def.price}　金币不足",
-                    _s22, afford ? CGold : new Color(1f, 1f, 1f, 0.35f), TextAnchor.MiddleLeft);
+                // 底部价格栏
+                var foot = new Rect(r.x + 1f, r.yMax - 58f, r.width - 2f, 57f);
+                UiKit.Box(foot, hover ? new Color(1f, 0.84f, 0.35f, 0.14f) : new Color(1f, 1f, 1f, 0.03f));
+                UiKit.HLine(r.x + 1f, foot.y, r.width - 2f, hover ? 0.0f : 0.13f);
+                if (hover) UiKit.Box(new Rect(r.x + 1f, foot.y, r.width - 2f, 1f), new Color(1f, 0.84f, 0.35f, 0.45f));
 
-                if (afford && Event.current.type == EventType.MouseDown && Event.current.button == 0 && r.Contains(mouse))
+                string priceTxt = free ? "免费补充" : $"￥ {def.price}";
+                UiKit.Label(new Rect(ix, foot.y, iw * 0.5f, foot.height), priceTxt, 24,
+                    afford ? UiKit.Gold : UiKit.Mute, TextAnchor.MiddleLeft, true);
+                UiKit.Label(new Rect(ix + iw * 0.5f, foot.y, iw * 0.5f, foot.height),
+                    afford ? (hover ? "点击出击 ›" : "出击") : "金币不足", 18,
+                    afford ? (hover ? UiKit.Gold : UiKit.Desc) : UiKit.Bad, TextAnchor.MiddleRight, hover);
+
+                if (hit.clicked)
                 {
-                    Event.current.Use();
                     mm.DeployPlayer(def);
+                }
+                else if (hit.denied)
+                {
+                    // 点不起：卡片已经抖过了，再补一句浮字说明原因
+                    UiKit.Float("金币不足", new Vector2(r.center.x, r.y + 46f), UiKit.Bad);
                 }
             }
         }
         else
         {
-            Text(new Rect(0, 400f, vw, 40f), "没有可选载具（MatchDef.roster 为空，先跑菜单 ②）", _center, new Color(1f, 0.4f, 0.3f), TextAnchor.MiddleCenter);
+            UiKit.Label(new Rect(0, 420f, vw, 40f), "没有可选载具（MatchDef.roster 为空，先跑菜单 ②）", 20, UiKit.Bad, TextAnchor.MiddleCenter);
         }
 
+        UiKit.EndScreen();          // 涟漪 + 浮字压在最上层，并复位透明度
         GUI.matrix = oldMatrix;
+    }
+
+    static void StatRow(float x, float y, float w, string k, string v, float t, bool on)
+    {
+        UiKit.Label(new Rect(x, y, 52f, 24f), k, 15, on ? UiKit.Dim : UiKit.Mute);
+        UiKit.Bar(new Rect(x + 56f, y + 9f, w - 56f - 110f, 6f), t,
+            on ? new Color(0.35f, 0.75f, 1f, 0.85f) : new Color(1f, 1f, 1f, 0.18f));
+        UiKit.Label(new Rect(x + w - 104f, y, 104f, 24f), v, 16, on ? UiKit.Text : UiKit.Mute, TextAnchor.MiddleRight, true);
+    }
+
+    // ---------------- 载具缩略图（2026-11-10） ----------------
+
+    static readonly System.Collections.Generic.Dictionary<string, Texture2D> _thumbs =
+        new System.Collections.Generic.Dictionary<string, Texture2D>();
+
+    /// <summary>
+    /// 按 VehicleDef 的资产名取缩略图（`Assets/Resources/UiThumbs/&lt;资产名&gt;.png`）。
+    /// 找不到也缓存 null —— 否则每帧 OnGUI 都会去 Resources.Load 一次。
+    /// </summary>
+    static Texture2D Thumb(VehicleDef def)
+    {
+        if (def == null) return null;
+        if (_thumbs.TryGetValue(def.name, out var t)) return t;
+        t = Resources.Load<Texture2D>("UiThumbs/" + def.name);
+        _thumbs[def.name] = t;
+        return t;
+    }
+
+    /// <summary>卡片顶部那块车图：背光 + ScaleToFit 保比例 + 底边渐变让它"站"在卡片上。</summary>
+    static void DrawThumb(Rect band, VehicleDef def, bool afford, bool hover)
+    {
+        // 背光：按域染色的径向光晕，车才从深色底上"浮"出来（2026-11-10）
+        var dc = DomainColor(def.domain);
+        UiKit.Blob(new Rect(band.center.x - band.width * 0.52f, band.center.y - band.height * 0.72f,
+            band.width * 1.04f, band.height * 1.50f), new Color(dc.r, dc.g, dc.b, 0.30f));
+
+        var tex = Thumb(def);
+        if (tex != null)
+        {
+            var old = GUI.color;
+            // 买不起的车把图压暗一点（配合卡片上那层黑罩，一眼能看出"不可选"）
+            GUI.color = new Color(1f, 1f, 1f, (afford ? 1f : 0.55f) * UiKit.Alpha);
+            GUI.DrawTexture(band, tex, ScaleMode.ScaleToFit, true);
+            GUI.color = old;
+
+            // 底边渐变收到卡片底色里。**底色要跟着 hover 变**，否则悬停时卡片变亮、
+            // 这条渐变还是暗的，会出现一道可见的横带。
+            // 用 FadeUp（单张贴图一次画）而不是逐条 VGradient —— 后者在 1.333 缩放下有接缝条纹。
+            var baseC = hover ? UiKit.PanelHover : UiKit.PanelBg;
+            UiKit.FadeUp(new Rect(band.x, band.yMax - 30f, band.width, 30f),
+                new Color(baseC.r, baseC.g, baseC.b, 0.95f));
+        }
+        else
+        {
+            // 还没跑 `Tools → 铁皮黎明 → 生成载具缩略图` 时的占位，别让卡片塌掉
+            UiKit.Label(new Rect(band.x, band.y, band.width, band.height), "（无预览图）", 15,
+                new Color(1f, 1f, 1f, 0.28f), TextAnchor.MiddleCenter);
+        }
     }
 
     static string DomainText(Domain d)
         => d == Domain.Sea ? "海战" : d == Domain.Air ? "空战" : "陆战";
 
-    static void Fill(Rect r, Color c)
-    {
-        var old = GUI.color;
-        GUI.color = c;
-        GUI.DrawTexture(r, Texture2D.whiteTexture);
-        GUI.color = old;
-    }
-
-    static void Text(Rect r, string s, GUIStyle style, Color c, TextAnchor a)
-    {
-        var oc = style.normal.textColor;
-        var oa = style.alignment;
-        style.normal.textColor = c;
-        style.alignment = a;
-        GUI.Label(r, s, style);
-        style.normal.textColor = oc;
-        style.alignment = oa;
-    }
+    static Color DomainColor(Domain d)
+        => d == Domain.Sea ? new Color(0.35f, 0.75f, 1f) : d == Domain.Air ? new Color(0.70f, 0.62f, 1f) : new Color(0.62f, 0.85f, 0.45f);
 }

@@ -52,14 +52,19 @@ public class MatchHUD : MonoBehaviour
         GUI.matrix = Matrix4x4.Scale(new Vector3(_scale, _scale, 1f));
 
         DrawScope(mm);            // 先画镜筒（盖住画面），HUD 再画在上面
+        DrawDamageVignette();     // 2026-11-10 受伤红边：画在 HUD 之前，别把数字盖住
         DrawTopBar(mm);
         DrawGold(mm);
         DrawZones(mm);
         DrawPlayerPanel(mm);
         DrawFeed(mm);
         DrawRadar(mm);
+        DrawNamePlates(mm);       // 2026-11-11：名字牌 + 屏幕外威胁箭头（画在准星之前）
         DrawCrosshair(mm);
-        // 命中结果不再写屏幕文字，改用语音播报（Sfx.VoRicochet / VoNonPen / VoPen）
+        // 2026-11-10：命中标记复活成准星处的四角斜线（击穿金色 / 未击穿·跳弹红色）。
+        // 语音播报照旧（Sfx.VoRicochet / VoNonPen / VoPen），两者不冲突：语音给"听"，标记给"看"。
+        DrawHitFeedback();
+        DrawGunBrokenAlert(mm);
         if (mm.matchOver) DrawSettlement(mm);
 
         GUI.matrix = oldMatrix;
@@ -89,6 +94,7 @@ public class MatchHUD : MonoBehaviour
         Panel(new Rect(16f, 12f, 250f, 78f));
         Text(new Rect(28f, 16f, 226f, 40f), $"<b>￥{mm.Gold}</b>", _s32, CGold, TextAnchor.MiddleLeft);
         Text(new Rect(28f, 56f, 226f, 22f), $"我的命 {mm.LivesText} · 占点全队产金", _s18, new Color(1f, 1f, 1f, 0.5f), TextAnchor.MiddleLeft);
+        DrawGoldPops();     // 2026-11-10 金币变化浮字（差值在 Update 里算，这里只画）
     }
 
     // ---------------- 左侧：资源点 ----------------
@@ -159,13 +165,20 @@ public class MatchHUD : MonoBehaviour
         int left = p.CurrentAmmoLeft;
         int cap = p.CurrentAmmoCapacity;
         if (cap > 0) ammoTxt += $"  {left}/{cap}";
-        Text(new Rect(x + 20f, y + 64f, 420f, 24f), ammoTxt, _s18, new Color(1f, 1f, 1f, 0.8f), TextAnchor.MiddleLeft);
+        // 宽度从 420 收到 280：右边那行操作提示是从 x+w-230 起画的，420 会压到提示文字上（2026-11-10）
+        Text(new Rect(x + 20f, y + 64f, 280f, 24f), ammoTxt, _s18, new Color(1f, 1f, 1f, 0.8f), TextAnchor.MiddleLeft);
 
+        // 装填条：只在真装填时画。ReloadProgress 平时就是 1，以前这里常亮一条金色横杠，
+        // 看着像 UI 出错的装饰线（2026-11-10）
         var rlBar = new Rect(x + 20f, y + 92f, w - 40f, 8f);
-        Fill(rlBar, new Color(1f, 1f, 1f, 0.10f));
-        Fill(new Rect(rlBar.x, rlBar.y, rlBar.width * Mathf.Clamp01(p.ReloadProgress), rlBar.height), CGold);
+        float rl = p.ReloadProgress;
+        if (rl < 0.999f)
+        {
+            Fill(rlBar, new Color(1f, 1f, 1f, 0.10f));
+            Fill(new Rect(rlBar.x, rlBar.y, rlBar.width * Mathf.Clamp01(rl), rlBar.height), CGold);
+        }
 
-        Text(new Rect(x + w - 230f, y + 64f, 210f, 24f), "Q 切武器 · 右键瞄准 · Shift 拉近", _s18, new Color(1f, 1f, 1f, 0.55f), TextAnchor.MiddleRight);
+        Text(new Rect(x + w - 230f, y + 64f, 210f, 24f), "Q 切武器 · 右键瞄准", _s18, new Color(1f, 1f, 1f, 0.55f), TextAnchor.MiddleRight);
 
         // 炮艇：显示还剩几发干扰弹
         if (def != null && def.domain == Domain.Sea)
@@ -194,14 +207,40 @@ public class MatchHUD : MonoBehaviour
         for (int i = 0; i < kinds.Count; i++)
         {
             bool broken = mod.IsBroken(kinds[i]);
+            string label = (broken ? "✕ " : "✓ ") + names[i];
+            // 炮管坏了会哑火，玩家必须知道多久修好（2026-11-09 修：以前只有一个红块，玩家以为是鼠标失灵）
+            if (kinds[i] == ModuleKind.Gun && broken)
+            {
+                float rem = mod.GunRepairRemaining;
+                if (rem > 0f) label = "修理中 " + Mathf.CeilToInt(rem) + "s";
+            }
             var r = new Rect(sx + i * (cw + gap), y, cw, 26f);
             Fill(r, broken ? new Color(0.55f, 0.12f, 0.10f, 0.9f) : new Color(0.10f, 0.22f, 0.14f, 0.75f));
-            Text(r, (broken ? "✕ " : "✓ ") + names[i], _s18,
+            Text(r, label, _s18,
                  broken ? CEnemy : new Color(0.65f, 0.9f, 0.7f), TextAnchor.MiddleCenter);
         }
     }
 
+    /// <summary>炮管损坏时在准星下方给一条醒目提示：玩家点左键没反应，必须先知道是炮坏了。</summary>
+    void DrawGunBrokenAlert(MatchManager mm)
+    {
+        var p = mm.Player;
+        if (p == null || !p.Alive) return;
+        var vmod = p.GetComponent<VehicleModule>();
+        if (vmod == null || !vmod.IsBroken(ModuleKind.Gun)) return;
+
+        float rem = vmod.GunRepairRemaining;
+        string txt = rem > 0f
+            ? "炮管损坏 · 修理中 " + Mathf.CeilToInt(rem) + "s"
+            : "炮管损坏 · 左键无法开火（TAB 商店可修）";
+        var r = new Rect(0f, VH * 0.5f + 74f, _vw, 34f);
+        Fill(new Rect(_vw * 0.5f - 190f, r.y - 2f, 380f, 34f), new Color(0.35f, 0.05f, 0.05f, 0.78f));
+        Text(r, txt, _s20, new Color(1f, 0.55f, 0.5f, 1f), TextAnchor.MiddleCenter);
+    }
+
     // ---------------- 右上：击杀提示 ----------------
+
+    readonly int[] _feedPick = new int[5];     // 本帧要画哪几条（按"新→旧"存，最多 5 条；feed 本身上限 6）
 
     void DrawFeed(MatchManager mm)
     {
@@ -209,17 +248,40 @@ public class MatchHUD : MonoBehaviour
         float y = 16f;
         float x = _vw - w - 16f;
 
-        int shown = 0;
-        for (int i = mm.feed.Count - 1; i >= 0 && shown < 5; i--)
+        // 先按"新→旧"挑出最多 5 条（和原来的取法一致），再反过来画 ——
+        // 2026-11-10：新条目要从右边滑进来，画在旧条目**上面**才不会被旧底板压住。
+        int n = 0;
+        for (int i = mm.feed.Count - 1; i >= 0 && n < 5; i--)
         {
-            var e = mm.feed[i];
+            if (Time.time - mm.feed[i].time > 6f) continue;
+            _feedPick[n] = i;
+            n++;
+        }
+        if (n == 0) return;
+
+        // 2026-11-10 入场动画：
+        // 最新那条 0.18 s 内从 +40 px 滑到位并淡入；它一出现，下面整摞要让出一格 ——
+        // 让的过程同样按 age 缓动，否则会"啪"地跳一格，看着像掉帧。
+        // 位移量只取 0.6 格：滑入的那条本身是半透明、还在从右边进场，
+        // 让满一格的话两条会在 0.18 s 里正面叠在一起，文字糊成一团。
+        float topAge = Time.time - mm.feed[_feedPick[0]].time;
+        float pushK = Smooth01(Mathf.Clamp01(topAge / 0.18f));
+
+        for (int s = n - 1; s >= 0; s--)          // s = 0 是最新的一条（最上面）
+        {
+            var e = mm.feed[_feedPick[s]];
             float age = Time.time - e.time;
-            if (age > 6f) continue;
-            float alpha = Mathf.Clamp01(1f - (age - 4f) / 2f);
-            Panel(new Rect(x, y, w, rowH - 2f), new Color(0.05f, 0.06f, 0.08f, 0.55f * alpha));
-            Text(new Rect(x + 10f, y, w - 20f, rowH - 2f), e.text, _s18, new Color(1f, 1f, 1f, alpha), TextAnchor.MiddleLeft);
-            y += rowH;
-            shown++;
+
+            float inK = Smooth01(Mathf.Clamp01(age / 0.18f));            // 0 = 刚出现
+            float alpha = Mathf.Clamp01(1f - (age - 4f) / 2f) * inK;     // 老条目照旧 4 s 后 2 s 淡出
+            if (alpha <= 0.002f) continue;
+
+            float dy = s == 0 ? 0f : (1f - pushK) * rowH * 0.6f;         // 还没让完：先画在上一格
+            float dx = (1f - inK) * 40f;                                 // 从屏幕右边缘滑入
+            float ry = y + s * rowH - dy;
+
+            Panel(new Rect(x + dx, ry, w, rowH - 2f), new Color(0.05f, 0.06f, 0.08f, 0.55f * alpha));
+            Text(new Rect(x + dx + 10f, ry, w - 20f, rowH - 2f), e.text, _s18, new Color(1f, 1f, 1f, alpha), TextAnchor.MiddleLeft);
         }
     }
 
@@ -227,6 +289,18 @@ public class MatchHUD : MonoBehaviour
 
     Vector2 _lockCrossPos;
     bool _lockCrossInit;
+
+    // 本帧准星画在虚拟画布的哪个位置（2026-11-10）。
+    // 命中标记要跟着准星走：陆战/海战的准星是"炮口指向的投影"，炮塔没转过来时会停在画面边上，
+    // 这时候如果把命中标记画在屏幕正中，玩家会以为打偏了。
+    static Vector2 _crossPos = new Vector2(-1f, -1f);
+    static int _crossFrame = -1;
+
+    static void MarkCross(float x, float y)
+    {
+        _crossPos = new Vector2(x, y);
+        _crossFrame = Time.frameCount;
+    }
 
     /// <summary>锁定准星：画在目标身上（绿色），带一圈断开的锁定弧。</summary>
     void DrawLockCrosshair(Vector2 pos)
@@ -257,12 +331,20 @@ public class MatchHUD : MonoBehaviour
         Vector2 d = b - a;
         float len = d.magnitude;
         if (len < 0.5f) return;
-        var m = GUI.matrix;
+
+        // 2026-11-10：原来这里用 GUIUtility.RotateAroundPivot(angle, a)。
+        // 它内部会拿 pivot 去做 GUIClip.Unclip（当成**屏幕像素**），可此时 GUI.matrix 已经
+        // 按屏幕高度缩放过了（scale = Screen.height / 1080），于是旋转中心落到了另一个点，
+        // 整条线段被甩偏出画面 —— 表现就是"命中标记只有中心点、四条斜线不见了"。
+        // 改成在虚拟画布坐标系里自己做「平移到 a + 绕 a 旋转」：左乘已有的 GUI.matrix 即可。
+        var oldM = GUI.matrix;
+        var oldC = GUI.color;
+        GUI.matrix = oldM * Matrix4x4.TRS(new Vector3(a.x, a.y, 0f),
+            Quaternion.Euler(0f, 0f, Mathf.Atan2(d.y, d.x) * Mathf.Rad2Deg), Vector3.one);
         GUI.color = c;
-        GUIUtility.RotateAroundPivot(Mathf.Atan2(d.y, d.x) * Mathf.Rad2Deg, a);
-        GUI.DrawTexture(new Rect(a.x, a.y - w * 0.5f, len, w), Texture2D.whiteTexture);
-        GUI.matrix = m;
-        GUI.color = Color.white;
+        GUI.DrawTexture(new Rect(0f, -w * 0.5f, len, w), Texture2D.whiteTexture);
+        GUI.color = oldC;
+        GUI.matrix = oldM;
     }
 
     void DrawCrosshair(MatchManager mm)
@@ -284,6 +366,7 @@ public class MatchHUD : MonoBehaviour
                     float k = 1f - Mathf.Exp(-14f * Time.unscaledDeltaTime);
                     _lockCrossPos = Vector2.Lerp(_lockCrossPos, want, k);
                     DrawLockCrosshair(_lockCrossPos);
+                    MarkCross(_lockCrossPos.x, _lockCrossPos.y);
                     return;
                 }
             }
@@ -320,8 +403,9 @@ public class MatchHUD : MonoBehaviour
             y = Mathf.Clamp(y, 48f, VH - 48f);
 
             // 开镜（Shift）：换成专门的空战分划，画在同一个位置
-            if (IsAirScoped()) { DrawAirScope(x, y); return; }
+            if (IsAirScoped()) { DrawAirScope(x, y); MarkCross(x, y); return; }
 
+            MarkCross(x, y);
             var c = new Color(1f, 0.88f, 0.35f, 0.95f);
             float r = 16f, t = 2.5f;
             Fill(new Rect(x - r, y - t * 0.5f, r * 0.55f, t), c);   // 左
@@ -375,6 +459,7 @@ public class MatchHUD : MonoBehaviour
             y = cy0 - dirN.y * tEdge;
         }
         var cTank = onScreen ? new Color(1f, 1f, 1f, 0.85f) : new Color(1f, 0.88f, 0.35f, 0.9f);
+        MarkCross(x, y);
 
         // 十字
         Fill(new Rect(x - 16f, y - 1.5f, 32f, 3f), cTank);
@@ -662,25 +747,245 @@ public class MatchHUD : MonoBehaviour
 
     // ---------------- 结算 ----------------
 
+    float _settleAt = -9f;      // 结算开始时刻（unscaledTime，在 Update 里只取一次）
+    bool _settleWasOver;        // 上一帧 matchOver 的值，用来抓"刚结束"那一帧
+
     void DrawSettlement(MatchManager mm)
     {
-        Fill(new Rect(0, 0, _vw, VH), new Color(0f, 0f, 0f, 0.6f));
+        // 2026-11-10 入场：0.4 s 内从 0.94 缩放 + 淡入弹到位。
+        // 时刻在 Update 里记 —— OnGUI 一帧会跑 Layout/Repaint/事件好几遍，在这里推进状态动画会快 3~4 倍。
+        float k = Smooth01(Mathf.Clamp01((Time.unscaledTime - _settleAt) / 0.4f));
+
+        // 全屏压黑单独画、不跟着缩放：跟着缩会在屏幕四边漏出一圈战场，很难看
+        Fill(new Rect(0, 0, _vw, VH), new Color(0f, 0f, 0f, 0.6f * k));
 
         float w = 660f, h = 360f;
         float x = _vw * 0.5f - w * 0.5f, y = VH * 0.5f - h * 0.5f;
-        Panel(new Rect(x, y, w, h), new Color(0.07f, 0.08f, 0.11f, 0.96f));
+
+        // 面板绕自己的中心缩放：不位移，手感比"从下面升上来"更利落
+        var oldM = GUI.matrix;
+        float pop = Mathf.Lerp(0.94f, 1f, k);
+        GUIUtility.ScaleAroundPivot(new Vector2(pop, pop), new Vector2(_vw * 0.5f, VH * 0.5f));
+
+        Panel(new Rect(x, y, w, h), WithA(new Color(0.07f, 0.08f, 0.11f, 0.96f), k));
 
         bool win = mm.winnerTeam == 0;
-        Text(new Rect(x, y + 30f, w, 70f), win ? "胜利" : "失败", _s56, win ? CAlly : CEnemy, TextAnchor.MiddleCenter);
-        Text(new Rect(x, y + 110f, w, 30f), mm.resultText, _s20, new Color(1f, 1f, 1f, 0.8f), TextAnchor.MiddleCenter);
+        // 标题「胜利/失败」额外弹一下：1.0 → 1.08 → 1.0（正弦半周，0.42 s，延迟 0.22 s 等面板先到位）
+        float tp = Mathf.Clamp01((Time.unscaledTime - _settleAt - 0.22f) / 0.42f);
+        float tScale = 1f + 0.08f * Mathf.Sin(tp * Mathf.PI);
+        var oldM2 = GUI.matrix;
+        GUIUtility.ScaleAroundPivot(new Vector2(tScale, tScale), new Vector2(_vw * 0.5f, y + 65f));
+        Text(new Rect(x, y + 30f, w, 70f), win ? "胜利" : "失败", _s56, WithA(win ? CAlly : CEnemy, k), TextAnchor.MiddleCenter);
+        GUI.matrix = oldM2;
 
-        Text(new Rect(x, y + 170f, w, 34f), $"我方命 {mm.TeamLives(0)}　:　{mm.TeamLives(1)} 敌方命", _s32, Color.white, TextAnchor.MiddleCenter);
-        Text(new Rect(x, y + 216f, w, 28f), $"我的金币 {mm.Gold}　·　剩余时间 {mm.TimeText}", _s20, CGold, TextAnchor.MiddleCenter);
+        Text(new Rect(x, y + 110f, w, 30f), mm.resultText, _s20, WithA(new Color(1f, 1f, 1f, 0.8f), k), TextAnchor.MiddleCenter);
 
-        Text(new Rect(x, y + 280f, w, 40f), "按 <b>R</b> 重新开始", _s24, new Color(1f, 1f, 1f, 0.9f), TextAnchor.MiddleCenter);
+        Text(new Rect(x, y + 170f, w, 34f), $"我方命 {mm.TeamLives(0)}　:　{mm.TeamLives(1)} 敌方命", _s32, WithA(Color.white, k), TextAnchor.MiddleCenter);
+        Text(new Rect(x, y + 216f, w, 28f), $"我的金币 {mm.Gold}　·　剩余时间 {mm.TimeText}", _s20, WithA(CGold, k), TextAnchor.MiddleCenter);
+
+        Text(new Rect(x, y + 280f, w, 40f), "按 <b>R</b> 重新开始", _s24, WithA(new Color(1f, 1f, 1f, 0.9f), k), TextAnchor.MiddleCenter);
+
+        GUI.matrix = oldM;
     }
 
     // ---------------- 绘制工具 ----------------
+
+    // ================= 敌人/队友名字牌 + 屏幕外威胁提示（2026-11-11） =================
+    //
+    // 需求来自 2026-11-10 交接文档 §7.3 第一条「敌人/队友名字牌、威胁提示」。
+    //
+    // 两条原则：
+    //   1. 每帧 OnGUI 会跑 3~4 遍，**绝对不能在里面 FindObjects / Linecast**。
+    //      目标收集 + 视线判定统一放在 Update 里 0.15 s 轮询一次（和雷达同一个节拍），
+    //      OnGUI 里只做投影和画。
+    //   2. 名字牌画在**虚拟画布坐标**里（除以 _scale），不是屏幕像素，
+    //      否则 1440p / 4K 下会整体偏右下（和 §5 第 5 条是同一类坐标错误）。
+
+    struct NamePlate
+    {
+        public VehicleCombat v;
+        public float dist;
+        public bool los;        // 从相机到车体中心的连线没被地形/建筑挡住
+    }
+
+    static readonly List<NamePlate> _plates = new List<NamePlate>();
+
+    [Tooltip("名字牌显示距离（米）：陆/海目标")]
+    public float plateRangeGround = 520f;
+    [Tooltip("名字牌显示距离（米）：空中目标（飞机看得远）")]
+    public float plateRangeAir = 1100f;
+    [Tooltip("屏幕外威胁箭头的距离上限（米）。比名字牌近得多 —— 远处的飞机一直闪箭头只是噪音")]
+    public float threatArrowRange = 700f;
+
+    static Color TeamColor(int team) => team == 0 ? CAlly : CEnemy;
+
+    /// <summary>
+    /// 收集射程内的目标 + 判定视线。由 Update() 按 0.15 s 节拍调用（不要放 OnGUI）。
+    /// </summary>
+    void PollNamePlates()
+    {
+        _plates.Clear();
+
+        var mm = MatchManager.Instance;
+        var me = mm != null ? mm.Player : null;
+        var cam = Camera.main;
+        if (me == null || cam == null || me.dead) return;
+
+        Vector3 eye = cam.transform.position;
+        var arr = _radarVehicles;
+        for (int i = 0; i < arr.Length; i++)
+        {
+            var v = arr[i];
+            if (v == null || v == me || v.dead) continue;
+
+            bool air = v.Def != null && v.Def.domain == Domain.Air;
+            float range = air ? plateRangeAir : plateRangeGround;
+            float d = Vector3.Distance(me.transform.position, v.transform.position);
+            if (d > range) continue;
+
+            // 视线：只认"这条线上第一个碰撞体是不是它自己"。
+            // 打到自己车体（相机在车顶）也算被挡住 —— 那确实看不见。
+            Vector3 tgt = v.transform.position + Vector3.up * (air ? 2.5f : 1.6f);
+            bool los = true;
+            if (Physics.Linecast(eye, tgt, out RaycastHit hit, ~0, QueryTriggerInteraction.Ignore))
+                los = hit.collider.GetComponentInParent<VehicleCombat>() == v;
+
+            _plates.Add(new NamePlate { v = v, dist = d, los = los });
+        }
+    }
+
+    /// <summary>名字牌 + 屏幕外威胁箭头。画在准星之前，让准星压在它上面。</summary>
+    void DrawNamePlates(MatchManager mm)
+    {
+        var me = mm.Player;
+        if (me == null || me.dead) return;
+        if (Cursor.lockState != CursorLockMode.Locked) return;   // 光标放开（面板/暂停）不画
+        if (IsScoped()) return;                                   // 炮镜里不画，免得糊住分划
+        if (_plates.Count == 0) return;
+
+        var cam = Camera.main;
+        if (cam == null) return;
+
+        float sw = Screen.width, sh = Screen.height;
+
+        for (int i = 0; i < _plates.Count; i++)
+        {
+            var np = _plates[i];
+            var v = np.v;
+            if (v == null || v.dead) continue;
+
+            bool enemy = v.team != me.team;
+            bool air = v.Def != null && v.Def.domain == Domain.Air;
+            Color col = TeamColor(v.team);
+
+            Vector3 head = v.transform.position + Vector3.up * (air ? 3.6f : 4.3f);
+            Vector3 sp = cam.WorldToScreenPoint(head);
+
+            bool onScreen = sp.z > 0.01f && sp.x >= 0f && sp.x <= sw && sp.y >= 0f && sp.y <= sh;
+
+            if (!onScreen)
+            {
+                // 屏幕外/背后的敌人 → 屏幕边缘方位箭头（队友不画；太远的也不画，避免满屏箭头）
+                if (enemy && np.dist <= threatArrowRange) DrawThreatArrow(sp, sp.z <= 0.01f, np.dist, col);
+                continue;
+            }
+
+            // 被地形挡住：只留一个很淡的方位箭头，不画名字（不让你"透视"）
+            if (!np.los)
+            {
+                if (enemy && np.dist <= threatArrowRange) DrawThreatArrow(sp, false, np.dist, WithA(col, 0.5f));
+                continue;
+            }
+
+            float px = sp.x / _scale;
+            float py = (sh - sp.y) / _scale;
+
+            // 远 → 淡，近 → 实
+            float far = air ? plateRangeAir : plateRangeGround;
+            float a = Mathf.Lerp(1f, 0.42f, Mathf.Clamp01((np.dist - 60f) / (far - 60f)));
+
+            DrawOnePlate(v, new Vector2(px, py), np.dist, col, enemy, a);
+        }
+    }
+
+    void DrawOnePlate(VehicleCombat v, Vector2 p, float dist, Color col, bool enemy, float alpha)
+    {
+        const float W = 138f, H = 56f;
+        var box = new Rect(p.x - W * 0.5f, p.y - H, W, H);
+
+        // 底（半透明，够看字就行，别糊住战场）
+        Fill(box, new Color(0.02f, 0.03f, 0.05f, 0.40f * alpha));
+
+        // 描边：四边各一条细线，比整框描边省事，远看也分得清敌我
+        Color edge = WithA(col, 0.42f * alpha);
+        Fill(new Rect(box.x, box.y, W, 1.5f), edge);
+        Fill(new Rect(box.x, box.yMax - 1.5f, W, 1.5f), edge);
+        Fill(new Rect(box.x, box.y, 1.5f, H), edge);
+        Fill(new Rect(box.xMax - 1.5f, box.y, 1.5f, H), edge);
+
+        // 顶部一条队伍色（比整框描边省 draw call，一眼分敌我）
+        Fill(new Rect(box.x, box.y, W, 3f), WithA(col, 0.95f * alpha));
+
+        // 名字
+        string name = v.Def != null && !string.IsNullOrEmpty(v.Def.displayName) ? v.Def.displayName : "未知";
+        Text(new Rect(box.x + 4f, box.y + 4f, W - 8f, 22f), name, _s18,
+             WithA(Color.white, 0.95f * alpha), TextAnchor.MiddleCenter);
+
+        // 血条（自己的车看自己，敌人的车也看得到剩余血量——同《战雷》街机）
+        float hp01 = v.maxHp > 0.01f ? Mathf.Clamp01(v.hp / v.maxHp) : 0f;
+        var bar = new Rect(box.x + 12f, box.y + 28f, W - 24f, 8f);
+        Fill(bar, new Color(0f, 0f, 0f, 0.45f * alpha));
+        Fill(new Rect(bar.x, bar.y, bar.width * hp01, bar.height),
+             WithA(hp01 > 0.5f ? (enemy ? CEnemy : CAlly) : (hp01 > 0.22f ? CGold : CEnemy), alpha));
+
+        // 距离
+        Text(new Rect(box.x + 4f, box.y + 37f, W - 8f, 18f), $"{Mathf.RoundToInt(dist)} m", _s18,
+             WithA(Color.white, 0.62f * alpha), TextAnchor.MiddleCenter);
+
+        // 指向目标的小三角（牌底到车顶的引导线），让人一眼对上是哪台车
+        DrawSeg(new Vector2(p.x, p.y + 2f), new Vector2(p.x, p.y + 10f), WithA(col, 0.8f * alpha), 2.4f);
+    }
+
+    /// <summary>屏幕边缘的威胁方位箭头：指向"屏幕外/背后"的敌人。</summary>
+    void DrawThreatArrow(Vector2 screenPos, bool behind, float dist, Color col)
+    {
+        float cx = Screen.width * 0.5f, cy = Screen.height * 0.5f;
+
+        // 屏幕像素 → 以中心为原点、y 向上（Unity 屏幕坐标 y 向下，所以取负）
+        Vector2 d = new Vector2(screenPos.x - cx, -(screenPos.y - cy));
+        if (behind) d = -d;                       // 背后的点在屏幕上是镜像的，反一下才是真实方位
+        if (d.sqrMagnitude < 0.0001f) d = Vector2.up;
+        d.Normalize();
+
+        // 落在虚拟画布内缩一圈的椭圆上（留够箭头 + 文字的余量）
+        // 下半部分再缩一点：底部有模块状态 + 车辆信息面板，箭头别压上去
+        float vcx = _vw * 0.5f, vcy = VH * 0.5f;
+        float rx = Mathf.Max(140f, _vw * 0.5f - 132f);
+        float ry = VH * 0.5f - (d.y < 0f ? 200f : 118f);
+        float ang = Mathf.Atan2(d.y, d.x);
+        var tip = new Vector2(vcx + Mathf.Cos(ang) * rx, vcy - Mathf.Sin(ang) * ry);
+
+        // 呼吸闪烁（unscaledTime：暂停/界面时也别冻住）
+        float pulse = 0.66f + 0.34f * Mathf.Sin(Time.unscaledTime * 5.2f);
+        Color c = WithA(col, pulse);
+
+        // 虚拟画布 y 向下：back = 指向画面中心的单位向量
+        Vector2 back = new Vector2(-Mathf.Cos(ang), Mathf.Sin(ang));
+        Vector2 perp = new Vector2(-back.y, back.x);
+        const float L = 34f, Wd = 18f;
+
+        // 箭头根部一小段杆，让它在任何背景上都看得出方向
+        DrawSeg(tip + back * (L + 14f), tip, WithA(col, 0.55f * pulse), 2.4f);
+        DrawSeg(tip, tip + back * L + perp * Wd, c, 4.4f);
+        DrawSeg(tip, tip + back * L - perp * Wd, c, 4.4f);
+
+        // 距离：贴在箭头内侧，带一块暗底（纯文字压在亮天空上看不清）
+        var lp = tip + back * 56f;
+        var tb = new Rect(lp.x - 42f, lp.y - 13f, 84f, 26f);
+        Fill(tb, new Color(0.02f, 0.03f, 0.05f, 0.42f * pulse));
+        Text(new Rect(tb.x, tb.y + 1f, tb.width, tb.height), $"{Mathf.RoundToInt(dist)}m", _s20,
+             WithA(col, 0.95f * pulse), TextAnchor.MiddleCenter);
+    }
 
     // ---------------- 舰载雷达（只有船有） ----------------
 
@@ -693,10 +998,17 @@ public class MatchHUD : MonoBehaviour
 
     void Update()
     {
+        // 2026-11-10：受伤/金币的差值必须每帧算一次，所以在下面那个 0.15 s 的提前 return 之前
+        PollCombatFx();
+
         // OnGUI 一帧会跑好几遍，别在里面 FindObjects
         if (Time.time < _radarNextScan) return;
         _radarNextScan = Time.time + 0.15f;
         _radarVehicles = Object.FindObjectsByType<VehicleCombat>(FindObjectsSortMode.None);
+
+        // 2026-11-11：名字牌的目标收集 + 视线判定跟雷达同一个节拍（0.15 s），
+        // 千万别搬进 OnGUI —— 那里一帧跑 3~4 遍，Linecast 会把帧率吃掉。
+        PollNamePlates();
     }
 
     /// <summary>雷达圆盘贴图：圆内不透明、圆外透明（用 GUI.color 染色）。</summary>
@@ -840,32 +1152,202 @@ public class MatchHUD : MonoBehaviour
 
     // ---------------- 命中反馈（击穿 / 未击穿 / 跳弹） ----------------
 
-    static string _hitMsg = "";
-    static float _hitMsgUntil;
+    // 2026-11-10：从"屏幕文字 + Time.time 计时"改成"准星处的四角斜线 + unscaledTime 计时"。
+    // 用 unscaledTime 是因为暂停/慢动作时 timeScale 会变，Time.time 一卡住，标记就会冻在屏幕上。
+    static HitResult _hitKind = HitResult.None;   // 上一次命中的结果（None = 不画）
+    static float _hitAt = -9f;                    // 上一次命中时刻（unscaledTime）
 
-    /// <summary>玩家打中敌人时由 Projectile / 机枪调用。</summary>
+    const float HIT_FX_DUR = 0.28f;               // 标记存活时长
+
+    /// <summary>玩家打中敌人时由 Projectile / 机枪调用（签名与语义保持不变）。</summary>
     public static void ShowHitFeedback(HitResult r)
     {
         switch (r)
         {
-            case HitResult.Penetrated: _hitMsg = "击穿"; break;
-            case HitResult.NonPenetrating: _hitMsg = "未击穿"; break;
-            case HitResult.Ricochet: _hitMsg = "跳弹"; break;
-            default: _hitMsg = ""; return;
+            case HitResult.Penetrated:
+            case HitResult.NonPenetrating:
+            case HitResult.Ricochet:
+                _hitKind = r;
+                _hitAt = Time.unscaledTime;
+                break;
+            default:
+                return;      // None：没做判定，不画
         }
-        _hitMsgUntil = Time.time + 0.7f;
     }
 
+    /// <summary>准星处的命中标记：四角斜线 + 中心小点，击穿金色、未击穿/跳弹红色。</summary>
     void DrawHitFeedback()
     {
-        if (string.IsNullOrEmpty(_hitMsg) || Time.time > _hitMsgUntil) return;
-        float a = Mathf.Clamp01((_hitMsgUntil - Time.time) / 0.7f);
-        var c = _hitMsg == "击穿" ? new Color(1f, 0.86f, 0.35f, a)
-                                  : new Color(1f, 0.42f, 0.34f, a);
-        Text(new Rect(0f, VH * 0.5f - 86f, _vw, 34f), _hitMsg, _s32, c, TextAnchor.MiddleCenter);
+        if (_hitKind == HitResult.None) return;
+        float age = Time.unscaledTime - _hitAt;
+        if (age < 0f || age > HIT_FX_DUR) return;
+
+        float k = Mathf.Clamp01(age / HIT_FX_DUR);
+        float s = Mathf.Lerp(1.35f, 1f, Smooth01(k));    // 0.28 s 内缩放 1.35 → 1.0
+        float a = 1f - k;                                 // 同时透明度 1 → 0
+
+        var baseC = _hitKind == HitResult.Penetrated ? CGold : CEnemy;
+        var c = new Color(baseC.r, baseC.g, baseC.b, a);
+
+        // 位置跟着准星走（炮塔没转过来时准星在画面边上，标记也该在边上）；
+        // 本帧没画准星（开镜 / 光标放开）就退回屏幕中心。
+        float cx = _vw * 0.5f, cy = VH * 0.5f;
+        if (_crossFrame == Time.frameCount) { cx = _crossPos.x; cy = _crossPos.y; }
+        float inner = 6f * s, len = 14f * s;              // 每条斜线 14 px（缩放前）
+        for (int i = 0; i < 4; i++)
+        {
+            float ang = Mathf.PI * 0.25f + i * Mathf.PI * 0.5f;      // 四个 45° 方向
+            var dir = new Vector2(Mathf.Cos(ang), Mathf.Sin(ang));
+            Vector2 p0 = new Vector2(cx, cy) + dir * inner;
+            DrawSeg(p0, p0 + dir * len, c, 3f * s);
+        }
+        Fill(new Rect(cx - 2f * s, cy - 2f * s, 4f * s, 4f * s), c);  // 中心小点
+    }
+
+    // ---------------- 战斗内 UI 特效：状态 + 轮询（2026-11-10） ----------------
+    // 所有"前后帧差值"都在 Update 里算一次：OnGUI 一帧会跑 Layout/Repaint/事件好几遍，
+    // 在里面轮询会把同一段掉血算成好几次，暗角/浮字也会快 3~4 倍。
+
+    VehicleCombat _fxHpVehicle;     // 血量基准属于哪辆车（换车/复活就重新取基准）
+    float _fxHpPrev = -1f;          // 上一帧血量
+    float _fxHpRatio = 1f;          // 当前血量比例（< 0.3 时常驻暗角）
+    float _fxHurtAt = -9f;          // 上次掉血时刻（unscaledTime）
+
+    int _fxGoldPrev = int.MinValue; // 上一帧金币（int.MinValue = 还没取过基准）
+
+    struct GoldPop { public int delta; public float at; }
+    static readonly List<GoldPop> _goldPops = new List<GoldPop>();   // 最多 6 条
+
+    /// <summary>每帧一次：轮询血量差 / 金币差，顺带清到期的浮字。只在 Update 里调。</summary>
+    void PollCombatFx()
+    {
+        var mm = MatchManager.Instance;
+
+        // 到期的浮字在这里清（放 OnGUI 里会一帧删好几次，条数对不上）
+        for (int i = _goldPops.Count - 1; i >= 0; i--)
+            if (Time.unscaledTime - _goldPops[i].at > 0.9f) _goldPops.RemoveAt(i);
+
+        if (mm == null)
+        {
+            _fxHpVehicle = null; _fxHpPrev = -1f; _fxHpRatio = 1f;
+            _fxGoldPrev = int.MinValue;
+            return;
+        }
+
+        // ---- 结算面板入场时刻：只在 matchOver 由假变真的那一帧取一次 ----
+        if (mm.matchOver && !_settleWasOver) _settleAt = Time.unscaledTime;
+        _settleWasOver = mm.matchOver;
+
+        // ---- 血量：只跟"当前这辆车"比，换车/复活时重新取基准 ----
+        var p = mm.Player;
+        if (p == null || !p.Alive)
+        {
+            _fxHpVehicle = null;     // 车没了：下次上车重新取基准，别拿新车的满血去减旧车的残血
+            _fxHpPrev = -1f;
+            _fxHpRatio = 1f;         // 没车不画常驻暗角
+        }
+        else
+        {
+            if (p != _fxHpVehicle) { _fxHpVehicle = p; _fxHpPrev = p.hp; }
+            else if (p.hp < _fxHpPrev - 0.01f) _fxHurtAt = Time.unscaledTime;   // 掉血：触发一次脉冲
+            _fxHpPrev = p.hp;
+            _fxHpRatio = Mathf.Clamp01(p.hp / Mathf.Max(1f, p.maxHp));
+        }
+
+        // ---- 金币 ----
+        int g = mm.Gold;
+        if (mm.matchOver)
+        {
+            // 结算期间不浮字；顺便把基准清掉，重开对局第一帧只会重新取基准，不会跳一个假数字
+            _fxGoldPrev = int.MinValue;
+            _goldPops.Clear();
+        }
+        else if (_fxGoldPrev == int.MinValue) _fxGoldPrev = g;
+        else if (g != _fxGoldPrev)
+        {
+            _goldPops.Add(new GoldPop { delta = g - _fxGoldPrev, at = Time.unscaledTime });
+            if (_goldPops.Count > 6) _goldPops.RemoveAt(0);
+            _fxGoldPrev = g;
+        }
+    }
+
+    /// <summary>
+    /// 受伤反馈：屏幕四边红色暗角。
+    /// 掉血时 0.5 s 衰减的脉冲；血量 &lt; 30% 时暗角常驻、按 Sin(unscaledTime*2.2) 低频脉动。
+    /// </summary>
+    void DrawDamageVignette()
+    {
+        float hurt = Mathf.Clamp01(1f - (Time.unscaledTime - _fxHurtAt) / 0.5f);
+
+        float low = 0f;
+        if (_fxHpVehicle != null && _fxHpRatio < 0.3f)
+        {
+            // 越接近 0 越浓；再叠一个低频脉动，玩家不用盯血量条也知道快没了
+            float deep = 1f - _fxHpRatio / 0.3f;
+            low = (0.22f + 0.10f * Mathf.Sin(Time.unscaledTime * 2.2f)) * deep;
+        }
+
+        // 两者取大而不是相加：脉冲和常驻叠在一起会在边角闪成一片（本项目踩过的坑）
+        float k = Mathf.Clamp01(Mathf.Max(hurt, low));
+        if (k <= 0.01f) return;
+
+        const float W = 150f;      // 暗角厚度（虚拟像素）
+        const int Steps = 14;      // 细分条数：太少看得出横纹
+        if (_vw <= W * 2f) return;
+
+        var edge = new Color(0.85f, 0.06f, 0.05f, 1f);
+        float peak = 0.62f * k;    // 最浓处的不透明度
+        float strip = W / Steps;
+
+        for (int i = 0; i < Steps; i++)
+        {
+            // 从屏幕边往里按平方衰减：线性衰减在 1080 高上看得出分层
+            float f = 1f - i / (float)Steps;
+            float a = peak * f * f;
+            if (a <= 0.002f) continue;
+            var c = new Color(edge.r, edge.g, edge.b, a);
+
+            // 坐标取整 + 首尾相接，否则细分条之间会露出一条缝
+            float d0 = Mathf.Round(i * strip);
+            float d1 = Mathf.Round((i + 1) * strip);
+            float th = d1 - d0;
+
+            // 上、下两条画满整宽；左、右两条只画中间那段 —— 四条绝不重叠。
+            // 半透明矩形一叠加就会出现明显的横/纵亮纹，这是本项目踩过的坑。
+            Fill(new Rect(0f, d0, _vw, th), c);                        // 上
+            Fill(new Rect(0f, VH - d1, _vw, th), c);                   // 下
+            Fill(new Rect(d0, W, th, VH - W * 2f), c);                 // 左
+            Fill(new Rect(_vw - d1, W, th, VH - W * 2f), c);           // 右
+        }
+    }
+
+    /// <summary>金币变化浮字：在左上金币面板右侧浮出 +N / -N，0.9 s 上浮 40 px 并淡出。</summary>
+    void DrawGoldPops()
+    {
+        for (int i = 0; i < _goldPops.Count; i++)
+        {
+            var gp = _goldPops[i];
+            float age = Time.unscaledTime - gp.at;
+            if (age < 0f || age > 0.9f) continue;
+
+            float t = Mathf.Clamp01(age / 0.9f);
+            var c = gp.delta >= 0 ? CGold : CEnemy;
+            string s = (gp.delta >= 0 ? "+" : "") + gp.delta;
+
+            // 同时出现多条时按序往下错开一行，否则会完全重叠看不清（最多 6 条）
+            // 起点 50 而不是 18：上浮 40 px 之后还要留在屏幕内，不然会飘到画面上边外面
+            float y = 50f + i * 28f - 40f * Smooth01(t);
+            Text(new Rect(280f, y, 240f, 32f), $"<b>{s}</b>", _s24, new Color(c.r, c.g, c.b, 1f - t * t), TextAnchor.MiddleLeft);
+        }
     }
 
     static void Panel(Rect r, Color? c = null) => Fill(r, c ?? CPanel);
+
+    /// <summary>0..1 的三次 S 曲线缓动（动画统一用它，别各写一份）。</summary>
+    static float Smooth01(float t) { t = Mathf.Clamp01(t); return t * t * (3f - 2f * t); }
+
+    /// <summary>只改 alpha、保留原色（结算面板整体淡入用）。</summary>
+    static Color WithA(Color c, float a) => new Color(c.r, c.g, c.b, c.a * a);
 
     static void Fill(Rect r, Color c)
     {

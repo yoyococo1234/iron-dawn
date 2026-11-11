@@ -193,7 +193,7 @@ public class CameraFollow : MonoBehaviour
             Cursor.visible = true;
             return;
         }
-        if (Cursor.lockState != CursorLockMode.Locked &&
+        if (!UiKit.Blocking && Cursor.lockState != CursorLockMode.Locked &&
             (Input.GetMouseButtonDown(0) || Input.GetMouseButtonDown(1)))
         {
             Cursor.lockState = CursorLockMode.Locked;

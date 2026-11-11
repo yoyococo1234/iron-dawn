@@ -55,7 +55,8 @@ public class PerfProbe : MonoBehaviour
 
     void OnGUI()
     {
-        float fps = 1f / Mathf.Max(0.0001f, Time.unscaledDeltaTime);
+               if (!_benchmark && !Debug.isDebugBuild) return;   // 正式包不显示 FPS
+ float fps = 1f / Mathf.Max(0.0001f, Time.unscaledDeltaTime);
         GUI.Label(new Rect(10, Screen.height - 30, 300, 24), $"FPS {fps:F0}");
     }
 }
