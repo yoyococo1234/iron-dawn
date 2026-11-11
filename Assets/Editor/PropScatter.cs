@@ -43,10 +43,13 @@ public static class PropScatter
         "Nature/plant_bush", "Nature/plant_bushLarge", "Nature/grass",
         "Nature/grass_large", "Nature/flower_redA", "Nature/flower_yellowA",
     };
+    // 2026-11-11：建筑全部换成**废土风格**（Lux3D 生成，ArtSource/Props_Wasteland → Blender 转 FBX）。
+    // 换风格的同时修掉"下面没生成明白"：每栋楼都会在 Place() 里加一块**地基裙边**（见 AddFoundation），
+    // 裙边从地面往上露 0.35 m、往下埋 2 m，所以不管模型底部多脏都不会露缝。
     static readonly string[] BuildingModels =
     {
-        "Lux3D/building_apartment", "Lux3D/building_shop", "Lux3D/building_warehouse",
-        "Lux3D/building_office", "Lux3D/building_skyscraper", "Lux3D/building_ruin",
+        "Lux3D/waste_block_low", "Lux3D/waste_block_mid", "Lux3D/waste_tower",
+        "Lux3D/waste_shack", "Lux3D/waste_warehouse", "Lux3D/waste_wall",
     };
     static readonly string[] PropModels =
     {
@@ -353,11 +356,21 @@ public static class PropScatter
     /// <summary>按"想要多少米高"反算缩放。高度对齐真实城市：小楼 8~16 m、普通楼 20~40 m、地标 60~90 m。</summary>
     static float BuildingScale(GameObject model)
     {
+        // 2026-11-11：换成废土模型后，按**名字**给目标高度。老逻辑只认 skyscraper / low-detail，
+        // 新名字一个都不匹配 → 所有楼（包括 4 米的铁皮棚）都会被拉到 20~40 米。
         string n = model.name.ToLowerInvariant();
-        float target = n.Contains("skyscraper") ? 60f + (float)rng.NextDouble() * 30f
-                     : n.Contains("low-detail") ? 8f + (float)rng.NextDouble() * 8f
-                     : 20f + (float)rng.NextDouble() * 20f;
-        return target / ModelHeight(model);
+        float target;
+        if (n.Contains("tower")) target = 30f + (float)rng.NextDouble() * 8f;          // 骨架高楼
+        else if (n.Contains("block_mid")) target = 16f + (float)rng.NextDouble() * 5f; // 中层破楼
+        else if (n.Contains("block_low")) target = 9f + (float)rng.NextDouble() * 4f;  // 低层废墟
+        else if (n.Contains("warehouse")) target = 8f + (float)rng.NextDouble() * 3f;  // 塌陷厂房
+        else if (n.Contains("shack")) target = 4f + (float)rng.NextDouble() * 2f;      // 铁皮棚
+        else if (n.Contains("wall")) target = 3f + (float)rng.NextDouble() * 1.5f;     // 断墙
+        // 老模型（万一还用）
+        else if (n.Contains("skyscraper")) target = 60f + (float)rng.NextDouble() * 30f;
+        else if (n.Contains("low-detail")) target = 8f + (float)rng.NextDouble() * 8f;
+        else target = 20f + (float)rng.NextDouble() * 20f;
+        return target / Mathf.Max(0.01f, ModelHeight(model));
     }
 
     static GameObject[] LoadAll(string[] paths)
@@ -408,7 +421,16 @@ public static class PropScatter
             foreach (var r in go.GetComponentsInChildren<MeshRenderer>(true))
                 r.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
         }
-        if (solid) AddSolidCollider(go);
+        if (solid)
+        {
+            AddSolidCollider(go);
+            // 2026-11-11：地基裙边 —— 用户反馈"很多建筑物下面都没生成明白"。
+            // Lux3D 出的楼底部经常是开放的或者带几片碎渣，怎么贴地都会露缝。
+            // 每栋楼垫一块**按真实占地 1.06 倍**的混凝土台，上沿露 0.22 m、往下埋 2.8 m。
+            // ⚠️ 不能用"水平半径 ×2"当边长：半径取的是长深里较大的那个，窄长楼（断墙 14×3）
+            // 会算出一块 14×14 的大灰板铺在草地上（第一版就是这么翻车的）。
+            AddFoundation(go, parent, BattlefieldTerrain.SampleHeight(x, z));
+        }
         // 树也要有碰撞：以前树只有 Transform+Mesh，坦克开过去直接穿过、炮弹也打不中
         if (model.name.StartsWith("tree_"))
             AddTreeCollider(parent, x, z, BattlefieldTerrain.SampleHeight(x, z),
@@ -439,6 +461,59 @@ public static class PropScatter
         var c = go.AddComponent<BoxCollider>();
         c.size = new Vector3(r * 2f, h, r * 2f);
         c.center = new Vector3(0f, h * 0.5f, 0f);
+    }
+
+    static Material _foundationMat;
+
+    /// <summary>地基裙边的材质（灰色混凝土），做成资源存盘，否则场景引用会丢。</summary>
+    static Material FoundationMat()
+    {
+        if (_foundationMat != null) return _foundationMat;
+
+        const string path = "Assets/Materials/Props/foundation_concrete.mat";
+        _foundationMat = AssetDatabase.LoadAssetAtPath<Material>(path);
+        if (_foundationMat == null)
+        {
+            var sh = Shader.Find("Standard");
+            _foundationMat = new Material(sh) { color = new Color(0.33f, 0.315f, 0.29f) };
+            _foundationMat.SetFloat("_Glossiness", 0.08f);
+            System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(path));
+            AssetDatabase.CreateAsset(_foundationMat, path);
+        }
+        return _foundationMat;
+    }
+
+    /// <summary>
+    /// 建筑地基：一块比楼体略大的实心混凝土台，中心在地面下 1 m，
+    /// 总高 3 m → 上沿露 0.35 m 遮住楼底接缝、往下埋 2.65 m 保证任何坡地都不露空。
+    /// 带 BoxCollider（实心，不是 trigger），所以车也撞得住。
+    /// </summary>
+    static void AddFoundation(GameObject building, Transform parent, float groundY)
+    {
+        // 量这栋楼渲染体的世界包围盒（含旋转/缩放），只取水平占地
+        bool has = false;
+        var b = new Bounds();
+        foreach (var r in building.GetComponentsInChildren<MeshRenderer>(true))
+        {
+            if (r == null) continue;
+            if (!has) { b = r.bounds; has = true; } else b.Encapsulate(r.bounds);
+        }
+        if (!has) return;
+
+        // 1.06 倍：只比楼体略大一点，正好把底边接缝盖住，不铺大灰板
+        float w = Mathf.Max(1.5f, b.size.x * 1.06f);
+        float d = Mathf.Max(1.5f, b.size.z * 1.06f);
+
+        // 上沿露 0.22 m、总高 3.0 m → 中心在地面下 1.28 m，埋深 2.78 m（斜坡上也不会露空）
+        var go = GameObject.CreatePrimitive(PrimitiveType.Cube);
+        go.name = "Foundation";
+        go.transform.SetParent(parent, false);
+        go.transform.position = new Vector3(b.center.x, groundY - 1.28f, b.center.z);
+        go.transform.localScale = new Vector3(w, 3.0f, d);
+        go.transform.localRotation = Quaternion.identity;
+        var mr = go.GetComponent<MeshRenderer>();
+        if (mr != null) mr.sharedMaterial = FoundationMat();
+        go.isStatic = true;
     }
 
     /// <summary>
@@ -578,7 +653,10 @@ public static class PropScatter
     static Material LuxMaterialFor(string modelName)
     {
         if (string.IsNullOrEmpty(modelName)) return null;
-        if (!modelName.StartsWith("tree_") && !modelName.StartsWith("building_")) return null;
+        // 2026-11-11：加了废土建筑（waste_ 前缀）。漏了这一条 → 新楼全部渲染成白模，
+        // 因为下面 Palette 里查不到 "Designer_Logic_PBR"，材质就保持原样（无贴图 + 纯白）。
+        if (!modelName.StartsWith("tree_") && !modelName.StartsWith("building_")
+            && !modelName.StartsWith("waste_")) return null;
 
         string key = "LUX_" + modelName;
         if (MatCache.TryGetValue(key, out var cached) && cached != null) return cached;

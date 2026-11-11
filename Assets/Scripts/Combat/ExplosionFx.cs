@@ -66,26 +66,27 @@ public static class ExplosionFx
         var dust = NewSystem(root.transform, "Dust", AlphaMat());
         var main = dust.main;
         main.duration = 0.35f;
-        main.startLifetime = new ParticleSystem.MinMaxCurve(0.45f, 1.05f);
-        main.startSpeed = new ParticleSystem.MinMaxCurve(s * 1.1f, s * 2.8f);
-        main.startSize = new ParticleSystem.MinMaxCurve(s * 0.28f, s * 0.72f);
+        main.startLifetime = new ParticleSystem.MinMaxCurve(0.55f, 1.35f);
+        main.startSpeed = new ParticleSystem.MinMaxCurve(s * 1.6f, s * 3.8f);
+        main.startSize = new ParticleSystem.MinMaxCurve(s * 0.45f, s * 1.05f);   // 2026-11-11：小了完全看不见
         main.startRotation = new ParticleSystem.MinMaxCurve(0f, Mathf.PI * 2f);
-        main.gravityModifier = 0.18f;
-        main.maxParticles = 48;
+        main.gravityModifier = 0.22f;
+        main.maxParticles = 90;
 
-        Burst(dust, 16);
+        Burst(dust, 30);
         Shape(dust, s * 0.18f);
 
+        // 颜色偏亮：墙是灰的，烟也得比墙亮一档才看得见
         ColorOver(dust, Gradient(
-            new Color(0.74f, 0.70f, 0.62f, 0.90f),
-            new Color(0.64f, 0.60f, 0.54f, 0.50f),
-            new Color(0.56f, 0.53f, 0.49f, 0f)));
+            new Color(0.88f, 0.85f, 0.78f, 0.95f),
+            new Color(0.76f, 0.73f, 0.66f, 0.60f),
+            new Color(0.64f, 0.61f, 0.56f, 0f)));
 
         var size = dust.sizeOverLifetime;
         size.enabled = true;
-        size.size = new ParticleSystem.MinMaxCurve(1f, AnimationCurve.EaseInOut(0f, 0.55f, 1f, 1.7f));
+        size.size = new ParticleSystem.MinMaxCurve(1f, AnimationCurve.EaseInOut(0f, 0.6f, 1f, 1.9f));
 
-        Dampen(dust, s * 0.9f, 0.7f);
+        Dampen(dust, s * 1.1f, 0.7f);
 
         Object.Destroy(root, 2.0f);
     }

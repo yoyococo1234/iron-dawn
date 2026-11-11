@@ -1187,26 +1187,32 @@ public class MatchHUD : MonoBehaviour
                           cy - Mathf.Cos(a) * R * f * 0.98f - 1.5f, 3f, 3f), c);
         }
 
-        // 本船：中心的小箭头，**指向船头方向**（雷达是北朝上的，不跟船转）
-        float shipYaw = p.transform.eulerAngles.y;
+        // 2026-11-11 用户要求：小地图**跟着车头转**，自己的箭头永远朝上（不再固定朝北）。
+        // 地图朝向 = 本车 yaw，下面的相对角全部按这个 yaw 算。
+        float mapYaw = p.transform.eulerAngles.y;
         var me = new Color(0.55f, 0.95f, 1f, 0.95f);
-        for (int i = 1; i <= 9; i++)
+        for (int i = 1; i <= 11; i++)
         {
-            float f = i / 9f;
-            float a = shipYaw * Mathf.Deg2Rad;
-            float px = cx + Mathf.Sin(a) * 10f * f;
-            float py = cy - Mathf.Cos(a) * 10f * f;
-            float w = 4.2f * (1f - f * 0.55f);
+            float f = i / 11f;
+            float px = cx;
+            float py = cy - 13f * f;
+            float w = 5.2f * (1f - f * 0.5f);
             Fill(new Rect(px - w * 0.5f, py - w * 0.5f, w, w), me);
         }
+        // 车头两侧的小翼，一眼看出"上 = 我的车头"
+        Fill(new Rect(cx - 7f, cy - 1f, 4f, 3f), me);
+        Fill(new Rect(cx + 3f, cy - 1f, 4f, 3f), me);
         Fill(new Rect(cx - 2f, cy - 2f, 4f, 4f), new Color(1f, 1f, 1f, 0.95f));
 
-        // 北向标记
-        Text(new Rect(cx - 12f, cy - R - 22f, 24f, 20f), "北", _s18,
-             new Color(0.55f, 0.95f, 0.85f, 0.8f), TextAnchor.MiddleCenter);
+        // 北向标记：地图跟着车头转，所以"北"要绕着自己转
+        float northAng = -mapYaw * Mathf.Deg2Rad;
+        float nx = cx + Mathf.Sin(northAng) * (R - 8f);
+        float ny = cy - Mathf.Cos(northAng) * (R - 8f);
+        Text(new Rect(nx - 12f, ny - 11f, 24f, 22f), "北", _s18,
+             new Color(0.55f, 0.95f, 0.85f, 0.85f), TextAnchor.MiddleCenter);
 
-        // 目标点：世界方向直接换算（北朝上，所以参考角恒为 0）
-        const float yaw = 0f;
+        // 目标点：世界方向 → 相对车头的角度
+        float yaw = mapYaw;
         var pos = p.transform.position;
 
         // 鱼雷先画（在船下面，别被船点盖住）；坦克/飞机不显示鱼雷

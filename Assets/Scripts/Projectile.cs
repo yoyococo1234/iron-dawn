@@ -87,9 +87,10 @@ public class Projectile : MonoBehaviour
                 }
                 else
                 {
-                    // 2026-11-11：打在建筑/地面/岩石上 —— 冒一团烟尘，别只是"啪一下消失"
-                    float sc = _ammo != null && _ammo.id != null && _ammo.id.Contains("mg") ? 1.0f : 2.4f;
-                    ExplosionFx.Impact(h.point, h.normal, sc);
+                    // 2026-11-11：打在建筑/地面/岩石上 —— 冒一团烟尘，别只是"啪一下消失"。
+                    // 建筑打不穿：炮弹一撞到网格就销毁，不会穿过去打到后面的东西。
+                    bool isMg = _ammo != null && !string.IsNullOrEmpty(_ammo.id) && _ammo.id.Contains("mg");
+                    ExplosionFx.Impact(h.point, h.normal, isMg ? 1.3f : 3.4f);
                 }
                 Destroy(gameObject);
                 return;
