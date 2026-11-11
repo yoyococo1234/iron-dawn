@@ -783,7 +783,30 @@ public class MatchHUD : MonoBehaviour
         Text(new Rect(x, y + 170f, w, 34f), $"我方命 {mm.TeamLives(0)}　:　{mm.TeamLives(1)} 敌方命", _s32, WithA(Color.white, k), TextAnchor.MiddleCenter);
         Text(new Rect(x, y + 216f, w, 28f), $"我的金币 {mm.Gold}　·　剩余时间 {mm.TimeText}", _s20, WithA(CGold, k), TextAnchor.MiddleCenter);
 
-        Text(new Rect(x, y + 280f, w, 40f), "按 <b>R</b> 重新开始", _s24, WithA(new Color(1f, 1f, 1f, 0.9f), k), TextAnchor.MiddleCenter);
+        // 2026-11-11：把「按 R 重新开始」那行文字换成**可点按钮**（R 键照旧有效）。
+        // 坑：这一层 GUI.matrix 既缩放过（_scale）又套了一层 ScaleAroundPivot(pop)，
+        // 命中判断必须把鼠标坐标**先还原 pop**，否则缩放 0.94 的那 0.4 s 里按钮点不中。
+        var btn = new Rect(x + w * 0.5f - 160f, y + 272f, 320f, 58f);
+        Vector2 vp = new Vector2(Input.mousePosition.x / _scale,
+                                 (Screen.height - Input.mousePosition.y) / _scale);
+        float pcx = _vw * 0.5f, pcy = VH * 0.5f;
+        Vector2 vpUnpop = new Vector2(pcx + (vp.x - pcx) / Mathf.Max(0.01f, pop),
+                                      pcy + (vp.y - pcy) / Mathf.Max(0.01f, pop));
+        bool over = k > 0.6f && btn.Contains(vpUnpop);
+
+        Fill(btn, WithA(over ? new Color(1f, 0.84f, 0.35f, 0.22f) : new Color(0.12f, 0.14f, 0.18f, 0.95f), k));
+        Fill(new Rect(btn.x, btn.y, btn.width, 2f), WithA(CGold, 0.85f * k));
+        Fill(new Rect(btn.x, btn.yMax - 2f, btn.width, 2f), WithA(CGold, 0.85f * k));
+        Fill(new Rect(btn.x, btn.y, 2f, btn.height), WithA(CGold, 0.85f * k));
+        Fill(new Rect(btn.xMax - 2f, btn.y, 2f, btn.height), WithA(CGold, 0.85f * k));
+        Text(btn, over ? "<b>再来一局</b>（R）" : "再来一局（R）", _s24,
+             WithA(over ? CGold : new Color(1f, 1f, 1f, 0.9f), k), TextAnchor.MiddleCenter);
+
+        if (over && Event.current != null && Event.current.type == EventType.MouseUp)
+        {
+            Event.current.Use();
+            _wantRestart = true;      // 不在 OnGUI 里 LoadScene：等下一帧 Update 再重启
+        }
 
         GUI.matrix = oldM;
     }
@@ -996,8 +1019,19 @@ public class MatchHUD : MonoBehaviour
     static float _radarNextScan;
     static Texture2D _radarDisc;
 
+    static bool _wantRestart;    // 结算面板「再来一局」按钮按下后，延到下一帧 Update 再重启
+
     void Update()
     {
+        // 2026-11-11：结算面板的「再来一局」按钮在这里落地。
+        // 不要在 OnGUI 里直接 SceneManager.LoadScene —— 会在 GUI 遍历中销毁对象。
+        if (_wantRestart)
+        {
+            _wantRestart = false;
+            var m0 = MatchManager.Instance;
+            if (m0 != null) m0.Restart();
+        }
+
         // 2026-11-10：受伤/金币的差值必须每帧算一次，所以在下面那个 0.15 s 的提前 return 之前
         PollCombatFx();
 
