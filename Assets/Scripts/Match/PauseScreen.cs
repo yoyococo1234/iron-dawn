@@ -17,6 +17,7 @@ public class PauseScreen : MonoBehaviour
 
     float _savedScale = 1f;
     float _anim;                 // 开合进度（0 = 关 / 1 = 开）
+    static bool _volDrag;        // 是否正在拖音量滑条（2026-11-11）
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
     static void Boot()
@@ -73,7 +74,7 @@ public class PauseScreen : MonoBehaviour
         // 半透明压暗，身后的战场仍可见
         UiKit.Box(new Rect(0, 0, vw, 1080f), new Color(0.01f, 0.015f, 0.025f, 0.66f));
 
-        float pw = 460f, ph = 120f + Keys.Length * 46f + 30f;
+        float pw = 460f, ph = 120f + Keys.Length * 46f + 30f + 56f;   // 2026-11-11：+56 给音量滑条
         var panel = UiKit.PopIn(new Rect(vw * 0.5f - pw * 0.5f, 540f - ph * 0.5f, pw, ph), k);
         UiKit.Card(panel);
 
@@ -104,6 +105,31 @@ public class PauseScreen : MonoBehaviour
 
             y += 46f;
         }
+
+        // ---------- 界面音效音量（2026-11-11 补 §7.3）----------
+        // UiSound.Volume 之前硬编码 0.55，没有地方能调。这里给一条可拖的滑条。
+        // 注意：UiKit.Button 会吃掉鼠标事件，所以滑条自己处理 Event.current，且**不要**和按钮重叠。
+        UiKit.HLine(panel.x + 24f, y + 4f, pw - 48f);
+        float vy = y + 18f;
+        UiKit.Label(new Rect(panel.x + 30f, vy, pw - 60f, 26f), "界面音效音量", 16, UiKit.Desc, TextAnchor.MiddleLeft);
+        UiKit.Label(new Rect(panel.x + pw - 110f, vy, 80f, 26f), $"{Mathf.RoundToInt(UiSound.Volume * 100f)}%", 16,
+                    UiKit.Gold, TextAnchor.MiddleRight, true);
+
+        var track = new Rect(panel.x + 30f, vy + 30f, pw - 60f, 10f);
+        if (live)
+        {
+            var e = Event.current;
+            if (e != null)
+            {
+                if (e.type == EventType.MouseDown && track.Contains(mouse)) { _volDrag = true; e.Use(); }
+                else if (e.type == EventType.MouseUp && _volDrag) { _volDrag = false; e.Use(); }
+            }
+            if (_volDrag) UiSound.Volume = Mathf.Clamp01((mouse.x - track.x) / Mathf.Max(1f, track.width));
+        }
+        UiKit.Box(track, new Color(1f, 1f, 1f, 0.14f));
+        UiKit.Box(new Rect(track.x, track.y, track.width * Mathf.Clamp01(UiSound.Volume), track.height), UiKit.Gold);
+        UiKit.Box(new Rect(track.x + track.width * Mathf.Clamp01(UiSound.Volume) - 3f, track.y - 6f, 6f, track.height + 12f),
+                 new Color(1f, 1f, 1f, 0.92f));
 
         UiKit.EndScreen();          // 涟漪 + 浮字压在最上层，并复位透明度
         GUI.matrix = oldMatrix;
