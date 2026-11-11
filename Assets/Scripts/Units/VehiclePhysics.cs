@@ -75,10 +75,10 @@ public class VehiclePhysics : MonoBehaviour
     [Range(-1f, 1f)] public float aiThrottle;
     [Range(-1f, 1f)] public float aiSteer;
 
-    /// <summary>油门输入：AI 优先，其次自动驾驶，最后键盘。</summary>
-    float ThrottleInput => aiControlled ? aiThrottle : (autoDrive ? autoThrottle : Input.GetAxis("Vertical"));
+    /// <summary>油门输入：AI 优先，其次自动驾驶，最后键盘（2026-11-11：键盘改成读 Bindings，支持 WASD 改键）。</summary>
+    float ThrottleInput => aiControlled ? aiThrottle : (autoDrive ? autoThrottle : Bindings.AxisV);
     /// <summary>转向输入：AI 优先，其次键盘。</summary>
-    float SteerInput => aiControlled ? aiSteer : Input.GetAxis("Horizontal");
+    float SteerInput => aiControlled ? aiSteer : Bindings.AxisH;
 
     [Tooltip("进水后多少秒整车报废（会正常爆炸并计入阵亡）")]
     public float drownSeconds = 5f;
@@ -467,9 +467,9 @@ public class VehiclePhysics : MonoBehaviour
         else
         {
             // 玩家：W/S 油门，A/D 横滚，鼠标控俯仰偏航（虚拟摇杆，松手自动回中）
-            airThrottle = Mathf.Clamp01(airThrottle + Input.GetAxis("Vertical") * airThrottleRate * dt);
+            airThrottle = Mathf.Clamp01(airThrottle + Bindings.AxisV * airThrottleRate * dt);
 
-            float rollIn = Input.GetAxis("Horizontal");
+            float rollIn = Bindings.AxisH;
             airRoll = Mathf.Clamp(airRoll + rollIn * airRollRate * dt, -85f, 85f);
             if (Mathf.Abs(rollIn) < 0.05f) airRoll = Mathf.MoveTowards(airRoll, 0f, 45f * dt);
 

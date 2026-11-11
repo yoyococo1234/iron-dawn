@@ -74,6 +74,48 @@ public class GarageScreen : MonoBehaviour
 
         float y = UiKit.Heading(vw, 34f, _title, _subtitle);
 
+        // ---- 左上角「退出」（2026-11-11 用户要求）----
+        // 还没出击（场上没车）= 退出这一局，回主菜单（重载场景，一切重置）；
+        // 已经有车（阵亡后重选 / G 中途换车）= 取消，关掉车库继续打。
+        {
+            var r0 = new Rect(24f, 26f, 168f, 52f);
+            var h0 = UiKit.Button("garage_exit", r0, mouse, live);
+            var rr = UiKit.Lift(r0, h0);
+            bool hot = h0.hover01 > 0.4f;
+            UiKit.Box(rr, hot ? new Color(1f, 0.42f, 0.36f, 0.20f) : new Color(0.055f, 0.070f, 0.100f, 0.88f));
+            UiKit.Frame(rr, hot ? UiKit.Bad : UiKit.Edge);
+            UiKit.Label(rr, "← 退出", 20, hot ? UiKit.Bad : UiKit.Desc, TextAnchor.MiddleCenter, true);
+            if (h0.clicked)
+            {
+                UiSound.Play(UiSound.Kind.Close);
+                if (mm.Player == null) mm.Restart();      // 回主菜单
+                else Close();                             // 取消换车
+            }
+        }
+
+        // ---- 海空解锁倒计时（开局只玩坦克）----
+        {
+            float seaIn = MatchSettings.UnlockIn(Domain.Sea);
+            float airIn = MatchSettings.UnlockIn(Domain.Air);
+            string note = null;
+            if (seaIn > 0f || airIn > 0f)
+            {
+                float m = Mathf.Max(seaIn, airIn);
+                note = $"海空载具 {Mathf.CeilToInt(m / 60f)} 分钟后开放";
+            }
+            else if (MatchSettings.UnlockMinutes > 0)
+            {
+                note = "海空载具已开放";
+            }
+            if (note != null)
+            {
+                var nr = new Rect(vw - 24f - 360f, 34f, 360f, 40f);
+                UiKit.Box(nr, new Color(0.055f, 0.070f, 0.100f, 0.88f));
+                UiKit.Frame(nr, (seaIn > 0f || airIn > 0f) ? UiKit.Gold : UiKit.Ally);
+                UiKit.Label(nr, note, 17, (seaIn > 0f || airIn > 0f) ? UiKit.Gold : UiKit.Ally, TextAnchor.MiddleCenter, true);
+            }
+        }
+
         // ---- 状态条：四个小格 ----
         string[] statK = { "金币", "剩余部署", "敌方在场", "我方剩余命" };
         string[] statV = { mm.Gold.ToString(), $"{mm.LivesLeft} 次", $"{mm.EnemiesLeft} 台", mm.TeamLives(0).ToString() };
@@ -110,7 +152,8 @@ public class GarageScreen : MonoBehaviour
                 // slot 是命中区（不随动画移动），r 是实际画出来的位置（悬停上浮 / 按下下沉 / 拒绝抖动）
                 var slot = new Rect(x0 + col * (cw + gap), y0 + row * (ch + gap), cw, ch);
 
-                bool afford = mm.CanAfford(def);
+                bool unlocked = MatchSettings.DomainUnlocked(def.domain);   // 2026-11-11：开局只玩坦克
+                bool afford = unlocked && mm.CanAfford(def);
                 bool free = afford && mm.Gold < def.price;
 
                 var hit = UiKit.Button("garage_" + def.displayName, slot, mouse, afford && live);
@@ -162,12 +205,24 @@ public class GarageScreen : MonoBehaviour
                 UiKit.HLine(r.x + 1f, foot.y, r.width - 2f, hover ? 0.0f : 0.13f);
                 if (hover) UiKit.Box(new Rect(r.x + 1f, foot.y, r.width - 2f, 1f), new Color(1f, 0.84f, 0.35f, 0.45f));
 
-                string priceTxt = free ? "免费补充" : $"￥ {def.price}";
+                string priceTxt = !unlocked ? "未开放"
+                                : free ? "免费补充" : $"￥ {def.price}";
                 UiKit.Label(new Rect(ix, foot.y, iw * 0.5f, foot.height), priceTxt, 24,
-                    afford ? UiKit.Gold : UiKit.Mute, TextAnchor.MiddleLeft, true);
-                UiKit.Label(new Rect(ix + iw * 0.5f, foot.y, iw * 0.5f, foot.height),
-                    afford ? (hover ? "点击出击 ›" : "出击") : "金币不足", 18,
-                    afford ? (hover ? UiKit.Gold : UiKit.Desc) : UiKit.Bad, TextAnchor.MiddleRight, hover);
+                    unlocked && afford ? UiKit.Gold : UiKit.Mute, TextAnchor.MiddleLeft, true);
+
+                string rightTxt;
+                Color rightC;
+                if (!unlocked)
+                {
+                    int mins = Mathf.CeilToInt(MatchSettings.UnlockIn(def.domain) / 60f);
+                    rightTxt = $"{mins} 分钟后开放";
+                    rightC = UiKit.Gold;
+                }
+                else if (afford) { rightTxt = hover ? "点击出击 ›" : "出击"; rightC = hover ? UiKit.Gold : UiKit.Desc; }
+                else { rightTxt = "金币不足"; rightC = UiKit.Bad; }
+
+                UiKit.Label(new Rect(ix + iw * 0.5f, foot.y, iw * 0.5f, foot.height), rightTxt, 18,
+                    rightC, TextAnchor.MiddleRight, hover && afford);
 
                 if (hit.clicked)
                 {
@@ -175,8 +230,9 @@ public class GarageScreen : MonoBehaviour
                 }
                 else if (hit.denied)
                 {
-                    // 点不起：卡片已经抖过了，再补一句浮字说明原因
-                    UiKit.Float("金币不足", new Vector2(r.center.x, r.y + 46f), UiKit.Bad);
+                    // 点不起 / 没开放：卡片已经抖过了，再补一句浮字说明原因
+                    UiKit.Float(unlocked ? "金币不足" : "该域还没开放", new Vector2(r.center.x, r.y + 46f),
+                        unlocked ? UiKit.Bad : UiKit.Gold);
                 }
             }
         }

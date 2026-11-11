@@ -287,7 +287,7 @@ public class CameraFollow : MonoBehaviour
         bool mgMode = ptc != null && ptc.MgMode;
         bool lockedNow = Cursor.lockState == CursorLockMode.Locked;
         _mgScoped = mgMode && _playerAlive && lockedNow &&
-                    (Input.GetKey(KeyCode.LeftShift) || Input.GetKey(KeyCode.RightShift))
+                    Bindings.ScopeHeld
                     || (mgMode && forceMgScopeForTest);
 
         if (Cursor.lockState == CursorLockMode.Locked)
@@ -346,7 +346,7 @@ public class CameraFollow : MonoBehaviour
         // 机枪模式下 Shift 走机枪镜（见下面的 MgScopeCamera），不再套炮镜。
         bool locked = lockedNow;
         _scoped = !mgMode &&
-                  ((_playerAlive && locked && (Input.GetKey(KeyCode.LeftShift) || Input.GetKey(KeyCode.RightShift)))
+                  ((_playerAlive && locked && Bindings.ScopeHeld)
                    || forceScopeForTest);
         _rightZoom = _playerAlive && locked && Input.GetMouseButton(1) && !_scoped && !_mgScoped;
         var cam = GetComponent<Camera>();
@@ -578,7 +578,7 @@ public class CameraFollow : MonoBehaviour
         // Shift = 开镜（大倍率 + 空战分划）；右键 = 只是把视野收窄一点，机位不动。
         // 和坦克那套保持一致：右键是"轻微放大"，Shift 才是开镜。
         _airScoped = (_playerAlive && locked &&
-                      (Input.GetKey(KeyCode.LeftShift) || Input.GetKey(KeyCode.RightShift)))
+                      Bindings.ScopeHeld)
                      || forceAirScopeForTest;
         _rightZoom = _playerAlive && locked && Input.GetMouseButton(1) && !_airScoped;
 

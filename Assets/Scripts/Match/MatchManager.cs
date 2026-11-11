@@ -143,6 +143,8 @@ public class MatchManager : MonoBehaviour
     void Start()
     {
         timeLeft = match.matchTimeLimitMinutes * 60f;
+        MatchSettings.MatchElapsed = 0f;                 // 2026-11-11：海/空解锁计时从 0 开始
+        VehicleAI.Skill = MatchSettings.AiSkill;         // AI 难度（游戏调整里选）
 
         zones.Clear();
         if (battlefield.zones != null)
@@ -153,17 +155,34 @@ public class MatchManager : MonoBehaviour
         BuildUnits();
         BattleEvents.VehicleDestroyed += OnVehicleDestroyed;
 
-        // AI 立刻进场（你不用等他们）
+        // AI 立刻进场（你不用等他们）；海/空的单位要等解锁时间到了才出场
         foreach (var u in units)
-            if (!u.isHuman) SpawnUnit(u, PickDef(u));
+        {
+            if (u.isHuman) continue;
+
+            var dom = DomainOf(u);
+            float wait = MatchSettings.UnlockIn(dom);
+            if (wait > 0f)
+            {
+                // 还没解锁：挂成"待出场"，由 UpdateRespawns 每拍检查解锁，到点补上且不扣命
+                u.firstSpawnPending = true;
+                u.respawnAt = -1f;
+                continue;
+            }
+            SpawnUnit(u, PickDef(u));
+        }
 
         int rosterCount = Roster != null ? Roster.Length : 0;
         Debug.Log($"[MatchManager] 自检 roster={rosterCount} zones={zones.Count} allyX={battlefield.allySpawnLineX:F0} " +
-                  $"units={units.Count} lives={match.playerLives} gold={match.startingGold}");
+                  $"units={units.Count} lives={match.playerLives} gold={MatchSettings.StartingGold}");
         if (rosterCount == 0) Debug.LogError("[MatchManager] roster 为空 —— MatchDef 没序列化进场景");
         if (zones.Count == 0) Debug.LogError("[MatchManager] zones 为空 —— BattlefieldDef 没序列化进场景");
 
-        PushFeed($"5v5 · 每人 {match.playerLives} 条命 · 打光对方全部命数获胜");
+        int a = TeamCount(0), e = TeamCount(1);
+        string unlockNote = MatchSettings.UnlockMinutes > 0
+            ? $" · 海空 {MatchSettings.UnlockMinutes} 分钟后开放"
+            : "";
+        PushFeed($"我方 {a} 台 vs 敌方 {e} 台 · 每人 {match.playerLives} 条命{unlockNote}");
     }
 
     void OnDestroy() => BattleEvents.VehicleDestroyed -= OnVehicleDestroyed;
@@ -174,22 +193,51 @@ public class MatchManager : MonoBehaviour
         _map.Clear();
         _human = null;
 
+        // 2026-11-11：人数不再写死 5v5，改成「游戏调整」里按类型配（只算 AI，玩家另算一台）。
         for (int team = 0; team < 2; team++)
         {
-            for (int i = 0; i < teamSize; i++)
+            var ids = MatchSettings.BuildAiRoster(team);
+
+            // 玩家自己占 team0 的 0 号位，车由车库选
+            if (team == 0)
+            {
+                var me = new UnitState
+                {
+                    team = 0,
+                    index = 0,
+                    isHuman = true,
+                    gold = MatchSettings.StartingGold,
+                    lives = Mathf.Max(1, match.playerLives),
+                };
+                units.Add(me);
+                _human = me;
+            }
+
+            for (int i = 0; i < ids.Count; i++)
             {
                 var u = new UnitState
                 {
                     team = team,
-                    index = i,
-                    isHuman = team == 0 && i == 0,
-                    gold = match.startingGold,
+                    index = i + (team == 0 ? 1 : 0),   // team0 的 AI 从 1 号开始编号，别和"你"撞号
+                    isHuman = false,
+                    gold = MatchSettings.StartingGold,
                     lives = Mathf.Max(1, match.playerLives),
+                    prefId = ids[i],
                 };
                 units.Add(u);
-                if (u.isHuman) _human = u;
             }
         }
+
+        teamSize = Mathf.Max(TeamCount(0), TeamCount(1));
+        Debug.Log($"[MatchManager] 人数配置：我方 {TeamCount(0)} 台 / 敌方 {TeamCount(1)} 台（含你）");
+    }
+
+    /// <summary>某一方总台数（含玩家）。</summary>
+    int TeamCount(int team)
+    {
+        int n = 0;
+        foreach (var u in units) if (u.team == team) n++;
+        return n;
     }
 
     // ---------------- 每帧 ----------------
@@ -200,7 +248,7 @@ public class MatchManager : MonoBehaviour
 
         if (matchOver)
         {
-            if (Input.GetKeyDown(KeyCode.R)) Restart();
+            if (Bindings.Down(Bindings.Act.Restart)) Restart();
             return;
         }
 
@@ -211,6 +259,8 @@ public class MatchManager : MonoBehaviour
         }
 
         timeLeft -= Time.deltaTime;
+        // 2026-11-11：海/空解锁计时（开局只玩坦克，到点才放海空）
+        MatchSettings.MatchElapsed = Mathf.Max(0f, match.matchTimeLimitMinutes * 60f - timeLeft);
         if (timeLeft <= 0f)
         {
             timeLeft = 0f;
@@ -240,14 +290,32 @@ public class MatchManager : MonoBehaviour
 
     VehicleDef PickDef(UnitState u)
     {
-        string[] ids = u.team == 0
-            ? new[] { "land_main", "land_heavy", "sea_gunboat", "air_fighter" }
-            : new[] { "land_main", "land_heavy", "sea_gunboat", "air_fighter", "air_attacker" };
-        string id = ids[u.index % ids.Length];
+        // 2026-11-11：单位开什么车由「游戏调整」里的人数配置决定（BuildUnits 写进 prefId）。
+        // 只有没配的情况才退回旧的平均分配逻辑。
+        string id = u.prefId;
+        if (string.IsNullOrEmpty(id))
+        {
+            string[] ids = u.team == 0
+                ? new[] { "land_main", "land_heavy", "sea_gunboat", "air_fighter" }
+                : new[] { "land_main", "land_heavy", "sea_gunboat", "air_fighter", "air_attacker" };
+            id = ids[u.index % ids.Length];
+        }
 
         var r = Roster;
         if (r != null) foreach (var d in r) if (d != null && d.id == id) return d;
         return r != null && r.Length > 0 ? r[0] : null;
+    }
+
+    /// <summary>这个单位的车属于哪个域（用来判断海/空有没有解锁）。</summary>
+    static Domain DomainOf(UnitState u)
+    {
+        switch (u.prefId)
+        {
+            case MatchSettings.IdShip: return Domain.Sea;
+            case MatchSettings.IdFighter:
+            case MatchSettings.IdAttacker: return Domain.Air;
+            default: return Domain.Land;
+        }
     }
 
     VehicleCombat SpawnUnit(UnitState u, VehicleDef def)
@@ -339,9 +407,32 @@ public class MatchManager : MonoBehaviour
         foreach (var u in units)
         {
             if (u.isHuman || u.lives <= 0 || u.vehicle != null) continue;
+
+            // 2026-11-11：开局时海/空还没解锁的那批 —— 每拍检查一次解锁状态，
+            // 到点就出场，而且**不扣命、不扣钱**（第一次出场不算复活）。
+            // 注意这里必须在下面 respawnAt 判断之前：待出场单位的 respawnAt 是 -1。
+            if (u.firstSpawnPending)
+            {
+                var d0 = u.lastDef != null ? u.lastDef : PickDef(u);
+                if (d0 != null && !MatchSettings.DomainUnlocked(d0.domain)) continue;
+                u.firstSpawnPending = false;
+                u.respawnAt = -1f;
+                if (SpawnUnit(u, d0) != null)
+                    PushFeed($"{u.Label} 进入战场（{(d0 != null ? d0.displayName : "载具")}）");
+                continue;
+            }
+
             if (u.respawnAt < 0f || Time.time < u.respawnAt) continue;
 
             var def = u.lastDef != null ? u.lastDef : PickDef(u);
+
+            // 复活时海/空还没解锁就先等（不会发生：解锁是单向的，这里只是兜底）
+            if (def != null && !MatchSettings.DomainUnlocked(def.domain))
+            {
+                u.respawnAt = Time.time + 2f;
+                continue;
+            }
+
             int cost = def != null ? def.price : 0;
 
             if (u.gold < cost)

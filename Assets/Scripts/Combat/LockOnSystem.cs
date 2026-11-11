@@ -63,7 +63,7 @@ public class LockOnSystem : MonoBehaviour
             return;
         }
 
-        bool want = Input.GetKey(KeyCode.LeftControl) || Input.GetKey(KeyCode.RightControl);
+        bool want = Bindings.Held(Bindings.Act.LockOn);
         if (!want || player == null || !player.Alive || PauseScreen.Paused || ShopScreen.Open)
         {
             Clear();

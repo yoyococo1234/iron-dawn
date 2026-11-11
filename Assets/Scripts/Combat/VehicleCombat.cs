@@ -180,11 +180,17 @@ public class VehicleCombat : MonoBehaviour
     /// <summary>副武器（第二把：炸弹 / 导弹）。AI 用。</summary>
     public WeaponDef Secondary => def != null && def.weapons != null && def.weapons.Length > 1 ? def.weapons[1] : null;
 
-    /// <summary>指定武器的当前弹药。</summary>
+    /// <summary>
+    /// 指定武器的当前弹药。
+    /// 2026-11-11 用户要求：**弹药类型取消** —— 只有武器有区别，弹药没有区别。
+    /// 所以这里恒取第一种弹，ammoIndex 不再参与（数据里每条武器只剩一种弹）。
+    /// 保留这个函数是因为 Projectile / Torpedo / VehicleModule 还要用 AmmoDef 取
+    /// 外观材质、对装甲的倍率和模块伤害系数。
+    /// </summary>
     public AmmoDef AmmoFor(WeaponDef w)
     {
         if (w == null || w.ammoTypes == null || w.ammoTypes.Length == 0) return null;
-        return w.ammoTypes[Mathf.Clamp(ammoIndex, 0, w.ammoTypes.Length - 1)];
+        return w.ammoTypes[0];
     }
 
     /// <summary>主武器当前弹药。</summary>

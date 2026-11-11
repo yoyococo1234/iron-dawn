@@ -40,8 +40,38 @@ public class VehicleAI : MonoBehaviour
     [Tooltip("没有交战目标时，主动去抢最近的、不属于自己队的资源点")]
     public bool captureZones = true;
 
+    // ==================== 难度（2026-11-11 用户：AI 有点打不过，要削弱） ====================
+    /// <summary>
+    /// 技能系数 0.3~1。由 MatchManager 从 MatchSettings.AiSkill 写进来。
+    /// 影响四件事：视野、开火距离、思考间隔、**瞄准误差**（这条最关键 ——
+    /// 原版 AI 用完美提前量瞄准、没有任何误差，等于枪枪命中）。
+    /// </summary>
+    public static float Skill = 1f;
+
+    /// <summary>0..1 的归一化技能（0.4 以下按 0 算）。</summary>
+    static float Skill01 => Mathf.Clamp01((Skill - 0.4f) / 0.6f);
+
+    /// <summary>实际视野：低技能缩到 55%。</summary>
+    float VisionEff => visionRange * Mathf.Lerp(0.60f, 0.92f, Skill01);
+
+    /// <summary>实际开火距离：低技能缩到 55%。</summary>
+    float FireEff => fireRange * Mathf.Lerp(0.45f, 0.85f, Skill01);
+
+    /// <summary>实际思考间隔：低技能反应更慢（最长 1.6 倍）。</summary>
+    float ThinkEff => thinkInterval * Mathf.Lerp(1.6f, 1f, Skill01);
+
+    /// <summary>
+    /// 瞄准误差半径（米）：按距离线性放大。
+    /// 固定底数 2.5 m + 距离项。普通档（0.75）300 m 上偏约 7 m、100 m 上偏约 4 m；
+    /// 轻松档（0.55）300 m 上偏约 11 m（大概率打飞）；原版档（1.0）300 m 上偏约 3.7 m。
+    /// </summary>
+    float AimErrorOf(float dist) => 1.5f + dist * Mathf.Lerp(0.010f, 0.0015f, Skill01);
+
     public string StateText { get; private set; } = "待机";
     public VehicleCombat Target { get; private set; }
+
+    float _aimErrAt = -9f;
+    Vector3 _aimErr;
 
     VehicleCombat _self;
     VehiclePhysics _phys;
@@ -75,7 +105,7 @@ public class VehicleAI : MonoBehaviour
 
         if (Time.time >= _nextThink)
         {
-            _nextThink = Time.time + thinkInterval;
+            _nextThink = Time.time + ThinkEff;
             Think();
         }
 
@@ -182,14 +212,14 @@ public class VehicleAI : MonoBehaviour
             if (c == _self || !c.Alive || c.Team == _self.Team) continue;
 
             float dist = Vector3.Distance(transform.position, c.transform.position);
-            if (dist > visionRange) continue;
+            if (dist > VisionEff) continue;
 
             // 同域优先；飞机对所有目标一视同仁（本来就能打地面/海面），
             // 地面/海上单位只在近处才考虑跨域
             bool sameDomain = c.Def != null && _self.Def != null && c.Def.domain == _self.Def.domain;
             float score = dist * (sameDomain ? sameDomainBonus : 1f);
             bool isAir = _self.Def != null && _self.Def.domain == Domain.Air;
-            if (!sameDomain && !isAir && dist > visionRange * 0.5f) continue;
+            if (!sameDomain && !isAir && dist > VisionEff * 0.5f) continue;
 
             if (score < bestScore) { bestScore = score; best = c; }
         }
@@ -351,8 +381,8 @@ public class VehicleAI : MonoBehaviour
         get
         {
             var w = _self != null ? _self.Weapon : null;
-            if (w == null || w.range <= 1f) return fireRange;
-            return Mathf.Min(fireRange, w.range);
+            if (w == null || w.range <= 1f) return FireEff;
+            return Mathf.Min(FireEff, w.range);
         }
     }
 
@@ -422,8 +452,20 @@ public class VehicleAI : MonoBehaviour
         // 打天上的目标 → 切车顶机枪（主炮最多抬 20°，根本够不着飞机）
         EnsureWeaponForTarget();
 
-        Vector3 aim = LeadAimPoint(Target);
         float dist = Vector3.Distance(transform.position, Target.transform.position);
+
+        // 2026-11-11 削弱 AI：给瞄准加**误差**。原版用完美提前量、零误差，等于枪枪命中，
+        // 玩家根本打不过。误差每 0.5 s 重掷一次（不是每帧抖，否则炮塔永远对不准、看起来像抽风）。
+        if (Time.time - _aimErrAt > 0.5f)
+        {
+            _aimErrAt = Time.time;
+            float er = AimErrorOf(dist);
+            _aimErr = new Vector3(Random.Range(-er, er), Random.Range(-er, er) * 0.5f, Random.Range(-er, er));
+        }
+        Vector3 aim = LeadAimPoint(Target) + _aimErr;
+        // 误差不能把瞄准点压到地面以下：压下去通视判定会当成"被地形挡住"，AI 就一炮不放了
+        float groundY = BattlefieldTerrain.SampleHeight(aim.x, aim.z) + 0.9f;
+        if (aim.y < groundY) aim.y = groundY;
 
         // 没有炮塔 / 炮塔转速为 0（飞机）就不做对准门槛，否则永远打不出来
         bool hasTurret = _phys.turretBone != null && _self.Def != null && _self.Def.turretTurnSpeed > 0.1f;

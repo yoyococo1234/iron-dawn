@@ -30,7 +30,7 @@ public class ShopScreen : MonoBehaviour
 
     void Update()
     {
-        if (!Input.GetKeyDown(KeyCode.Tab)) return;
+        if (!Bindings.Down(Bindings.Act.Shop)) return;
 
         // 开局封面 / 车库 / 暂停界面里不抢 TAB
         if (PauseScreen.Paused) return;

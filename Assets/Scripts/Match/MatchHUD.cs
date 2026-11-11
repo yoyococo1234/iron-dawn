@@ -159,12 +159,11 @@ public class MatchHUD : MonoBehaviour
         Text(new Rect(hpBar.x + 8f, hpBar.y - 2f, 260f, 22f), $"{p.hp:F0} / {p.maxHp:F0}", _s18, Color.black, TextAnchor.MiddleLeft);
 
         var w2 = p.Weapon;
-        string ammo = p.Ammo != null ? p.Ammo.displayName : "—";
-        // 有备弹上限的武器（飞机挂架导弹）额外显示剩余发数
-        string ammoTxt = $"弹药 {ammo} · 武器 {(w2 != null ? w2.displayName : "—")}";
+        // 2026-11-11：弹药类型取消（只有武器有区别），这行只显示武器名 + 备弹数。
+        string ammoTxt = $"武器 {(w2 != null ? w2.displayName : "—")}";
         int left = p.CurrentAmmoLeft;
         int cap = p.CurrentAmmoCapacity;
-        if (cap > 0) ammoTxt += $"  {left}/{cap}";
+        if (cap > 0) ammoTxt += $"  备弹 {left}/{cap}";
         // 宽度从 420 收到 280：右边那行操作提示是从 x+w-230 起画的，420 会压到提示文字上（2026-11-10）
         Text(new Rect(x + 20f, y + 64f, 280f, 24f), ammoTxt, _s18, new Color(1f, 1f, 1f, 0.8f), TextAnchor.MiddleLeft);
 

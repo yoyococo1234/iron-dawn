@@ -56,7 +56,7 @@ public class PlayerTankController : MonoBehaviour
 
         // 按住 C = 自由视角（战雷那套）：镜头随便转，炮塔保持不动。
         // 这时继续用「按下 C 之前的瞄准点」，所以开火还是打在炮口指的方向上。
-        bool freeLook = Input.GetKey(KeyCode.C);
+        bool freeLook = Bindings.Held(Bindings.Act.FreeLook);
 
         Vector3 aimPoint;
         if (freeLook && _hasAim)
@@ -144,7 +144,7 @@ public class PlayerTankController : MonoBehaviour
         }
 
         // 开火：机枪模式打机枪，否则打当前炮塔武器
-        if ((Input.GetMouseButton(0) || Input.GetKey(KeyCode.Space)) && Time.time >= _fireLockUntil)
+        if (Bindings.FireHeld && Time.time >= _fireLockUntil)
         {
             if (_mgMode)
             {
@@ -160,14 +160,14 @@ public class PlayerTankController : MonoBehaviour
         }
 
         // Q 切换炮塔武器（舰炮/鱼雷…，**永远切不到机枪**）
-        if (Input.GetKeyDown(KeyCode.Q))
+        if (Bindings.Down(Bindings.Act.SwitchWeapon))
         {
             if (_mgMode) _mgMode = false;       // 机枪模式下按 Q = 退回炮塔武器
             else _combat.CycleWeapon();
         }
 
         // V 进/出机枪模式（只有装了独立挂点机枪的载具才有）
-        if (Input.GetKeyDown(KeyCode.V))
+        if (Bindings.Down(Bindings.Act.MgMode))
         {
             var dw2 = _combat.DeckWeapon;
             if (dw2 != null && _combat.Physics != null && _combat.Physics.HasDeckGun)
@@ -179,19 +179,14 @@ public class PlayerTankController : MonoBehaviour
         }
 
         // G = 随时换载具（测试用：不用等阵亡，直接回车库重选）
-        if (Input.GetKeyDown(KeyCode.G))
+        if (Bindings.Down(Bindings.Act.Garage))
         {
             var mm = MatchManager.Instance;
             if (mm != null) mm.OpenGarageForSwap();
         }
 
-        // 切弹药
-        var w = _combat.Weapon;
-        if (w != null && w.ammoTypes != null)
-        {
-            for (int i = 0; i < Mathf.Min(3, w.ammoTypes.Length); i++)
-                if (Input.GetKeyDown(KeyCode.Alpha1 + i)) _combat.ammoIndex = i;
-        }
+        // 2026-11-11 用户要求：弹药类型取消（只有武器有区别，弹药没有区别，别画蛇添足）。
+        // 原来的 1/2/3 切弹药整段删掉；ammoIndex 固定 0，每把武器只用第一种弹。
 
         // X = 放干扰弹（只有炮艇有）：骗走追过来的鱼雷
         TickDecoy();
@@ -225,7 +220,7 @@ public class PlayerTankController : MonoBehaviour
 
         bool sea = _combat != null && _combat.Def != null && _combat.Def.domain == Domain.Sea;
         if (!sea) return;
-        if (!Input.GetKeyDown(KeyCode.X)) return;
+        if (!Bindings.Down(Bindings.Act.Decoy)) return;
         if (decoyCharges <= 0) return;
         if (Time.time < _decoyReadyAt) return;
 

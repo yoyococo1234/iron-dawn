@@ -29,7 +29,7 @@ public class PauseScreen : MonoBehaviour
 
     void Update()
     {
-        if (Input.GetKeyDown(KeyCode.P)) Toggle();
+        if (Bindings.Down(Bindings.Act.Pause)) Toggle();
     }
 
     /// <summary>暂停 / 继续（P 键和面板上的按钮都走这里）。</summary>
