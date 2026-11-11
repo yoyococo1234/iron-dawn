@@ -423,7 +423,9 @@ public static class PropScatter
     /// </summary>
     static void AddTreeCollider(Transform parent, float x, float z, float baseY, float worldHeight, float worldFootRadius)
     {
-        float r = Mathf.Clamp(worldFootRadius * 0.30f, 0.35f, 1.4f);
+        // 2026-11-11 用户反馈"明明空的却走不过去"：原来半径按**树冠**算（最大 1.4 m = 2.8 m 见方），
+        // 树干其实只有 0.3 m 粗，于是每棵树周围一圈空气墙。改成按树高估树干粗细。
+        float r = Mathf.Clamp(worldHeight * 0.05f, 0.30f, 0.75f);
         float h = Mathf.Max(2f, worldHeight * 0.55f);      // 树干到主枝分叉那一截
 
         var go = new GameObject("TreeCollider");
@@ -469,9 +471,24 @@ public static class PropScatter
         }
 
         if (!has) return;
+
+        // 2026-11-11 用户反馈"表面建模和碰撞区域完全不相干"：整栋楼一个实心盒会把
+        // 窗户凹陷、镂空、雨棚底下、楼间缝隙全填实 —— 看不见的墙。
+        // 改成**每个网格一个 MeshCollider**（碰撞 = 渲染），盒子留着但设成 trigger：
+        // `NavGrid.MarkBuildings()` 还靠它读 bounds 标障碍格，删了 AI 会撞楼。
+        foreach (var mf in go.GetComponentsInChildren<MeshFilter>())
+        {
+            if (mf == null || mf.sharedMesh == null) continue;
+            if (mf.GetComponent<MeshCollider>() != null) continue;
+            var mc = mf.gameObject.AddComponent<MeshCollider>();
+            mc.sharedMesh = mf.sharedMesh;
+            mc.convex = false;
+        }
+
         var box = go.AddComponent<BoxCollider>();
         box.center = local.center;
         box.size = local.size;
+        box.isTrigger = true;
     }
 
     // ---- 每棵/每栋轻微色差，避免整片一个颜色 ----

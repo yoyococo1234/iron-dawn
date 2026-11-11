@@ -38,10 +38,10 @@ public static class MenuOptions
 
         // ---- 飞机开局就开放 ----
         y = Toggle(lx, y, lw, "飞机开局就开放", MatchSettings.AirFromStart,
-            "关：开局只玩坦克，海空到点一起开放（默认）", mouse, "airfromstart");
+            "关：开局只有陆战和海战，飞机到点才开放（默认）", mouse, "airfromstart");
 
         // ---- 海空解锁时间 ----
-        y = Stepper(lx, y, lw, "海空解锁时间（分钟）", MatchSettings.UnlockMinutes == 0 ? "开局全开" : MatchSettings.UnlockMinutes + " 分钟",
+        y = Stepper(lx, y, lw, "空战解锁时间（分钟）", MatchSettings.UnlockMinutes == 0 ? "开局全开" : MatchSettings.UnlockMinutes + " 分钟",
             () => MatchSettings.UnlockMinutes -= 1, () => MatchSettings.UnlockMinutes += 1, mouse, "unlock");
 
         // ---- AI 强度 ----

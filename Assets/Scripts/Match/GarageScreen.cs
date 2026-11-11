@@ -95,24 +95,17 @@ public class GarageScreen : MonoBehaviour
 
         // ---- 海空解锁倒计时（开局只玩坦克）----
         {
-            float seaIn = MatchSettings.UnlockIn(Domain.Sea);
+            // 2026-11-11：海战常开，只有空战要等
             float airIn = MatchSettings.UnlockIn(Domain.Air);
             string note = null;
-            if (seaIn > 0f || airIn > 0f)
-            {
-                float m = Mathf.Max(seaIn, airIn);
-                note = $"海空载具 {Mathf.CeilToInt(m / 60f)} 分钟后开放";
-            }
-            else if (MatchSettings.UnlockMinutes > 0)
-            {
-                note = "海空载具已开放";
-            }
+            if (airIn > 0f) note = $"空战载具 {Mathf.CeilToInt(airIn / 60f)} 分钟后开放";
+            else if (MatchSettings.UnlockMinutes > 0) note = "空战载具已开放";
             if (note != null)
             {
                 var nr = new Rect(vw - 24f - 360f, 34f, 360f, 40f);
                 UiKit.Box(nr, new Color(0.055f, 0.070f, 0.100f, 0.88f));
-                UiKit.Frame(nr, (seaIn > 0f || airIn > 0f) ? UiKit.Gold : UiKit.Ally);
-                UiKit.Label(nr, note, 17, (seaIn > 0f || airIn > 0f) ? UiKit.Gold : UiKit.Ally, TextAnchor.MiddleCenter, true);
+                UiKit.Frame(nr, airIn > 0f ? UiKit.Gold : UiKit.Ally);
+                UiKit.Label(nr, note, 17, airIn > 0f ? UiKit.Gold : UiKit.Ally, TextAnchor.MiddleCenter, true);
             }
         }
 

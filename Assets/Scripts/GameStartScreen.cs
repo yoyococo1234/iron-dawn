@@ -63,8 +63,9 @@ public class GameStartScreen : MonoBehaviour
         // 自愈：重开场景时旧实例的 OnDestroy 可能把 timeScale 抢回 1，这里按住
         if (!Mathf.Approximately(Time.timeScale, 0f)) Time.timeScale = 0f;
 
-        // 子面板里按 Esc 回主菜单（改键过程中 Esc 由面板自己吃掉，不会走到这里）
-        if (_page != Page.Main && Input.GetKeyDown(KeyCode.Escape)) _page = Page.Main;
+        // 子面板里按 Esc 回主菜单。
+        // ⚠️ 改键过程中 Esc 是"取消这次改键"，**不能**顺手把整个面板也关了（用户 2026-11-11 反馈）。
+        if (_page != Page.Main && !MenuKeys.IsWaiting && Input.GetKeyDown(KeyCode.Escape)) _page = Page.Main;
     }
 
     /// <summary>开始游戏：进车库选第一台车。</summary>
@@ -130,7 +131,7 @@ public class GameStartScreen : MonoBehaviour
         UiKit.Box(new Rect(vw * 0.5f - 90f, 340f, 180f, 2f), new Color(1f, 0.84f, 0.35f, 0.55f));
 
         // ---- 四个按钮 ----
-        float bw = 420f, bh = 66f, gap = 16f;
+        float bw = 420f, bh = 72f, gap = 14f;
         float bx = vw * 0.5f - bw * 0.5f;
         float by = 408f;
 
@@ -155,9 +156,9 @@ public class GameStartScreen : MonoBehaviour
             UiKit.Box(new Rect(r.x + 1f, r.y + 1f, 4f, r.height - 2f),
                       new Color(accent[i].r, accent[i].g, accent[i].b, 0.35f + 0.55f * hv));
 
-            UiKit.Label(new Rect(r.x + 28f, r.y + 8f, bw - 40f, 32f), labels[i], 28,
+            UiKit.Label(new Rect(r.x + 28f, r.y + 6f, bw - 40f, 30f), labels[i], 26,
                         hv > 0.4f ? accent[i] : UiKit.Text, TextAnchor.MiddleLeft, true);
-            UiKit.Label(new Rect(r.x + 28f, r.y + 38f, bw - 40f, 20f), hints[i], 14,
+            UiKit.Label(new Rect(r.x + 28f, r.y + 40f, bw - 40f, 18f), hints[i], 13,
                         hv > 0.4f ? UiKit.Desc : UiKit.Dim, TextAnchor.MiddleLeft);
 
             if (hit.clicked)
@@ -192,5 +193,7 @@ public class GameStartScreen : MonoBehaviour
     }
 
     static string UnlockText()
-        => MatchSettings.UnlockMinutes <= 0 ? "开局全开" : $"{MatchSettings.UnlockMinutes} 分钟后开放";
+        => MatchSettings.AirFromStart ? "开局就开放"
+         : MatchSettings.UnlockMinutes <= 0 ? "开局就开放"
+         : $"空战 {MatchSettings.UnlockMinutes} 分钟后开放";
 }

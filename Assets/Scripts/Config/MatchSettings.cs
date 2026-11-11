@@ -103,12 +103,16 @@ public static class MatchSettings
     /// <summary>这一局已经打了多少秒（由 MatchManager 每帧写）。</summary>
     public static float MatchElapsed;
 
-    /// <summary>某个域的载具现在开不开放。</summary>
+    /// <summary>
+    /// 某个域的载具现在开不开放。
+    /// 2026-11-11 用户澄清：**只要不开空战，海战照常开放**。
+    /// 所以陆/海恒开放，只有飞机受开关和倒计时限制。
+    /// </summary>
     public static bool DomainUnlocked(Domain d)
     {
-        if (d == Domain.Land) return true;
-        if (UnlockMinutes <= 0) return true;
-        if (d == Domain.Air && AirFromStart) return true;
+        if (d != Domain.Air) return true;          // 陆战、海战：随时可用
+        if (AirFromStart) return true;             // 飞机：开局就开放（默认关）
+        if (UnlockMinutes <= 0) return true;       // 倒计时设 0 = 立刻开放
         return MatchElapsed >= UnlockMinutes * 60f;
     }
 

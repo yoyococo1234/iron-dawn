@@ -12,6 +12,9 @@ using UnityEngine;
 public static class MenuKeys
 {
     static Bindings.Act? _waiting;     // 正在等玩家按键的那个动作
+
+    /// <summary>是不是正在等玩家按键。主菜单要问这个 —— 否则按 Esc 会连面板一起关掉。</summary>
+    public static bool IsWaiting => _waiting.HasValue;
     static string _msg = "";
     static Color _msgColor = UiKit.Desc;
     static float _msgUntil;

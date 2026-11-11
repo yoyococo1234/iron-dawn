@@ -179,8 +179,8 @@ public class MatchManager : MonoBehaviour
         if (zones.Count == 0) Debug.LogError("[MatchManager] zones 为空 —— BattlefieldDef 没序列化进场景");
 
         int a = TeamCount(0), e = TeamCount(1);
-        string unlockNote = MatchSettings.UnlockMinutes > 0
-            ? $" · 海空 {MatchSettings.UnlockMinutes} 分钟后开放"
+        string unlockNote = MatchSettings.UnlockMinutes > 0 && !MatchSettings.AirFromStart
+            ? $" · 空战 {MatchSettings.UnlockMinutes} 分钟后开放"
             : "";
         PushFeed($"我方 {a} 台 vs 敌方 {e} 台 · 每人 {match.playerLives} 条命{unlockNote}");
     }
