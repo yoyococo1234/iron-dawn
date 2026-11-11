@@ -1249,7 +1249,7 @@ public class MatchHUD : MonoBehaviour
 
     int _fxGoldPrev = int.MinValue; // 上一帧金币（int.MinValue = 还没取过基准）
 
-    struct GoldPop { public int delta; public float at; }
+    struct GoldPop { public int delta; public float at; public int slot; }   // slot = 固定显示槽位（0..5）
     static readonly List<GoldPop> _goldPops = new List<GoldPop>();   // 最多 6 条
 
     /// <summary>每帧一次：轮询血量差 / 金币差，顺带清到期的浮字。只在 Update 里调。</summary>
@@ -1299,8 +1299,19 @@ public class MatchHUD : MonoBehaviour
         else if (_fxGoldPrev == int.MinValue) _fxGoldPrev = g;
         else if (g != _fxGoldPrev)
         {
-            _goldPops.Add(new GoldPop { delta = g - _fxGoldPrev, at = Time.unscaledTime });
-            if (_goldPops.Count > 6) _goldPops.RemoveAt(0);
+            // 2026-11-11 修 §7.4：原来按 List 下标错开，前面的到期被删掉后，后面的位置会整体跳 28 px。
+            // 改成**固定槽位**：新条目占一个当前没被占用的最小槽；6 个全满就顶掉最老的那条并复用它的槽。
+            int slot = 0;
+            while (slot < 6 && _goldPops.Exists(x => x.slot == slot)) slot++;
+            if (slot >= 6)
+            {
+                int oldest = 0;
+                for (int i = 1; i < _goldPops.Count; i++)
+                    if (_goldPops[i].at < _goldPops[oldest].at) oldest = i;
+                slot = _goldPops[oldest].slot;
+                _goldPops.RemoveAt(oldest);
+            }
+            _goldPops.Add(new GoldPop { delta = g - _fxGoldPrev, at = Time.unscaledTime, slot = slot });
             _fxGoldPrev = g;
         }
     }
@@ -1368,9 +1379,9 @@ public class MatchHUD : MonoBehaviour
             var c = gp.delta >= 0 ? CGold : CEnemy;
             string s = (gp.delta >= 0 ? "+" : "") + gp.delta;
 
-            // 同时出现多条时按序往下错开一行，否则会完全重叠看不清（最多 6 条）
-            // 起点 50 而不是 18：上浮 40 px 之后还要留在屏幕内，不然会飘到画面上边外面
-            float y = 50f + i * 28f - 40f * Smooth01(t);
+            // 同时出现多条时按**固定槽位**错开一行（2026-11-11 改：原来用 List 下标，
+            // 前面的到期删掉后后面的会跳 28 px）。起点 50 而不是 18：上浮 40 px 之后还要留在屏幕内。
+            float y = 50f + gp.slot * 28f - 40f * Smooth01(t);
             Text(new Rect(280f, y, 240f, 32f), $"<b>{s}</b>", _s24, new Color(c.r, c.g, c.b, 1f - t * t), TextAnchor.MiddleLeft);
         }
     }
