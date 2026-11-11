@@ -48,6 +48,48 @@ public static class ExplosionFx
         Object.Destroy(root, 4.5f);
     }
 
+    /// <summary>
+    /// 打在墙 / 地面 / 建筑上：一小团**烟尘**（没有火球、没有强光），沿命中面法线喷出来。
+    /// 2026-11-11 用户要求："炮打上去要有烟尘效果"。
+    /// scale ≈ 烟团半径（米），炮弹用 2~3，机枪用 0.8~1.2。
+    /// </summary>
+    public static void Impact(Vector3 pos, Vector3 normal, float scale = 2.4f)
+    {
+        var root = new GameObject("ImpactFx");
+        bool hasN = normal.sqrMagnitude > 0.01f;
+        root.transform.position = pos + (hasN ? normal.normalized * 0.2f : Vector3.zero);
+        if (hasN) root.transform.rotation = Quaternion.LookRotation(normal.normalized);
+
+        float s = Mathf.Clamp(scale, 0.6f, 6f);
+
+        // 灰白烟尘：土色，比爆炸的黑烟浅，像"墙皮被打碎"
+        var dust = NewSystem(root.transform, "Dust", AlphaMat());
+        var main = dust.main;
+        main.duration = 0.35f;
+        main.startLifetime = new ParticleSystem.MinMaxCurve(0.45f, 1.05f);
+        main.startSpeed = new ParticleSystem.MinMaxCurve(s * 1.1f, s * 2.8f);
+        main.startSize = new ParticleSystem.MinMaxCurve(s * 0.28f, s * 0.72f);
+        main.startRotation = new ParticleSystem.MinMaxCurve(0f, Mathf.PI * 2f);
+        main.gravityModifier = 0.18f;
+        main.maxParticles = 48;
+
+        Burst(dust, 16);
+        Shape(dust, s * 0.18f);
+
+        ColorOver(dust, Gradient(
+            new Color(0.74f, 0.70f, 0.62f, 0.90f),
+            new Color(0.64f, 0.60f, 0.54f, 0.50f),
+            new Color(0.56f, 0.53f, 0.49f, 0f)));
+
+        var size = dust.sizeOverLifetime;
+        size.enabled = true;
+        size.size = new ParticleSystem.MinMaxCurve(1f, AnimationCurve.EaseInOut(0f, 0.55f, 1f, 1.7f));
+
+        Dampen(dust, s * 0.9f, 0.7f);
+
+        Object.Destroy(root, 2.0f);
+    }
+
     // ---------------- 各层 ----------------
 
     static void MakeFlash(Transform parent, float s)

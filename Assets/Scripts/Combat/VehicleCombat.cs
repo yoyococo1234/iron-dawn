@@ -703,6 +703,9 @@ public class VehicleCombat : MonoBehaviour
 
         if (attacker != null && attacker != this && attacker.Team != team) lastAttacker = attacker;
 
+        // 2026-11-11：挨打时给玩家一个"敌人从哪个方向打你"的屏幕指示（取代以前常显的距离箭头）
+        if (IsPlayer && attacker != this) MatchHUD.ShowDamageFrom(hitFrom);
+
         // 命中方向：从命中者指向自己 = 自己"被从哪个方向打"
         Vector3 toAttacker = hitFrom - transform.position;
         toAttacker.y = 0f;

@@ -129,3 +129,4 @@ public static class PropColliderFixer
         return n;
     }
 }
+// (2026-11-11) 强制重编译以清掉控制台里那条过期的 CS0103 缓存

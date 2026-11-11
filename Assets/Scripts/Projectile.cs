@@ -85,6 +85,12 @@ public class Projectile : MonoBehaviour
                     VehicleCombat.ShotsHit++;
                     if (_owner != null && _owner.IsPlayer) MatchHUD.ShowHitFeedback(res);
                 }
+                else
+                {
+                    // 2026-11-11：打在建筑/地面/岩石上 —— 冒一团烟尘，别只是"啪一下消失"
+                    float sc = _ammo != null && _ammo.id != null && _ammo.id.Contains("mg") ? 1.0f : 2.4f;
+                    ExplosionFx.Impact(h.point, h.normal, sc);
+                }
                 Destroy(gameObject);
                 return;
             }

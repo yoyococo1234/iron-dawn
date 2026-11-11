@@ -59,7 +59,8 @@ public class MatchHUD : MonoBehaviour
         DrawPlayerPanel(mm);
         DrawFeed(mm);
         DrawRadar(mm);
-        DrawNamePlates(mm);       // 2026-11-11：名字牌 + 屏幕外威胁箭头（画在准星之前）
+        DrawNamePlates(mm);       // 2026-11-11：名字牌（画在准星之前）
+        DrawDamageDirection();    // 2026-11-11：挨打时的受击方向弧
         DrawCrosshair(mm);
         // 2026-11-10：命中标记复活成准星处的四角斜线（击穿金色 / 未击穿·跳弹红色）。
         // 语音播报照旧（Sfx.VoRicochet / VoNonPen / VoPen），两者不冲突：语音给"听"，标记给"看"。
@@ -810,6 +811,83 @@ public class MatchHUD : MonoBehaviour
         GUI.matrix = oldM;
     }
 
+    // ================= 受击方向指示（2026-11-11） =================
+    //
+    // 用户原话："显示别人距离的那个箭头不要了，被打的时候才显示一下，不过也不能用这种水平的箭头了，
+    // 因为现在的箭头我都看不出来敌人在哪，很废物。"
+    //
+    // 所以改成：**只在挨打时**在屏幕中心外一圈画一段红色圆弧，弧心正对**打你那个人的方位**，
+    // 1.6 秒内淡出。弧比箭头好认 —— 一眼就知道"敌人在我左后方"。
+
+    struct DmgMark { public Vector3 from; public float at; }
+    static readonly List<DmgMark> _dmgMarks = new List<DmgMark>(8);
+
+    /// <summary>被打了：记一下是谁从哪个方向打的。由 VehicleCombat 调用。</summary>
+    public static void ShowDamageFrom(Vector3 worldPos)
+    {
+        if (_dmgMarks.Count >= 6) _dmgMarks.RemoveAt(0);
+        _dmgMarks.Add(new DmgMark { from = worldPos, at = Time.unscaledTime });
+    }
+
+    void DrawDamageDirection()
+    {
+        if (_dmgMarks.Count == 0) return;
+        var cam = Camera.main;
+        if (cam == null) return;
+
+        // 清掉过期的
+        for (int i = _dmgMarks.Count - 1; i >= 0; i--)
+            if (Time.unscaledTime - _dmgMarks[i].at > 1.6f) _dmgMarks.RemoveAt(i);
+        if (_dmgMarks.Count == 0) return;
+
+        Vector2 center = new Vector2(_vw * 0.5f, VH * 0.5f);
+        float R = Mathf.Min(_vw, VH) * 0.30f;
+
+        Vector3 fwd = cam.transform.forward; fwd.y = 0f;
+        if (fwd.sqrMagnitude < 0.001f) fwd = Vector3.forward;
+        fwd.Normalize();
+
+        for (int m = 0; m < _dmgMarks.Count; m++)
+        {
+            var mk = _dmgMarks[m];
+            float age = Time.unscaledTime - mk.at;
+            float a = 1f - Mathf.Clamp01(age / 1.6f);
+            a = a * a;                                   // 快速衰减，前 0.4 秒最亮
+
+            Vector3 to = mk.from - cam.transform.position; to.y = 0f;
+            if (to.sqrMagnitude < 0.01f) continue;
+            to.Normalize();
+
+            // 有符号夹角：右正左负（和屏幕上"往右转"一致）
+            float ang = Vector3.SignedAngle(fwd, to, Vector3.up) * Mathf.Deg2Rad;
+
+            // 弧心角在屏幕上的方向：ang=0 → 正上方
+            float half = 20f * Mathf.Deg2Rad;            // 弧的总张角 40°
+            int seg = 18;
+            Color c = new Color(1f, 0.30f, 0.26f, 0.85f * a);
+
+            for (int i = 0; i < seg; i++)
+            {
+                float t0 = ang - half + (2f * half) * (i / (float)seg);
+                float t1 = ang - half + (2f * half) * ((i + 1) / (float)seg);
+                Vector2 p0 = center + new Vector2(Mathf.Sin(t0), -Mathf.Cos(t0)) * R;
+                Vector2 p1 = center + new Vector2(Mathf.Sin(t1), -Mathf.Cos(t1)) * R;
+                DrawSeg(p0, p1, c, 6f);
+            }
+
+            // 弧的两端再各点一个小三角，强化"这里"的感觉
+            for (int s = -1; s <= 1; s += 2)
+            {
+                float t = ang + half * s;
+                Vector2 outer = center + new Vector2(Mathf.Sin(t), -Mathf.Cos(t)) * (R + 10f);
+                Vector2 inner = center + new Vector2(Mathf.Sin(t), -Mathf.Cos(t)) * (R - 10f);
+                Vector2 side = center + new Vector2(Mathf.Sin(t + 0.10f * s), -Mathf.Cos(t + 0.10f * s)) * R;
+                DrawSeg(outer, inner, c, 3f);
+                DrawSeg(outer, side, c, 3f);
+            }
+        }
+    }
+
     // ---------------- 绘制工具 ----------------
 
     // ================= 敌人/队友名字牌 + 屏幕外威胁提示（2026-11-11） =================
@@ -905,19 +983,12 @@ public class MatchHUD : MonoBehaviour
 
             bool onScreen = sp.z > 0.01f && sp.x >= 0f && sp.x <= sw && sp.y >= 0f && sp.y <= sh;
 
-            if (!onScreen)
-            {
-                // 屏幕外/背后的敌人 → 屏幕边缘方位箭头（队友不画；太远的也不画，避免满屏箭头）
-                if (enemy && np.dist <= threatArrowRange) DrawThreatArrow(sp, sp.z <= 0.01f, np.dist, col);
-                continue;
-            }
+            // 2026-11-11 用户反馈：常显的"距离箭头"又乱又看不出敌人在哪，删掉。
+            // 改成**只在挨打时**弹一次受击方向指示（见 DrawDamageDirection）。
+            if (!onScreen) continue;
 
-            // 被地形挡住：只留一个很淡的方位箭头，不画名字（不让你"透视"）
-            if (!np.los)
-            {
-                if (enemy && np.dist <= threatArrowRange) DrawThreatArrow(sp, false, np.dist, WithA(col, 0.5f));
-                continue;
-            }
+            // 被地形挡住：不画名字（不让你"透视"）
+            if (!np.los) continue;
 
             float px = sp.x / _scale;
             float py = (sh - sp.y) / _scale;
@@ -1067,15 +1138,16 @@ public class MatchHUD : MonoBehaviour
     }
 
     /// <summary>
-    /// 舰载雷达：以本船为圆心，**船头朝上**，扫掠线转圈。
-    /// 红点 = 敌方舰艇，橙点 = 鱼雷（含己方的，用颜色区分），白点 = 己方。
-    /// 只给船用 —— 坦克/飞机没有对海雷达。
+    /// 小地图（2026-11-11 用户要求：所有载具都要有，原来只有船有）。
+    /// 以自己为圆心、**北朝上**（不跟车头转，所以"上方永远是北"），扫掠线转圈。
+    /// 红点 = 敌人，蓝点 = 队友，橙点 = 鱼雷（只有船显示）。
     /// </summary>
     void DrawRadar(MatchManager mm)
     {
         var p = mm.Player;
-        if (p == null || p.Def == null || p.Def.domain != Domain.Sea) return;
+        if (p == null || p.Def == null) return;
         if (Cursor.lockState != CursorLockMode.Locked) return;
+        bool isSea = p.Def.domain == Domain.Sea;
 
         const float R = 112f;
         float cx = _vw - R - 42f;
@@ -1137,8 +1209,8 @@ public class MatchHUD : MonoBehaviour
         const float yaw = 0f;
         var pos = p.transform.position;
 
-        // 鱼雷先画（在船下面，别被船点盖住）
-        for (int i = Torpedo.All.Count - 1; i >= 0; i--)
+        // 鱼雷先画（在船下面，别被船点盖住）；坦克/飞机不显示鱼雷
+        for (int i = isSea ? Torpedo.All.Count - 1 : -1; i >= 0; i--)
         {
             var t = Torpedo.All[i];
             if (t == null) continue;
@@ -1159,7 +1231,7 @@ public class MatchHUD : MonoBehaviour
                           py - Mathf.Cos(tAng * Mathf.Deg2Rad) * 7f - 1f, 2f, 2f), tc);
         }
 
-        // 舰艇
+        // 场上所有载具
         foreach (var v in _radarVehicles)
         {
             if (v == null || v == p || !v.Alive) continue;
@@ -1179,7 +1251,7 @@ public class MatchHUD : MonoBehaviour
         }
 
         Text(new Rect(cx - R, cy + R + 4f, R * 2f, 22f),
-             $"雷达 {Mathf.RoundToInt(radarRange)} m", _s18,
+             $"小地图 {Mathf.RoundToInt(radarRange)} m", _s18,
              new Color(0.55f, 0.95f, 0.85f, 0.65f), TextAnchor.MiddleCenter);
     }
 
