@@ -93,15 +93,25 @@ public class PlayerTankController : MonoBehaviour
             float wantPitch = -(camFollow.tankLookDownDeg + (camFollow.pitch - 8f));
             var dw = _combat.DeckWeapon;
 
-            // ---------- Ctrl 锁定：炮塔/枪架**直接对准锁定目标**（2026-11-07）----------
+            // ---------- Ctrl 锁定：炮塔/枪架**直接对准锁定目标**（2026-11-07，2026-11-12 重做解算）----------
             // 之前只把 GetAimPoint 换成了目标位置，但那只是"开火点"，炮塔还是跟着鼠标走，
             // 所以看着像"不会瞄准"。这里直接算目标的世界偏航 + 弹道俯仰，喂给 AimDirect。
-            if (LockOnSystem.Active && LockOnSystem.Target != null && LockOnSystem.Target.Alive)
+            //
+            // 2026-11-12 用户反馈"舰艇开镜 + Ctrl 锁定时准星对不上目标"，查到两个真因：
+            //   ① 基准点用的是"船体中心 + 2.5 m"，而炮艇的炮口在**船头**，差 8 m → 400 m 处偏 1.1°；
+            //   ② 炮塔角是**相对船体**的，旧写法只减船体偏航，没算船体随浪的俯仰/横滚（实测 -1.2° / -1.9°）。
+            // 两处叠加就是实测的 1.55°：第三人称 50° 视野里看不出来，开镜 14° 就是 100 多像素。
+            // 现在：基准点用真实炮口，方向转进船体坐标系再拆角（AimDirectLocal / AimDeckGunWorld）。
+            bool locked = LockOnSystem.Active && LockOnSystem.Target != null && LockOnSystem.Target.Alive;
+            Vector3 lockDirWorld = Vector3.zero;      // 稳定的世界瞄准方向（锁定中才有意义）
+            float lockRelYaw = 0f, lockLocalPitch = 0f;   // 相对船体的角度（喂炮塔）
+            if (locked)
             {
                 Vector3 lockAim = LockOnSystem.AimPointFor(_combat);
-                // 用**船体/车体根部**当基准，不用炮口节点：炮口节点挂在 Model 上，
-                // 船随浪起伏时它会上下动，解出来的俯仰角跟着抖 —— 就是"锁定后炮管上下晃"的来源。
-                Vector3 muzzle = _combat.transform.position + Vector3.up * 2.5f;
+                // 基准点用**真实炮口**：炮口节点虽然挂在会随浪摇的 Model 上，但我们只拿它当"方向起点"，
+                // 俯仰角下面还要过一层低通（世界量），所以不会把浪的抖动带进炮管。
+                Vector3 muzzle = _combat.Physics != null ? _combat.Physics.GetMuzzlePosition()
+                                                         : _combat.transform.position + Vector3.up * 2.5f;
                 // 只有"正常弹速的炮弹"才做弹道解算。鱼雷/导弹这种慢速或制导武器直接指向，
                 // 否则解出来的抛射角是几十度的高抛，镜头会直接飘到天上（用户报的 bug）。
                 var lw = _combat.Weapon;
@@ -111,11 +121,20 @@ public class PlayerTankController : MonoBehaviour
                     ? VehicleCombat.BallisticDir(muzzle, lockAim, bspd)
                     : (lockAim - muzzle).normalized;
 
-                wantYawWorld = Mathf.Atan2(bdir.x, bdir.z) * Mathf.Rad2Deg;
-                float rawPitch = Mathf.Asin(Mathf.Clamp(bdir.y, -1f, 1f)) * Mathf.Rad2Deg;
-                // 低通：残余的小抖动直接抹掉（时间常数 ~0.12 s）
-                _lockPitch = Mathf.Lerp(_lockPitch, rawPitch, 1f - Mathf.Exp(-8f * Time.deltaTime));
+                // 低通只作用在**世界俯仰**上（世界量是稳的，滤掉浪和提前量重掷带来的高频抖动）。
+                // 千万别滤"本地角"：本地角本来就该跟着船体姿态抖，一滤就跟不上，炮管又歪回去。
+                float rawWorldPitch = Mathf.Asin(Mathf.Clamp(bdir.y, -1f, 1f)) * Mathf.Rad2Deg;
+                _lockPitch = Mathf.Lerp(_lockPitch, rawWorldPitch, 1f - Mathf.Exp(-8f * Time.deltaTime));
+                lockDirWorld = Quaternion.Euler(-_lockPitch, Mathf.Atan2(bdir.x, bdir.z) * Mathf.Rad2Deg, 0f)
+                               * Vector3.forward;
+
+                wantYawWorld = Mathf.Atan2(lockDirWorld.x, lockDirWorld.z) * Mathf.Rad2Deg;
                 wantPitch = _lockPitch;
+
+                // 世界方向 → 船体本地角（这一步就是"抵消船体俯仰/横滚"）
+                Vector3 localDir = _combat.transform.InverseTransformDirection(lockDirWorld);
+                lockRelYaw = Mathf.Atan2(localDir.x, localDir.z) * Mathf.Rad2Deg;
+                lockLocalPitch = Mathf.Asin(Mathf.Clamp(localDir.y, -1f, 1f)) * Mathf.Rad2Deg;
 
                 // 镜头也跟过去（用户要求"镜头不晃、正好瞄到他身上"）：
                 // 用鼠标那套 pitch 换算反过来推 camFollow.pitch，这样镜头和炮管是同一套解算。
@@ -126,17 +145,23 @@ public class PlayerTankController : MonoBehaviour
 
             if (_mgMode && dw != null && _combat.Physics.HasDeckGun)
             {
-                // ---------- 机枪模式：炮塔不动，只转枪架 ----------
-                // 枪架是独立回转座（MG_Yaw），200°/s —— 炮塔只有 50°/s，用炮塔带着机枪转，
-                // 画面会明显跟不上鼠标（用户："移动鼠标视角转换很不自然"）。
-                float turretWorldYaw = _combat.transform.eulerAngles.y + _combat.Physics.turretYaw;
-                float relYaw = Mathf.DeltaAngle(turretWorldYaw, wantYawWorld);
-                _combat.Physics.SetDeckGunYaw(relYaw, mgTurnSpeed);
-                _combat.Physics.SetDeckGunPitch(wantPitch, dw.deckMaxElevation, dw.deckMaxDepression, dw.deckPitchSpeed);
+                // ---------- 机枪模式：炮塔慢速跟随视角，枪架做快速微调 ----------
+                // 枪架是独立回转座（MG_Yaw，200°/s），但它挂在炮塔下面、只有 ±120° 回转：
+                // 炮塔不跟着转的话，视角一转到船尾方向枪架就卡在限位上 —— 子弹照准星飞、枪口却别着，
+                // 就是用户说的"机枪索敌问题很大、瞄不到人"（实测视偏 160° 时枪管和镜头差 40°）。
+                // 现在炮塔用炮塔转速（50°/s）慢慢跟上视角，枪架只做剩下的快速修正，全向都能打。
+                if (!locked) _combat.Physics.RotateTurretToward(wantYawWorld, turn);
+
+                // 瞄准方向：锁定 → 直接指向目标；没锁定 → 鼠标那套（屏幕中心/准星方向）
+                Vector3 mgDir = locked
+                    ? lockDirWorld
+                    : Quaternion.Euler(-wantPitch, wantYawWorld, 0f) * Vector3.forward;
+                _combat.Physics.AimDeckGunWorld(mgDir, dw.deckMaxElevation, dw.deckMaxDepression, dw.deckPitchSpeed);
             }
             else
             {
-                _combat.Physics.AimDirect(wantYawWorld, wantPitch, turn);
+                if (locked) _combat.Physics.AimDirectLocal(lockRelYaw, lockLocalPitch, turn);
+                else _combat.Physics.AimDirect(wantYawWorld, wantPitch, turn);
                 // 不在机枪模式：枪架归位（对准炮塔正前方、水平），免得它歪着挂在塔顶
                 _combat.Physics.SetDeckGunYaw(0f, 120f);
                 _combat.Physics.SetDeckGunPitch(0f, 85f, -12f, 90f);

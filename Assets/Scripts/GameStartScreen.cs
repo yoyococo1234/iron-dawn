@@ -63,10 +63,27 @@ public class GameStartScreen : MonoBehaviour
         // 自愈：重开场景时旧实例的 OnDestroy 可能把 timeScale 抢回 1，这里按住
         if (!Mathf.Approximately(Time.timeScale, 0f)) Time.timeScale = 0f;
 
-        // 子面板里按 Esc 回主菜单。
-        // ⚠️ 改键过程中 Esc 是"取消这次改键"，**不能**顺手把整个面板也关了（用户 2026-11-11 反馈）。
-        if (_page != Page.Main && !MenuKeys.IsWaiting && Input.GetKeyDown(KeyCode.Escape)) _page = Page.Main;
+        // Esc 的两层语义（2026-11-11 用户反馈：按 Esc 应该只退出"选择新按键"这一步，
+        // 不是退出整个按键设置）。**只留这一个入口**，按顺序判定 ——
+        // 以前是"面板自己吞一次、主菜单又读一次 Input.GetKeyDown"，两个组件抢同一个按键，
+        // 顺序一变就整块面板退出。
+        if (Input.GetKeyDown(KeyCode.Escape)) HandleEscape();
     }
+
+    /// <summary>
+    /// Esc 两层语义的**唯一判定点**（2026-11-12 从 Update 里抽出来，方便脱离键盘直接验证）。
+    /// 第一层：正在等新键 → 只取消这次改键，面板留着；
+    /// 第二层：其余情况 → 返回主菜单。
+    /// </summary>
+    public void HandleEscape()
+    {
+        if (_page == Page.Main) return;
+        if (MenuKeys.IsWaiting) MenuKeys.CancelWaiting();
+        else _page = Page.Main;
+    }
+
+    /// <summary>当前在哪个面板（0=主菜单 1=按键设置 2=游戏调整）。验收脚本用。</summary>
+    public int PageIndex => (int)_page;
 
     /// <summary>开始游戏：进车库选第一台车。</summary>
     public void Begin()
@@ -156,9 +173,11 @@ public class GameStartScreen : MonoBehaviour
             UiKit.Box(new Rect(r.x + 1f, r.y + 1f, 4f, r.height - 2f),
                       new Color(accent[i].r, accent[i].g, accent[i].b, 0.35f + 0.55f * hv));
 
-            UiKit.Label(new Rect(r.x + 28f, r.y + 6f, bw - 40f, 30f), labels[i], 26,
+            // 标题 26px 的行高约 31px，原来塞进 30px 的框会向下溢出 1px，
+            // 肉眼就是"副标题贴着标题底边"（用户 2026-11-11 反馈字挤）。
+            UiKit.Label(new Rect(r.x + 28f, r.y + 4f, bw - 40f, 34f), labels[i], 26,
                         hv > 0.4f ? accent[i] : UiKit.Text, TextAnchor.MiddleLeft, true);
-            UiKit.Label(new Rect(r.x + 28f, r.y + 40f, bw - 40f, 18f), hints[i], 13,
+            UiKit.Label(new Rect(r.x + 28f, r.y + 42f, bw - 40f, 18f), hints[i], 13,
                         hv > 0.4f ? UiKit.Desc : UiKit.Dim, TextAnchor.MiddleLeft);
 
             if (hit.clicked)
@@ -175,8 +194,10 @@ public class GameStartScreen : MonoBehaviour
         UiKit.Label(new Rect(0f, 1000f, vw, 26f),
             "鼠标点选　·　进游戏后 P 暂停 / TAB 商店 / G 换车 / R 重开", 17,
             new Color(0.62f, 0.72f, 0.82f, 0.8f), TextAnchor.MiddleCenter);
+        // 注意：UnlockText() 自己已经带"空战"前缀（"空战 3 分钟后开放" / "开局就开放"），
+        // 这里**不要**再写"海空"——以前就是多拼了一层，显示成「海空空战 3 分钟后开放」。
         UiKit.Label(new Rect(0f, 1028f, vw, 24f),
-            $"当前设置：初始金币 {MatchSettings.StartingGold}　·　AI {SkillName()}　·　海空 {UnlockText()}", 16,
+            $"当前设置：初始金币 {MatchSettings.StartingGold}　·　AI {SkillName()}　·　{UnlockText()}", 16,
             new Color(0.52f, 0.68f, 0.80f, 0.75f), TextAnchor.MiddleCenter);
     }
 

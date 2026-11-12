@@ -625,6 +625,69 @@ public class VehiclePhysics : MonoBehaviour
         SetBarrelPitch(targetPitch);
     }
 
+    /// <summary>
+    /// 直接按**车体/船体本地角**瞄准（2026-11-12，锁定用）。
+    ///
+    /// 和 AimDirect 的唯一区别：这里收的是"相对车体的偏航/俯仰"。
+    /// 旧写法把**世界偏航**直接喂给炮塔（`DeltaAngle(船体yaw, 世界yaw)`），漏掉了船随浪的
+    /// 俯仰和横滚 —— 炮艇在浪里横滚 2° 时炮管就固定歪 2°：第三人称 FOV 50° 看不出来，
+    /// 开镜 14° 视野里就是几十像素、400 m 外打偏十几米（用户报的"开镜后瞄不准"）。
+    /// 把世界方向先转进船体坐标系再拆角，炮管就真的指向目标，浪再大也稳。
+    /// </summary>
+    public void AimDirectLocal(float relYaw, float pitch, float yawDegPerSec)
+    {
+        if (turretBone != null)
+        {
+            float delta = Mathf.DeltaAngle(turretYaw, relYaw);
+            float limit = Mathf.Min(Mathf.Abs(delta), yawDegPerSec * turretSpeedMul * Time.deltaTime);
+            if (limit > 0f) RotateTurret(Mathf.Sign(delta) * limit);
+        }
+        SetBarrelPitch(pitch);
+    }
+
+    /// <summary>炮塔当前**世界**偏航（度）。取炮塔节点的真实朝向，含船体姿态。</summary>
+    public float TurretWorldYaw
+    {
+        get
+        {
+            if (turretBone != null)
+            {
+                Vector3 f = turretBone.forward;
+                if (f.sqrMagnitude > 1e-6f) return Mathf.Atan2(f.x, f.z) * Mathf.Rad2Deg;
+            }
+            return transform.eulerAngles.y + turretYaw;
+        }
+    }
+
+    /// <summary>
+    /// 只转炮塔（不动炮管俯仰），朝一个世界偏航角。
+    /// 机枪模式用它让炮塔**慢慢跟着视角**走：枪架只有 ±120° 回转，炮塔不跟的话
+    /// 视角转到船尾方向枪架就卡死（用户报的"机枪索敌瞄不到人"）。
+    /// </summary>
+    public void RotateTurretToward(float worldYaw, float degPerSec)
+    {
+        if (turretBone == null) return;
+        float want = Mathf.DeltaAngle(transform.eulerAngles.y, worldYaw);
+        float delta = Mathf.DeltaAngle(turretYaw, want);
+        float limit = Mathf.Min(Mathf.Abs(delta), degPerSec * turretSpeedMul * Time.deltaTime);
+        if (limit > 0f) RotateTurret(Mathf.Sign(delta) * limit);
+    }
+
+    /// <summary>
+    /// 机枪按**世界方向**瞄准：先把方向转进机枪回转座的父坐标系（炮塔，含船体姿态），
+    /// 再拆成回转角 + 仰角。旧写法以"船体偏航 + 炮塔角"为基准，同样漏掉船体俯仰/横滚，固定歪 1~2°。
+    /// </summary>
+    public void AimDeckGunWorld(Vector3 worldDir, float maxElev, float maxDepress, float degPerSec)
+    {
+        if (mgBone == null || mgYawBone == null || worldDir.sqrMagnitude < 1e-6f) return;
+        var baseTf = mgYawBone.parent != null ? mgYawBone.parent : transform;
+        Vector3 local = baseTf.InverseTransformDirection(worldDir.normalized);
+        float relYaw = Mathf.Atan2(local.x, local.z) * Mathf.Rad2Deg;
+        float pitch = Mathf.Asin(Mathf.Clamp(local.y, -1f, 1f)) * Mathf.Rad2Deg;
+        SetDeckGunYaw(relYaw, degPerSec);
+        SetDeckGunPitch(pitch, maxElev, maxDepress, degPerSec);
+    }
+
     /// <summary>炮管俯仰：按目标高度算角度，受 maxElevation/maxDepression 和转速限制（AI 用）。</summary>
     void AimBarrelAt(Vector3 worldPoint)
     {

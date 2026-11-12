@@ -426,8 +426,14 @@ public class MatchHUD : MonoBehaviour
 
         // 2026-11-07：炮口节点挂在会随浪摇摆的 Model 上，用它画准星会跟着上下抖（用户反复反馈）。
         // 改成"车体/船体根部 + 炮塔偏航 + 炮管俯仰"算一个**稳定**的指向，准星就不晃了。
-        float yawStable = vpG.transform.eulerAngles.y + vpG.turretYaw;
-        Vector3 dirStable = Quaternion.Euler(-vpG.barrelPitch, yawStable, 0f) * Vector3.forward;
+        //
+        // 2026-11-12：把**船体姿态**也算进去。旧公式只用了船体偏航，船在浪里横滚 2° 时
+        // 画出来的准星和真实炮管差 2°（开镜后炮镜分划是屏幕中心 = 真实炮管，两套就对不上）。
+        // 锁定后炮管会主动抵消船体姿态（AimDirectLocal），所以这里的准星反而是稳的。
+        Vector3 dirStable = vpG.transform.rotation
+                            * Quaternion.Euler(0f, vpG.turretYaw, 0f)
+                            * Quaternion.Euler(-vpG.barrelPitch, 0f, 0f)
+                            * Vector3.forward;
         Vector3 gunPoint = vpG.transform.position + Vector3.up * 2.5f + dirStable * 500f;
         Vector3 local = camG.transform.InverseTransformPoint(gunPoint);   // z>0 = 在镜头前方
 

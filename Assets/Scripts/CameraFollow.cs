@@ -201,6 +201,43 @@ public class CameraFollow : MonoBehaviour
         }
     }
 
+    /// <summary>
+    /// 机枪开镜时把**枪身自己的模型**藏掉（2026-11-12）。
+    ///
+    /// 镜筒机位在摇架后方 1.15 m，而枪自己的环形准星（MG_SightRing0~15）和护套（MG_TopCover）
+    /// 就在机位前 1.2~1.5 m —— 开镜后画面正中全是黑铁，目标被挡在后面。
+    /// 用户说的"机枪瞄不到人"有一半是"根本看不见人"。
+    /// HUD 已经画了机枪分划（细圆环 + 密位 + 中心红点），模型留着只会挡视线。
+    /// 不开镜时照常显示（第三人称要看得见枪）。
+    /// </summary>
+    void SyncMgVisibility()
+    {
+        bool hidden = _mgHiddenRenderers != null;
+        if (_mgScoped == hidden) return;                 // 状态一致，不动
+
+        if (_mgScoped)
+        {
+            var vp0 = target != null ? target.GetComponent<VehiclePhysics>() : null;
+            var root = vp0 != null ? (vp0.mgYawBone != null ? vp0.mgYawBone : vp0.mgBone) : null;
+            if (root == null) return;
+            _mgHiddenRenderers = root.GetComponentsInChildren<Renderer>();
+            foreach (var r in _mgHiddenRenderers) if (r != null) r.enabled = false;
+        }
+        else
+        {
+            foreach (var r in _mgHiddenRenderers) if (r != null) r.enabled = true;
+            _mgHiddenRenderers = null;
+        }
+    }
+
+    Renderer[] _mgHiddenRenderers;
+
+    void OnDisable()
+    {
+        _mgScoped = false;
+        SyncMgVisibility();                              // 退出时务必把模型还回来
+    }
+
     void LateUpdate()
     {
         // 玩家死了到复活之间 mm.Player 是 null。这段必须放在最前面 ——
@@ -217,6 +254,8 @@ public class CameraFollow : MonoBehaviour
             _mgScoped = false;
             _rightZoom = false;
         }
+
+        SyncMgVisibility();     // 机枪模型显隐跟着开镜状态走（上一帧的状态就够）
 
         if (target == null) AutoFindTarget();
         if (target == null) return;
@@ -453,7 +492,17 @@ public class CameraFollow : MonoBehaviour
 
             // 看点必须从**实际的相机位置**沿 lookDir 推出去（不能用抬升前的 camPos）。
             // 用 camPos 的话，机位被地面/自身碰撞盒抬高之后，视线会比炮口歪两三度 —— 镜心就不是炮口了。
-            Vector3 lookAtS = transform.position + lookDirS * 300f;
+            //
+            // 2026-11-12：再往前一步 —— 机位在炮塔上方、**不在炮管轴线上**（炮艇差 2~4 m），
+            // "沿炮管平推 300 m"是平行线，镜心在 350 m 处会比真实弹着点高 0.5°（14° 视野 ≈ 45 px）。
+            // 现在改成：先沿炮管找到命中点，再从实际机位看那个点 —— 镜心就落在弹着点上。
+            Vector3 muzzlePosS = vp != null ? vp.GetMuzzlePosition() : target.position + Vector3.up * 2f;
+            Vector3 barrelPt = muzzlePosS + lookDirS * 1500f;
+            if (Physics.Raycast(muzzlePosS + lookDirS * 5f, lookDirS, out var hitS, 3000f,
+                                ~0, QueryTriggerInteraction.Ignore)
+                && Vector3.Distance(muzzlePosS, hitS.point) > 40f)
+                barrelPt = hitS.point;
+            Vector3 lookAtS = barrelPt;
             transform.rotation = Quaternion.Slerp(transform.rotation,
                 Quaternion.LookRotation(lookAtS - transform.position), 16f * Time.unscaledDeltaTime);
 

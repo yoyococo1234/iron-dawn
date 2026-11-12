@@ -139,17 +139,17 @@ public class LockOnSystem : MonoBehaviour
             float d = Vector3.Distance(from, aim);
 
             // 锁定距离：
-            //   · 机枪（V 模式）→ 固定 600 m（弹速慢，再远锁了也打不中）
+            //   · 机枪（V 模式）→ 直接等于机枪射程（2026-11-12：以前压到 600 m，
+            //     而机枪射程 850 m、弹速 900 m/s —— 700~850 m 之间明明打得到却锁不上）
             //   · 舰炮 / 主炮   → 直接等于武器射程（炮弹快，全射程都能锁）
             float wRange = player.Weapon != null ? player.Weapon.range : 800f;
-            bool mgModeR = false;
             var ptcR = player.GetComponent<PlayerTankController>();
             if (ptcR != null && ptcR.MgMode)
             {
                 var dwR = player.DeckWeapon;
-                if (dwR != null) { wRange = dwR.range; mgModeR = true; }
+                if (dwR != null) wRange = dwR.range;
             }
-            float lockRange = mgModeR ? Mathf.Min(wRange, 600f) : wRange;
+            float lockRange = wRange;
             if (d > Mathf.Min(maxRange, lockRange)) continue;
 
             // 必须在屏幕中间区域（避免锁到视野外的东西）

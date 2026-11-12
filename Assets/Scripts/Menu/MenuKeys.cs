@@ -15,6 +15,19 @@ public static class MenuKeys
 
     /// <summary>是不是正在等玩家按键。主菜单要问这个 —— 否则按 Esc 会连面板一起关掉。</summary>
     public static bool IsWaiting => _waiting.HasValue;
+
+    /// <summary>
+    /// Esc 的**第一层语义**：取消"等新键"这一次改键，面板留着。
+    /// 由 <see cref="GameStartScreen.Update"/> 统一调用 —— Esc 只留一个入口，
+    /// 不再让"面板"和"主菜单"两个组件抢同一个按键（2026-11-11 用户反馈没修好）。
+    /// </summary>
+    public static void CancelWaiting()
+    {
+        if (!_waiting.HasValue) return;
+        _waiting = null;
+        Say("已取消", UiKit.Dim);
+        UiSound.Play(UiSound.Kind.Close);
+    }
     static string _msg = "";
     static Color _msgColor = UiKit.Desc;
     static float _msgUntil;
@@ -25,15 +38,11 @@ public static class MenuKeys
         if (_waiting.HasValue)
         {
             var e = Event.current;
-            if (e != null && e.type == EventType.KeyDown)
+            // Esc 不在这里处理：它有两层语义（取消改键 / 返回主菜单），
+            // 统一交给 GameStartScreen.Update 按顺序判定，见 CancelWaiting()。
+            if (e != null && e.type == EventType.KeyDown && e.keyCode != KeyCode.Escape)
             {
-                if (e.keyCode == KeyCode.Escape)
-                {
-                    _waiting = null;
-                    Say("已取消", UiKit.Dim);
-                    e.Use();
-                }
-                else if (e.keyCode != KeyCode.None)
+                if (e.keyCode != KeyCode.None)
                 {
                     var act = _waiting.Value;
                     if (Bindings.TrySet(act, e.keyCode, out var conflict))
