@@ -8,7 +8,7 @@ using UnityEngine;
 ///   坡度：float deg = BattlefieldTerrain.SampleSteepness(worldPos);
 ///   碰撞：TerrainCollider 自动生成，不用管。
 ///
-/// 世界坐标：x、z ∈ [-1000, 1000]；高度 y ∈ [-100, 300]；海平面 y = -6.667。
+/// 世界坐标：x、z ∈ [-1000, 1000]；高度 y ∈ [-100, 300]；海平面 y = -2.667（2026-11-12 抬高 4 m）。
 /// </summary>
 public static class BattlefieldTerrain
 {
@@ -17,7 +17,11 @@ public static class BattlefieldTerrain
     public const int Tiles = 2;
     public const float BaseY = -100f;            // 地形最低点
     public const float HeightRange = 400f;       // 高度范围
-    public const float WaterLevel = -6.6667f;    // 海平面
+    // 2026-11-12 用户要求："海平面有点低，先稍微升高一点，让船的舰炮可以打击（岸上目标）"。
+    // 原来是 -6.6667（地形生成时的设计值 -0.4×Scale）。抬到 -2.6667 = **+4 m**：
+    // 实测水域占比只从 35.4% 涨到 35.6%（海岸线很陡，不会淹掉地图），但船整体高了 4 m，
+    // 舰炮能越过滩头看到/打到岸上的目标。要再调就改这一个常量 + 场景里 Water_Sea 的 Y。
+    public const float WaterLevel = -2.6667f;    // 海平面（2026-11-12 由 -6.6667 抬高 4 m）
     public const float Scale = MapSize / 120f;   // 设计坐标 → 世界坐标（16.667）
 
     static Terrain[] cache;

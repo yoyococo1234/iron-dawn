@@ -20,6 +20,9 @@ public class LockOnSystem : MonoBehaviour
     /// <summary>锁定搜索半径（米）。</summary>
     public float maxRange = 1600f;
 
+    /// <summary>2026-11-12 用户要求：**锁定距离上限 500 m**，更远只能自己瞄（机枪/舰炮都一样）。</summary>
+    public const float LockRangeCap = 500f;
+
     /// <summary>调试用：设成某个敌人就强制锁定（不影响正常 Ctrl 逻辑）。</summary>
     public static VehicleCombat DebugTarget;
 
@@ -139,9 +142,8 @@ public class LockOnSystem : MonoBehaviour
             float d = Vector3.Distance(from, aim);
 
             // 锁定距离：
-            //   · 机枪（V 模式）→ 直接等于机枪射程（2026-11-12：以前压到 600 m，
-            //     而机枪射程 850 m、弹速 900 m/s —— 700~850 m 之间明明打得到却锁不上）
-            //   · 舰炮 / 主炮   → 直接等于武器射程（炮弹快，全射程都能锁）
+            //   · 2026-11-12 用户要求：**只有 500 m 以内才能锁定**，更远请自己瞄。
+            //     （原来机枪 850 m、舰炮 1200 m 都能锁，玩家反馈"太远了，等于自动瞄准"。）
             float wRange = player.Weapon != null ? player.Weapon.range : 800f;
             var ptcR = player.GetComponent<PlayerTankController>();
             if (ptcR != null && ptcR.MgMode)
@@ -149,7 +151,7 @@ public class LockOnSystem : MonoBehaviour
                 var dwR = player.DeckWeapon;
                 if (dwR != null) wRange = dwR.range;
             }
-            float lockRange = wRange;
+            float lockRange = Mathf.Min(LockRangeCap, wRange);
             if (d > Mathf.Min(maxRange, lockRange)) continue;
 
             // 必须在屏幕中间区域（避免锁到视野外的东西）
@@ -196,7 +198,20 @@ public class LockOnSystem : MonoBehaviour
 
         var tvp = Target.GetComponent<VehiclePhysics>();
         Vector3 vel = tvp != null ? tvp.Velocity : Vector3.zero;
-        float speed = player.Weapon != null ? Mathf.Max(150f, player.Weapon.projectileSpeed) : 900f;
+
+        // 2026-11-12 修：以前**永远**用炮塔武器（`player.Weapon`）算提前量。
+        // 炮艇按 V 进机枪模式后，炮塔武器可能是鱼雷（弹速只有几十 m/s），
+        // 于是按鱼雷算出来的提前量巨大 —— 打 374 m 的飞机要提前几百米，准星自然"怎么都对不上"。
+        // 现在按"当前真正开火的那件武器"算：机枪模式用挂点机枪（mg_aa，900 m/s）。
+        var ptc = player.GetComponent<PlayerTankController>();
+        var w = (ptc != null && ptc.MgMode && player.DeckWeapon != null) ? player.DeckWeapon : player.Weapon;
+
+        // 2026-11-12 用户反馈「鱼雷 Ctrl 瞄准都歪了」：鱼雷弹速只有几十 m/s，
+        // 按弹速算飞行时间会得到**上百米**的提前量，准星离目标老远 —— 看着就是"歪"。
+        // 慢速/制导武器一律不做提前量，直接指向目标（锁定框画在哪，炮口就指哪）。
+        if (w == null || w.isTorpedo || w.projectileSpeed < 300f) return aim;
+
+        float speed = Mathf.Max(150f, w.projectileSpeed);
         float tof = Vector3.Distance(player.transform.position, aim) / speed;
         return aim + vel * tof;
     }

@@ -244,8 +244,12 @@ public class MatchHUD : MonoBehaviour
 
     void DrawFeed(MatchManager mm)
     {
-        float w = 460f, rowH = 26f;
-        float y = 16f;
+        // 2026-11-12 用户反馈「开局那几行字看不出来」：
+        // ① 原来贴在 y=16，和顶部比分条挤在一起，第二行被压住；
+        // ② 底板只有 0.55 透明度，压不住亮天空，白字发灰。
+        // 现在下移到 y=104（比分条下面）、底板加到 0.8、字号 18→20、行高 26→30。
+        float w = 460f, rowH = 30f;
+        float y = 104f;
         float x = _vw - w - 16f;
 
         // 先按"新→旧"挑出最多 5 条（和原来的取法一致），再反过来画 ——
@@ -280,8 +284,10 @@ public class MatchHUD : MonoBehaviour
             float dx = (1f - inK) * 40f;                                 // 从屏幕右边缘滑入
             float ry = y + s * rowH - dy;
 
-            Panel(new Rect(x + dx, ry, w, rowH - 2f), new Color(0.05f, 0.06f, 0.08f, 0.55f * alpha));
-            Text(new Rect(x + dx + 10f, ry, w - 20f, rowH - 2f), e.text, _s18, new Color(1f, 1f, 1f, alpha), TextAnchor.MiddleLeft);
+            Panel(new Rect(x + dx, ry, w, rowH - 2f), new Color(0.03f, 0.04f, 0.06f, 0.82f * alpha));
+            // 描边一层再画正文：亮背景（天空/沙地）上也能看清
+            Text(new Rect(x + dx + 11f, ry + 1f, w - 20f, rowH - 2f), e.text, _s20, new Color(0f, 0f, 0f, 0.55f * alpha), TextAnchor.MiddleLeft);
+            Text(new Rect(x + dx + 10f, ry, w - 20f, rowH - 2f), e.text, _s20, new Color(1f, 1f, 1f, alpha), TextAnchor.MiddleLeft);
         }
     }
 
@@ -1092,6 +1098,15 @@ public class MatchHUD : MonoBehaviour
     public float radarRange = 700f;
 
     static VehicleCombat[] _radarVehicles = new VehicleCombat[0];
+
+    /// <summary>
+    /// 小地图的"北"基准（2026-11-12 用户第三次强调）：**以你最初面向的方向为北**。
+    /// 也就是说：刚出生时自己的箭头永远朝上，地图本身**不跟着你转**（转的是箭头）。
+    /// 每次新开局由 MatchManager.Start() 调 ResetMapNorth() 重置。
+    /// </summary>
+    static float _mapNorthYaw = float.NaN;
+
+    public static void ResetMapNorth() => _mapNorthYaw = float.NaN;
     static float _radarNextScan;
     static Texture2D _radarDisc;
 
@@ -1179,8 +1194,8 @@ public class MatchHUD : MonoBehaviour
             Fill(new Rect(cx + Mathf.Cos(a) * R * 0.66f - 1f, cy + Mathf.Sin(a) * R * 0.66f - 1f, 2f, 2f), dim);
             Fill(new Rect(cx + Mathf.Cos(a) * R * 0.33f - 1f, cy + Mathf.Sin(a) * R * 0.33f - 1f, 2f, 2f), dim);
         }
-        Fill(new Rect(cx - R, cy - 0.5f, R * 2f, 1f), dim);
-        Fill(new Rect(cx - 0.5f, cy - R, 1f, R * 2f), dim);
+        // 2026-11-12 用户要求：**删掉中心的十字准线**（"一横一竖看着像两个光标"），
+        // 中心只留"我"的箭头；地图**不再跟着车头转**，固定北朝上。
 
         // 扫掠线（转一圈 3 秒）
         float sweep = (Time.time * 120f) % 360f;
@@ -1193,32 +1208,17 @@ public class MatchHUD : MonoBehaviour
                           cy - Mathf.Cos(a) * R * f * 0.98f - 1.5f, 3f, 3f), c);
         }
 
-        // 2026-11-11 用户要求：小地图**跟着车头转**，自己的箭头永远朝上（不再固定朝北）。
-        // 地图朝向 = 本车 yaw，下面的相对角全部按这个 yaw 算。
-        float mapYaw = p.transform.eulerAngles.y;
+        // 2026-11-12：地图**不跟着你转**，但"北"= **你最初面向的方向**（不是世界 +Z）。
+        // 所以出生那一刻箭头一定朝上；之后你转向，转的是箭头，地图不动。
+        if (float.IsNaN(_mapNorthYaw)) _mapNorthYaw = p.transform.eulerAngles.y;
         var me = new Color(0.55f, 0.95f, 1f, 0.95f);
-        for (int i = 1; i <= 11; i++)
-        {
-            float f = i / 11f;
-            float px = cx;
-            float py = cy - 13f * f;
-            float w = 5.2f * (1f - f * 0.5f);
-            Fill(new Rect(px - w * 0.5f, py - w * 0.5f, w, w), me);
-        }
-        // 车头两侧的小翼，一眼看出"上 = 我的车头"
-        Fill(new Rect(cx - 7f, cy - 1f, 4f, 3f), me);
-        Fill(new Rect(cx + 3f, cy - 1f, 4f, 3f), me);
-        Fill(new Rect(cx - 2f, cy - 2f, 4f, 4f), new Color(1f, 1f, 1f, 0.95f));
 
-        // 北向标记：地图跟着车头转，所以"北"要绕着自己转
-        float northAng = -mapYaw * Mathf.Deg2Rad;
-        float nx = cx + Mathf.Sin(northAng) * (R - 8f);
-        float ny = cy - Mathf.Cos(northAng) * (R - 8f);
-        Text(new Rect(nx - 12f, ny - 11f, 24f, 22f), "北", _s18,
+        // 北向标记固定在正上方（这里的"北"就是开局朝向）
+        Text(new Rect(cx - 14f, cy - R + 2f, 28f, 22f), "北", _s18,
              new Color(0.55f, 0.95f, 0.85f, 0.85f), TextAnchor.MiddleCenter);
 
-        // 目标点：世界方向 → 相对车头的角度
-        float yaw = mapYaw;
+        // 目标点：世界方向按"开局朝向 = 北 = 上"换算
+        float yaw = _mapNorthYaw;
         var pos = p.transform.position;
 
         // 鱼雷先画（在船下面，别被船点盖住）；坦克/飞机不显示鱼雷
@@ -1247,24 +1247,75 @@ public class MatchHUD : MonoBehaviour
         foreach (var v in _radarVehicles)
         {
             if (v == null || v == p || !v.Alive) continue;
+            if (v.transform == p.transform) continue;          // 同一个车体（换车/重生瞬间可能拿到两个引用）
             Vector3 d = v.transform.position - pos;
             float dist = new Vector2(d.x, d.z).magnitude;
             if (dist > radarRange) continue;
+            // 30 m 以内的光点会正好压在自己箭头上（看着像"中心有两个光标"），直接不画
+            if (dist < 30f) continue;
             float rel = Mathf.DeltaAngle(yaw, Mathf.Atan2(d.x, d.z) * Mathf.Rad2Deg);
             float k = dist / radarRange;
             float px = cx + Mathf.Sin(rel * Mathf.Deg2Rad) * k * R;
             float py = cy - Mathf.Cos(rel * Mathf.Deg2Rad) * k * R;
             bool enemy = v.team != p.team;
             var c = enemy ? new Color(1f, 0.35f, 0.30f, 0.95f) : new Color(0.55f, 0.85f, 1f, 0.75f);
-            float s = enemy ? 5f : 4f;
-            Fill(new Rect(px - s * 0.5f, py - s * 0.5f, s, s), c);
+            // 2026-11-12 用户要求：小地图要能分出坦克/炮艇/飞机 → 按域画不同形状
+            RadarBlip(px, py, c, v.Def != null ? v.Def.domain : Domain.Land);
             if (enemy)
                 Fill(new Rect(px - 1f, py - 1f, 2f, 2f), new Color(1f, 1f, 1f, 0.9f));
         }
 
+        // 自己的箭头最后画（永远压在光点上面）：**相对开局朝向**旋转的箭头，
+        // 开局那一刻 hd = 0 → 箭头朝上；之后左转/右转箭头跟着转，地图不动。
+        float hd = Mathf.DeltaAngle(_mapNorthYaw, p.transform.eulerAngles.y) * Mathf.Deg2Rad;
+        Vector2 upv = new Vector2(Mathf.Sin(hd), -Mathf.Cos(hd));      // 屏幕坐标（y 向下）
+        Vector2 rtv = new Vector2(-upv.y, upv.x);
+        for (int i = 1; i <= 11; i++)
+        {
+            float f = i / 11f;
+            float d = 13f * f;
+            float w = 5.2f * (1f - f * 0.5f);
+            Fill(new Rect(cx + upv.x * d - w * 0.5f, cy + upv.y * d - w * 0.5f, w, w), me);
+        }
+        // 尾翼（垂直箭头方向的两小片）
+        Fill(new Rect(cx + rtv.x * 5f - 2f, cy + rtv.y * 5f - 1.5f, 4f, 3f), me);
+        Fill(new Rect(cx - rtv.x * 5f - 2f, cy - rtv.y * 5f - 1.5f, 4f, 3f), me);
+        Fill(new Rect(cx - 2f, cy - 2f, 4f, 4f), new Color(1f, 1f, 1f, 0.95f));
+
         Text(new Rect(cx - R, cy + R + 4f, R * 2f, 22f),
-             $"小地图 {Mathf.RoundToInt(radarRange)} m", _s18,
+             $"小地图 {Mathf.RoundToInt(radarRange)} m　■陆 ◆海 ▲空", _s18,
              new Color(0.55f, 0.95f, 0.85f, 0.65f), TextAnchor.MiddleCenter);
+    }
+
+    /// <summary>
+    /// 小地图光点：按载具类型画不同形状（2026-11-12 用户要求"能区分坦克飞机炮艇"）。
+    /// 陆战 = 方块，海战 = 菱形，空战 = 三角。颜色仍然按敌我（红/蓝）。
+    /// </summary>
+    void RadarBlip(float px, float py, Color c, Domain d)
+    {
+        const float u = 3.2f;
+        if (d == Domain.Air)
+        {
+            Fill(new Rect(px - u * 0.5f, py - u * 1.3f, u, u), c);
+            Fill(new Rect(px - u * 1.1f, py - u * 0.3f, u, u), c);
+            Fill(new Rect(px - u * 0.5f, py - u * 0.3f, u, u), c);
+            Fill(new Rect(px + u * 0.1f, py - u * 0.3f, u, u), c);
+            Fill(new Rect(px - u * 1.7f, py + u * 0.7f, u, u), c);
+            Fill(new Rect(px - u * 0.5f, py + u * 0.7f, u, u), c);
+            Fill(new Rect(px + u * 0.7f, py + u * 0.7f, u, u), c);
+        }
+        else if (d == Domain.Sea)
+        {
+            Fill(new Rect(px - u * 0.5f, py - u * 1.3f, u, u), c);
+            Fill(new Rect(px - u * 1.2f, py - u * 0.3f, u, u), c);
+            Fill(new Rect(px - u * 0.5f, py - u * 0.3f, u, u), c);
+            Fill(new Rect(px + u * 0.2f, py - u * 0.3f, u, u), c);
+            Fill(new Rect(px - u * 0.5f, py + u * 0.7f, u, u), c);
+        }
+        else
+        {
+            Fill(new Rect(px - u * 0.75f, py - u * 0.75f, u * 1.5f, u * 1.5f), c);
+        }
     }
 
     // ---------------- 命中反馈（击穿 / 未击穿 / 跳弹） ----------------

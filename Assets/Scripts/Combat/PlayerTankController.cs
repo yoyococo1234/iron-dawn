@@ -114,7 +114,9 @@ public class PlayerTankController : MonoBehaviour
                                                          : _combat.transform.position + Vector3.up * 2.5f;
                 // 只有"正常弹速的炮弹"才做弹道解算。鱼雷/导弹这种慢速或制导武器直接指向，
                 // 否则解出来的抛射角是几十度的高抛，镜头会直接飘到天上（用户报的 bug）。
-                var lw = _combat.Weapon;
+                // 2026-11-12：**机枪模式下要按机枪算**，不能拿炮塔那把武器（炮艇可能是鱼雷，
+                // 弹速几十 m/s，算出来的俯仰/提前量全错 —— 用户报的"机枪 Ctrl 锁不准"）。
+                var lw = (_mgMode && dw != null) ? dw : _combat.Weapon;
                 bool ballistic = lw != null && !lw.isTorpedo && lw.projectileSpeed >= 300f;
                 float bspd = lw != null ? Mathf.Max(150f, lw.projectileSpeed) : 900f;
                 Vector3 bdir = ballistic

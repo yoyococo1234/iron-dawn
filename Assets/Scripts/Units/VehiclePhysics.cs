@@ -22,6 +22,13 @@ public class VehiclePhysics : MonoBehaviour
     public float resistanceSoft = 1.8f;
     public float groundClearance = 0.55f;
 
+    [Header("越障（履带/车轮能直接翻过的小台阶）")]
+    [Tooltip("能翻上去的最大台阶高度（米）。取真实坦克的越障能力（约 0.9 m）：" +
+             "建筑物地基裙边平地上露 0.22 m、坡地上能露到 0.5~1.5 m，路缘/碎石也在这个量级。" +
+             "以前这类矮台阶会把车**直接顶停**（用户 2026-11-12 报「几乎所有的建筑物边缘都这样」）。" +
+             "楼体墙面（几米高）不在这个范围内，照样挡得住。")]
+    public float stepHeight = 0.9f;
+
     [Header("手感")]
     public float acceleration = 14f;
     public float brakeDecel = 22f;
@@ -291,8 +298,29 @@ public class VehiclePhysics : MonoBehaviour
         Vector3 delta = transform.forward * speed * Time.deltaTime;
         if (delta.sqrMagnitude > 1e-8f && IsBlockedByObstacle(delta))
         {
-            speed = 0f;
-            blocked = true;
+            // ---------- 蹭墙滑行（2026-11-12）----------
+            // 以前一撞就 speed=0：贴着楼开的时候稍微带一点角度就"直接停下"，很别扭。
+            // 现在把位移投到**墙面切向**再试一次 —— 角度不对就沿墙蹭过去，实在没路才停。
+            Vector3 n = _lastBlockNormal;
+            n.y = 0f;
+            bool slid = false;
+            if (n.sqrMagnitude > 0.01f)
+            {
+                n.Normalize();
+                Vector3 tangent = delta - n * Vector3.Dot(delta, n);
+                if (tangent.sqrMagnitude > 1e-7f && !IsBlockedByObstacle(tangent))
+                {
+                    transform.position += tangent;
+                    // 蹭墙掉速要按**秒**算，不能按帧（0.94/帧在 90 fps 下等于 0.4%/秒，一秒就停死）
+                    speed *= Mathf.Max(0f, 1f - 1.5f * Time.deltaTime);
+                    slid = true;
+                }
+            }
+            if (!slid)
+            {
+                speed = 0f;
+                blocked = true;
+            }
         }
         else
         {
@@ -306,8 +334,10 @@ public class VehiclePhysics : MonoBehaviour
 
         // 贴地 + 倾斜
         pos = transform.position;
-        float groundY = GroundY(pos.x, pos.z);
-        pos.y = Mathf.Lerp(pos.y, groundY + groundClearance, 12f * Time.deltaTime);
+        float groundY = DriveSurfaceY(pos);
+        // 往**上**翻台阶时慢一点（7/s）：一步弹上去看着像瞬移；往下掉/平地走还是 12/s
+        float lerpK = groundY > pos.y - groundClearance + 0.05f ? 7f : 12f;
+        pos.y = Mathf.Lerp(pos.y, groundY + groundClearance, lerpK * Time.deltaTime);
         transform.position = pos;
 
         float yaw = transform.eulerAngles.y;
@@ -849,6 +879,38 @@ public class VehiclePhysics : MonoBehaviour
         if (half.x <= 0.01f || half.y <= 0.01f || half.z <= 0.01f) return false;
         if (float.IsNaN(delta.x) || float.IsNaN(delta.y) || float.IsNaN(delta.z)) return false;
 
+        float step = delta.magnitude;
+        float terrainY = GroundY(transform.position.x, transform.position.z);
+
+        // ---------- ① 台阶试探（2026-11-12）----------
+        // 把探测盒**抬到"台阶高度"之上**再往前打一次：
+        //   · 抬起来之后畅通 → 前面只是个矮台阶（地基裙边 / 路缘 / 碎石），履带压上去就行，不算挡；
+        //   · 抬起来之后还撞东西 → 那是墙（或者矮台阶后面紧贴着一堵墙），挡住。
+        // 为什么要这么做：楼体是**整栋一个 MeshCollider**，它的包围盒顶在楼顶（十几米），
+        // 所以"看包围盒高度"永远判不出楼底那一小块矮东西；必须用"抬高试探"这种方式才分得清
+        // "矮台阶"和"墙"。用户 2026-11-12 报的「几乎所有的建筑物边缘都把车顶停」就是这条。
+        if (step > 0.01f)
+        {
+            float lift = (terrainY + stepHeight) - (center.y - half.y);
+            if (lift > 0.02f)
+            {
+                Vector3 raised = center + Vector3.up * lift;
+                var stepHits = UnityEngine.Physics.BoxCastAll(raised, half, delta / step, Quaternion.identity,
+                                                             step + 0.2f, ~0, QueryTriggerInteraction.Ignore);
+                bool clearAhead = true;
+                foreach (var h in stepHits)
+                {
+                    var c = h.collider;
+                    if (c == null || c == col) continue;
+                    if (c is TerrainCollider) continue;
+                    if (c.GetComponentInParent<VehicleCombat>() != null) continue;
+                    clearAhead = false;
+                    break;
+                }
+                if (clearAhead) return false;    // 抬高就畅通 → 矮台阶，放行（贴地那步会把车抬上去）
+            }
+        }
+
         // 已经卡在障碍里了 → **挡住这一帧**（车会停住，玩家可以倒车出来）。
         // 2026-11-09 修：原来这里是 `return false`（当作没挡），本意是防止被建筑夹住出不来，
         // 但建筑的 BoxCollider 是从地面到楼顶的整块实心盒 —— 车一开到楼底就落进盒子里，
@@ -862,10 +924,11 @@ public class VehiclePhysics : MonoBehaviour
             if (h == null || h == col) continue;
             if (h is TerrainCollider) continue;
             if (h.GetComponentInParent<VehicleCombat>() != null) continue;
+            if (IsLowLedge(h)) continue;      // 矮台阶（地基裙边等）不算卡住，履带能压过去
+            LogBlocked(h);                    // 打包版也会写进 Player.log，方便定位"这里为什么过不去"
+            _lastBlockNormal = (transform.position - h.bounds.center).normalized;
             return true;      // 挡住，别往前走
         }
-
-        float step = delta.magnitude;
         if (step > 0.01f)
         {
             var hits = UnityEngine.Physics.BoxCastAll(center, half, delta / step, Quaternion.identity,
@@ -875,10 +938,81 @@ public class VehiclePhysics : MonoBehaviour
                 if (h.collider == null || h.collider == col) continue;
                 if (h.collider is TerrainCollider) continue;                       // 地形不挡
                 if (h.collider.GetComponentInParent<VehicleCombat>() != null) continue;  // 载具不挡
+                if (IsLowLedge(h.collider)) continue;   // 矮台阶：不挡，让车翻上去
+                LogBlocked(h.collider);
+                _lastBlockNormal = h.normal;            // 真正的墙面法线（蹭墙滑行用这个最准）
                 return true;
             }
         }
         return false;
+    }
+
+    float _lastBlockLog = -9f;
+    Vector3 _lastBlockNormal;      // 上次被挡时的墙面法线（蹭墙滑行用）
+
+    /// <summary>
+    /// 被挡住时记一条日志（限流 1 秒）。打包版会写进
+    /// `%USERPROFILE%\AppData\LocalLow\<公司>\<产品>\Player.log`，
+    /// 用户说"这里过不去"时直接读日志就能知道挡他的是哪个物件、多高 —— 不用猜。
+    /// </summary>
+    void LogBlocked(Collider c)
+    {
+        if (Time.time - _lastBlockLog < 1f) return;
+        _lastBlockLog = Time.time;
+        float terrainY = GroundY(transform.position.x, transform.position.z);
+        Debug.Log($"[越障] 被挡住 obj={c.name} root={c.transform.root.name} " +
+                  $"顶面-地形={c.bounds.max.y - terrainY:F2}m 车={name} 位置={transform.position.ToString("F1")} " +
+                  $"yaw={transform.eulerAngles.y:F0} stepHeight={stepHeight:F2} 坡度={slopeDeg:F0}°");
+    }
+
+    /// <summary>
+    /// 这个碰撞体是不是"矮台阶"——顶面只比车底高一点点（≤ stepHeight）。
+    ///
+    /// 2026-11-12 用户反馈：**几乎所有的建筑物边缘都会把车直接顶停**。
+    /// 根因是 11-11 给每栋楼加的地基裙边（`PropScatter.AddFoundation`）上沿露出 0.22 m，
+    /// 而 `IsBlockedByObstacle` 对任何非地形碰撞体一律"挡住"，于是 320 栋楼周边全成了不可通行的矮墙；
+    /// 车一旦开上去还会被判成"已经卡在障碍里"，连倒车都费劲。
+    /// 履带车本来就该能翻过 20~50 cm 的台阶（路缘、水泥板、碎石），所以这类矮台阶直接放行。
+    /// 楼体本身的 MeshCollider 顶面在十几米高 → 不在这个范围内，照样挡得住。
+    /// </summary>
+    bool IsLowLedge(Collider c)
+    {
+        if (c == null) return false;
+        // 高度差要跟**地形**比，不能跟车体碰撞盒底比 —— 车体碰撞盒是个大盒子，
+        // 盒底通常比地面低一两米，用它算"台阶高度"会把 0.22 m 的地基算成 1.6 m，永远判不成矮台阶。
+        float groundY = GroundY(transform.position.x, transform.position.z);
+        float rise = c.bounds.max.y - groundY;
+        return rise > 0.01f && rise <= stepHeight;
+    }
+
+    /// <summary>
+    /// 车底实际该贴的面高度：地形高度，或者**只比地形高一点点的台阶顶面**（地基裙边 / 路缘 / 碎石）。
+    ///
+    /// 只放行 IsLowLedge 还不够：车虽然能往前开，但贴地用的是地形高度，
+    /// 视觉上会"陷在水泥板里"。这里从车顶上方往下打一条射线，把"矮台阶的顶面"也当成可行驶地面。
+    /// </summary>
+    float DriveSurfaceY(Vector3 pos)
+    {
+        float terrainY = GroundY(pos.x, pos.z);
+        var own = GetComponent<Collider>();
+
+        Vector3 from = pos + Vector3.up * (stepHeight + 3f);
+        float len = stepHeight + 6f;
+        var hits = UnityEngine.Physics.RaycastAll(from, Vector3.down, len, ~0, QueryTriggerInteraction.Ignore);
+        float best = terrainY;
+        foreach (var h in hits)
+        {
+            var c = h.collider;
+            if (c == null || c == own) continue;
+            if (c.transform == transform || c.transform.IsChildOf(transform)) continue;   // 自己身上的碰撞盒
+            if (c is TerrainCollider) continue;
+            if (c.GetComponentInParent<VehicleCombat>() != null) continue;               // 别的载具不算地面
+            float y = h.point.y;
+            if (y <= terrainY + 0.02f) continue;          // 和地形一样高，用地形就行
+            if (y > terrainY + stepHeight) continue;      // 比台阶高得多 → 那是墙，不是地面
+            if (y > best) best = y;
+        }
+        return best;
     }
 
     // ---------------- 地形源抽象 ----------------

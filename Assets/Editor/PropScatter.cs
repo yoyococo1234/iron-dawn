@@ -424,12 +424,12 @@ public static class PropScatter
         if (solid)
         {
             AddSolidCollider(go);
-            // 2026-11-11：地基裙边 —— 用户反馈"很多建筑物下面都没生成明白"。
-            // Lux3D 出的楼底部经常是开放的或者带几片碎渣，怎么贴地都会露缝。
-            // 每栋楼垫一块**按真实占地 1.06 倍**的混凝土台，上沿露 0.22 m、往下埋 2.8 m。
-            // ⚠️ 不能用"水平半径 ×2"当边长：半径取的是长深里较大的那个，窄长楼（断墙 14×3）
-            // 会算出一块 14×14 的大灰板铺在草地上（第一版就是这么翻车的）。
-            AddFoundation(go, parent, BattlefieldTerrain.SampleHeight(x, z));
+            // 2026-11-12：**不再加地基裙边**（用户要求"把建筑的所有的裙边藏起来"）。
+            // 11-11 加它本来是为了遮住 Lux3D 楼底的开缝，但上沿露出的那 0.22 m（坡地上更多）
+            // 会把车顶停，且看起来像"看不见的矮墙" —— 用户明确要求去掉。
+            // 场景里已有的 320 块地基已用 `objects | where name == "Foundation" | set active = false`
+            // 整批隐藏（可撤销：把 active 设回 true 就回来）。AddFoundation 方法保留，别删。
+            // AddFoundation(go, parent, BattlefieldTerrain.SampleHeight(x, z));
         }
         // 树也要有碰撞：以前树只有 Transform+Mesh，坦克开过去直接穿过、炮弹也打不中
         if (model.name.StartsWith("tree_"))
@@ -447,7 +447,8 @@ public static class PropScatter
     {
         // 2026-11-11 用户反馈"明明空的却走不过去"：原来半径按**树冠**算（最大 1.4 m = 2.8 m 见方），
         // 树干其实只有 0.3 m 粗，于是每棵树周围一圈空气墙。改成按树高估树干粗细。
-        float r = Mathf.Clamp(worldHeight * 0.05f, 0.30f, 0.75f);
+        // 2026-11-12 用户要求"碰撞箱做精细"：再收一档（12 m 的树 → 0.53 m 见方，贴近真实树干）。
+        float r = Mathf.Clamp(worldHeight * 0.022f, 0.16f, 0.34f);
         float h = Mathf.Max(2f, worldHeight * 0.55f);      // 树干到主枝分叉那一截
 
         var go = new GameObject("TreeCollider");

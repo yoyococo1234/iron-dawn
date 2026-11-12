@@ -44,7 +44,7 @@ public static class Bindings
         new Entry { act = Act.Shop,         label = "补给商店",     def = KeyCode.Tab },
         new Entry { act = Act.Pause,        label = "暂停",        def = KeyCode.P },
         new Entry { act = Act.Garage,       label = "回车库换车",    def = KeyCode.G },
-        new Entry { act = Act.Restart,      label = "重开一局",     def = KeyCode.R },
+        // 2026-11-12 用户要求：删掉 R（重开一局）—— 改成按 P 暂停后在面板里选"是否重新开始"。
         new Entry { act = Act.Decoy,        label = "干扰弹（船）",  def = KeyCode.X },
     };
 

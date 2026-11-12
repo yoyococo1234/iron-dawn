@@ -192,7 +192,7 @@ public class GameStartScreen : MonoBehaviour
 
         // ---- 底部提示 ----
         UiKit.Label(new Rect(0f, 1000f, vw, 26f),
-            "鼠标点选　·　进游戏后 P 暂停 / TAB 商店 / G 换车 / R 重开", 17,
+            "鼠标点选　·　进游戏后 P 暂停（可重开）/ TAB 商店 / G 换车 / V 机枪", 17,
             new Color(0.62f, 0.72f, 0.82f, 0.8f), TextAnchor.MiddleCenter);
         // 注意：UnlockText() 自己已经带"空战"前缀（"空战 3 分钟后开放" / "开局就开放"），
         // 这里**不要**再写"海空"——以前就是多拼了一层，显示成「海空空战 3 分钟后开放」。

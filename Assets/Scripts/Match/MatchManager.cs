@@ -58,6 +58,7 @@ public class MatchManager : MonoBehaviour
     }
 
     UnitState _human;
+    bool _humanDeployedOnce;      // 已经出击过至少一次（首次出击不扣命）
     readonly Dictionary<VehicleCombat, UnitState> _map = new Dictionary<VehicleCombat, UnitState>();
     readonly Dictionary<VehicleCombat, int> _cache = new Dictionary<VehicleCombat, int>();
     float _garageAt = -1f;
@@ -144,6 +145,7 @@ public class MatchManager : MonoBehaviour
     {
         timeLeft = match.matchTimeLimitMinutes * 60f;
         MatchSettings.MatchElapsed = 0f;                 // 2026-11-11：海/空解锁计时从 0 开始
+        MatchHUD.ResetMapNorth();                        // 2026-11-12：小地图"北"= 本局开局的朝向
         VehicleAI.Skill = MatchSettings.AiSkill;         // AI 难度（游戏调整里选）
 
         zones.Clear();
@@ -211,6 +213,7 @@ public class MatchManager : MonoBehaviour
                 };
                 units.Add(me);
                 _human = me;
+                _humanDeployedOnce = false;      // 首次出击不扣命（见 DeployPlayer）
             }
 
             for (int i = 0; i < ids.Count; i++)
@@ -248,7 +251,7 @@ public class MatchManager : MonoBehaviour
 
         if (matchOver)
         {
-            if (Bindings.Down(Bindings.Act.Restart)) Restart();
+            // 2026-11-12 用户要求：删掉 R 键重开，改成按 P 暂停后在面板里选"是否重新开始"。
             return;
         }
 
@@ -359,6 +362,19 @@ public class MatchManager : MonoBehaviour
             EndMatch(1, "你的 3 条命用完了");
             return;
         }
+        // 2026-11-12 用户反馈「三条命用了两条就无法复活」：
+        // 复活还要买得起车，钱不够时车库全是"金币不足"，点不动 —— 看着像命没了。
+        // 现在保证"有命就能复活"：钱不够最便宜那台时补一笔刚好够的补给。
+        if (_human != null)
+        {
+            int cheapest = CheapestPrice;
+            if (cheapest > 0 && _human.gold < cheapest)
+            {
+                int add = cheapest - _human.gold;
+                _human.gold = cheapest;
+                PushFeed($"复活补给 +{add} 金");
+            }
+        }
         OpenGarage("载具被击毁 —— 重新选择", $"还剩 {LivesText} 次部署 · 你的金币 {Gold}");
     }
 
@@ -387,7 +403,10 @@ public class MatchManager : MonoBehaviour
 
         int cost = _human.gold >= def.price ? def.price : 0;
         _human.gold -= cost;
-        if (!unlimitedLives) _human.lives--;
+        // 2026-11-12：**首次出击不扣命** —— 3 条命 = 开局 1 次 + 还能复活 3 次。
+        // 以前开局那次也算一条，于是"三条命"实际只有 2 次复活（用户报「用了两条就无法复活」）。
+        if (!unlimitedLives && _humanDeployedOnce) _human.lives--;
+        _humanDeployedOnce = true;
 
         if (_human.vehicle != null)
         {
@@ -686,7 +705,10 @@ public class MatchManager : MonoBehaviour
         if (matchOver) return;
         if (TeamLives(1) <= 0 && TeamAlive(1) == 0) { EndMatch(0, "敌方全部出局"); return; }
         if (TeamLives(0) <= 0 && TeamAlive(0) == 0) { EndMatch(1, "我方全部出局"); return; }
-        if (!unlimitedLives && _human != null && _human.lives <= 0 && _human.vehicle == null)
+        // 2026-11-12：**车库里正在选车时不要判负**。以前"命数刚好扣到 0、车还没生成"的那一帧
+        // 会被判成"命用完了"，于是玩家刚点完复活就弹失败（用户报的"第二次复活之后直接显示失败"）。
+        bool choosing = GarageScreen.Instance != null && GarageScreen.Instance.IsOpen;
+        if (!unlimitedLives && !choosing && _human != null && _human.lives <= 0 && _human.vehicle == null)
             EndMatch(1, "你的 3 条命用完了");
     }
 
@@ -712,6 +734,11 @@ public class MatchManager : MonoBehaviour
     {
         matchOver = false;
         BattleEvents.VehicleDestroyed -= OnVehicleDestroyed;
+        // 2026-11-12：从暂停面板重开时 timeScale 还是 0、Paused 还是 true，
+        // LoadScene 不会清静态字段 —— 不在这里复位，新一局会一进去就冻住。
+        Time.timeScale = 1f;
+        AudioListener.pause = false;
+        PauseScreen.ClearPaused();
         SceneManager.LoadScene(SceneManager.GetActiveScene().buildIndex);
     }
 

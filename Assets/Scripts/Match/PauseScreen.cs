@@ -30,6 +30,8 @@ public class PauseScreen : MonoBehaviour
     void Update()
     {
         if (Bindings.Down(Bindings.Act.Pause)) Toggle();
+        // 2026-11-12 用户要求：暂停时按 Esc 也能退出暂停
+        else if (Paused && Input.GetKeyDown(KeyCode.Escape)) Toggle();
     }
 
     /// <summary>暂停 / 继续（P 键和面板上的按钮都走这里）。</summary>
@@ -48,6 +50,7 @@ public class PauseScreen : MonoBehaviour
         else
         {
             Paused = false;
+            _confirmRestart = false;                    // 关面板就把"确认重开"的待确认状态清掉
             Time.timeScale = _savedScale;
             AudioListener.pause = false;
             Cursor.lockState = CursorLockMode.Locked;   // 立刻回到准星
@@ -57,8 +60,17 @@ public class PauseScreen : MonoBehaviour
         }
     }
 
-    static readonly string[] Keys = { "P", "TAB", "G", "R" };
-    static readonly string[] Descs = { "继续战斗", "补给商店", "回车库换载具", "重开一局" };
+    static readonly string[] Keys = { "P", "TAB", "G" };
+    static readonly string[] Descs = { "继续战斗", "补给商店", "回车库换载具" };
+
+    /// <summary>2026-11-12 用户要求：删掉 R 键，重开改成暂停面板里的一个按钮（点两次确认）。</summary>
+    bool _confirmRestart;
+
+    /// <summary>重开一局时把静态暂停状态复位（LoadScene 不清静态字段）。</summary>
+    public static void ClearPaused()
+    {
+        Paused = false;
+    }
 
     void OnGUI()
     {
@@ -74,7 +86,7 @@ public class PauseScreen : MonoBehaviour
         // 半透明压暗，身后的战场仍可见
         UiKit.Box(new Rect(0, 0, vw, 1080f), new Color(0.01f, 0.015f, 0.025f, 0.66f));
 
-        float pw = 460f, ph = 120f + Keys.Length * 46f + 30f + 56f;   // 2026-11-11：+56 给音量滑条
+        float pw = 460f, ph = 120f + Keys.Length * 46f + 54f + 54f + 30f + 56f;   // 键位行 + 换载具 + 重开 + 音量滑条
         var panel = UiKit.PopIn(new Rect(vw * 0.5f - pw * 0.5f, 540f - ph * 0.5f, pw, ph), k);
         UiKit.Card(panel);
 
@@ -104,6 +116,51 @@ public class PauseScreen : MonoBehaviour
             if (hit.clicked) Toggle();
 
             y += 46f;
+        }
+
+        // ---------- 换载具（2026-11-12 用户要求：暂停界面里也要能直接换车）----------
+        {
+            var mm = MatchManager.Instance;
+            var br = new Rect(panel.x + 22f, y, pw - 44f, 44f);
+            var hb = UiKit.Button("pause_swap", br, mouse, live);
+            bool hotB = hb.hover01 > 0.4f;
+            UiKit.Box(br, hotB ? new Color(1f, 0.84f, 0.35f, 0.16f) : new Color(1f, 1f, 1f, 0.03f));
+            UiKit.Frame(br, hotB ? UiKit.Gold : UiKit.Edge);
+            UiKit.Label(br, "换载具", 18, hotB ? UiKit.Gold : UiKit.Desc, TextAnchor.MiddleCenter, true);
+            if (hb.clicked && mm != null)
+            {
+                UiSound.Play(UiSound.Kind.Open);
+                Toggle();                       // 先退出暂停（否则车库关掉后 timeScale 会被抢回 1、状态打架）
+                mm.OpenGarageForSwap();
+                return;
+            }
+            y += 54f;
+        }
+
+        // ---------- 重新开始本局（2026-11-12 取代原来的 R 键）----------
+        // 点第一次变成"再点一次确认"，第二次才真的重开 —— 免得手滑把一局打没。
+        {
+            var mm = MatchManager.Instance;
+            var rr = new Rect(panel.x + 22f, y, pw - 44f, 44f);
+            var h = UiKit.Button("pause_restart", rr, mouse, live);
+            bool hot = h.hover01 > 0.4f;
+            UiKit.Box(rr, _confirmRestart ? new Color(1f, 0.42f, 0.36f, 0.24f)
+                                          : new Color(1f, 1f, 1f, 0.03f + 0.10f * h.hover01));
+            UiKit.Frame(rr, (_confirmRestart || hot) ? UiKit.Bad : UiKit.Edge);
+            UiKit.Label(rr, _confirmRestart ? "再点一次确认重开本局" : "重新开始本局", 18,
+                        (_confirmRestart || hot) ? UiKit.Bad : UiKit.Desc, TextAnchor.MiddleCenter, true);
+            if (h.clicked)
+            {
+                if (!_confirmRestart) { _confirmRestart = true; UiSound.Play(UiSound.Kind.Click); }
+                else
+                {
+                    _confirmRestart = false;
+                    UiSound.Play(UiSound.Kind.Confirm);
+                    if (mm != null) mm.Restart();
+                    return;                       // 场景要重载了，这一帧别再往下画
+                }
+            }
+            y += 54f;
         }
 
         // ---------- 界面音效音量（2026-11-11 补 §7.3）----------

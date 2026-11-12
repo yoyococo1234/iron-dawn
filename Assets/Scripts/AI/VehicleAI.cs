@@ -241,6 +241,18 @@ public class VehicleAI : MonoBehaviour
                 _phys.aiThrottle = 1f;
                 return;
             }
+            // 2026-11-12 用户反馈「对面的炮艇不会动」：以前海上单位一进交战就 throttle=0，
+            // 舰炮射程 1200 m、视野又远，所以敌船从开局到被打死基本是块固定靶。
+            // 现在让炮艇保持巡弋（前方水深够就慢慢开，不够就停），船身一直在动。
+            if (NavMode == NavGrid.NavMode.Sea)
+            {
+                Vector3 fwd = transform.forward;
+                bool deepAhead = IsOnWater(transform.position + fwd * 60f)
+                              && IsOnWater(transform.position + fwd * 130f);
+                _phys.aiSteer = 0f;
+                _phys.aiThrottle = deepAhead ? 0.5f : 0f;
+                return;
+            }
             _phys.aiThrottle = 0f;
             _phys.aiSteer = 0f;
             return;
@@ -286,11 +298,25 @@ public class VehicleAI : MonoBehaviour
         // ---------- 海：寻路失败时绝不直线冲岸 ----------
         // 目标常常在陆地上（打岸上的坦克），海上又找不到通往它的水路。
         // 以前这里会退回"直线冲向目标点"，炮艇就一路开上沙滩卡死。
-        // 现在改成：目标不在水上、又没有水路 → 原地待命，用舰炮打，不动。
+        // 2026-11-12 用户反馈「对面的炮艇不会动」：上一版改成"原地待命"，
+        // 但据点基本都在陆地上 → 炮艇从头到尾一步不动，成了固定靶。
+        // 现在改成：找不到水路就去**据点附近最近的可航行水面**巡弋，船身一直在动。
         if (NavMode == NavGrid.NavMode.Sea && _path.Count == 0 && !IsOnWater(_lastTargetPos))
         {
-            _phys.aiSteer = 0f;
-            _phys.aiThrottle = 0f;
+            if (Time.time >= _seaPatrolNext)
+            {
+                _seaPatrolNext = Time.time + 2.5f;
+                _seaPatrol = NearestWater(_lastTargetPos);
+            }
+            if (_seaPatrol != Vector3.zero && Vector3.Distance(_seaPatrol, transform.position) > 40f)
+            {
+                SteerToward(_seaPatrol);
+                return;
+            }
+            // 已经到巡弋点了：慢慢绕圈（保持机动），别再钉在原地
+            Vector3 around = transform.position + Vector3.Cross(Vector3.up, transform.forward) * 120f;
+            if (IsOnWater(around)) SteerToward(around);
+            else { _phys.aiSteer = 0f; _phys.aiThrottle = 0f; }
             return;
         }
 
@@ -302,6 +328,29 @@ public class VehicleAI : MonoBehaviour
     {
         float draft = _phys != null ? _phys.wadeDepth : 0.8f;
         return BattlefieldTerrain.WaterDepth(p.x, p.z) >= draft;
+    }
+
+    Vector3 _seaPatrol;
+    float _seaPatrolNext;
+
+    /// <summary>
+    /// 从某点往外一圈圈找"最近的可航行水面"（炮艇的巡弋点）。
+    /// 据点基本都在岸上，所以直接开过去只会搁浅 —— 找一个离它最近的深水点绕着打。
+    /// </summary>
+    Vector3 NearestWater(Vector3 from)
+    {
+        float draft = _phys != null ? _phys.wadeDepth : 0.8f;
+        if (BattlefieldTerrain.WaterDepth(from.x, from.z) >= draft) return from;
+        for (float r = 25f; r <= 600f; r += 25f)
+        {
+            for (int i = 0; i < 16; i++)
+            {
+                float a = i / 16f * Mathf.PI * 2f;
+                Vector3 p = from + new Vector3(Mathf.Cos(a) * r, 0f, Mathf.Sin(a) * r);
+                if (BattlefieldTerrain.WaterDepth(p.x, p.z) >= draft + 0.4f) return p;
+            }
+        }
+        return Vector3.zero;
     }
 
     void Repath(Vector3 goal)

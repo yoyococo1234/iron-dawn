@@ -171,7 +171,7 @@ public static class DataSeeder
         bf.enemySpawnLineX = 933f;
         bf.spawnLineZMin = -967f;
         bf.spawnLineZMax = 967f;
-        bf.waterLevel = -6.667f;
+        bf.waterLevel = -2.667f;     // 2026-11-12：与 BattlefieldTerrain.WaterLevel 同步（原 -6.667）
         bf.zones = new[] { zPort, zUrban, zHill, zFlankL, zFlankR };
         bf.coinBoxPoints = new[]
         {

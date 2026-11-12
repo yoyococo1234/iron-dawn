@@ -17,6 +17,21 @@ public class GarageScreen : MonoBehaviour
 
     void Awake() => Instance = this;
 
+    void Update()
+    {
+        // 2026-11-12 用户要求：按 G 进换车界面后，按 Esc 能退出换车（不扣命）。
+        // 只在"场上已经有车"（= 中途换车 / 阵亡重选前先回车库这种）时允许取消；
+        // 没车的时候 Esc 什么也不做 —— 否则会退到一个没有载具的状态。
+        if (!IsOpen) return;
+        if (!Input.GetKeyDown(KeyCode.Escape)) return;
+        var mm = MatchManager.Instance;
+        if (mm != null && mm.Player != null)
+        {
+            UiSound.Play(UiSound.Kind.Close);
+            Close();
+        }
+    }
+
     public void Open(string title, string subtitle = "")
     {
         _title = title;

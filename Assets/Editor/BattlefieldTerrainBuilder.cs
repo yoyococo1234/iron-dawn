@@ -35,7 +35,7 @@ public static class BattlefieldTerrainBuilder
     public const float DesignHeightRange = 24f;         // 设计坐标高度范围（最高 18 m）
     public const float BaseY = DesignBaseY * Scale;             // -100
     public const float HeightRange = DesignHeightRange * Scale; // 400
-    public const float WaterLevel = -0.4f * Scale;              // -6.667（海平面）
+    public const float WaterLevel = -0.16f * Scale;              // -2.667（海平面，2026-11-12 抬高 4 m，与 BattlefieldTerrain.WaterLevel 保持一致）
 
     // 地表层序号（和 splatmap 通道一一对应）
     public const int L_SAND = 0, L_GRASS = 1, L_DIRT = 2, L_ROCK = 3, L_SNOW = 4;
